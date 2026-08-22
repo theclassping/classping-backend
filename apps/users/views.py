@@ -1,4 +1,4 @@
-import datetime
+from datetime import datetime, timezone
 from django.contrib.auth import get_user_model
 from rest_framework import status, viewsets
 from rest_framework.response import Response
@@ -54,7 +54,7 @@ class LogoutView(APIView):
                 defaults={
                     "expires_at": datetime.fromtimestamp(
                         exp,
-                        tz=datetime.timezone.utc,
+                        tz=timezone.utc,
                     )
                 },
             )
