@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
 
     "rest_framework",
+    "drf_spectacular",
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
 
@@ -136,10 +137,41 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 REST_FRAMEWORK = {
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "apps.users.authentication.CustomJWTAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": (
         "rest_framework.permissions.IsAuthenticated",
     ),
+}
+
+EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+DEFAULT_FROM_EMAIL = "noreply@classping.com"
+
+SPECTACULAR_SETTINGS = {
+    "TITLE": "ClassPing API",
+    "DESCRIPTION": "ClassPing Backend API",
+    "VERSION": "1.0.0",
+
+    # Group APIs by the first path after /api/
+    "SCHEMA_PATH_PREFIX": r"/api/",
+
+    # JWT authentication
+    "APPEND_COMPONENTS": {
+        "securitySchemes": {
+            "BearerAuth": {
+                "type": "http",
+                "scheme": "bearer",
+                "bearerFormat": "JWT",
+            }
+        }
+    },
+
+    # Apply Bearer authentication to endpoints
+    "SECURITY": [
+        {
+            "BearerAuth": [],
+        }
+    ],
 }

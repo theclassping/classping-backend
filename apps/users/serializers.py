@@ -1,4 +1,5 @@
 from django.contrib.auth import get_user_model
+from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
 from rest_framework_simplejwt.tokens import RefreshToken
 
@@ -75,3 +76,38 @@ class LogoutSerializer(serializers.Serializer):
 
     def save(self, **kwargs):
         self.token.blacklist()
+
+class ForgotPasswordSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+class ResetPasswordSerializer(serializers.Serializer):
+    uid = serializers.CharField()
+    token = serializers.CharField()
+    new_password = serializers.CharField(
+        write_only = True,
+        min_length = 8
+    )
+    
+    def validate_new_password(self, attrs):
+        validate_password(attrs)
+        return attrs
+    
+class ChangePasswordSerializer(serializers.Serializer):
+    uid = serializers.CharField()
+    token = serializers.CharField()
+    old_password = serializers.CharField(
+        write_only = True,
+        min_length = 8
+    )
+    new_password = serializers.CharField(
+        write_only = True,
+        min_length = 8
+    )
+    
+    def validate_old_password(self, attrs):
+        validate_password(attrs)
+        return attrs
+    
+    def validate_new_password(self, attrs):
+        validate_password(attrs)
+        return attrs
