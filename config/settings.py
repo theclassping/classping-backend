@@ -48,6 +48,7 @@ INSTALLED_APPS = [
     # ClassPing
     "apps.users",
     "apps.schools",
+    "apps.staffs",
 ]
 
 MIDDLEWARE = [
