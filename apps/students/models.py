@@ -36,6 +36,9 @@ class Student(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        db_table = "students"
+
     def __str__(self):
         return f"{self.first_name} {self.last_name}"
 
@@ -73,6 +76,7 @@ class StudentGuardian(models.Model):
     )
 
     class Meta:
+        db_table = "student_guardians"
         constraints = [
             models.UniqueConstraint(
                 fields=["student", "guardian"],
