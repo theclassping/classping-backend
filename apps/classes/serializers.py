@@ -1,7 +1,8 @@
 from rest_framework import serializers
 
-from .models import Class, ClassTeacher
+from .models import Class, ClassTeacher, ClassStudent
 from apps.staffs.models import Staff
+from apps.students.models import Student
 
 class ClassSerializer(serializers.ModelSerializer):
     branch_name = serializers.CharField(
@@ -89,3 +90,43 @@ class ClassTeacherSerializer(serializers.ModelSerializer):
             )
 
         return staff
+    
+class ClassStudentSerializer(serializers.ModelSerializer):
+    class_id = serializers.PrimaryKeyRelatedField(
+        source="class_obj",
+        queryset=Class.objects.all(),
+    )
+
+    student_id = serializers.PrimaryKeyRelatedField(
+        source="student",
+        queryset=Student.objects.all(),
+    )
+    class_name = serializers.CharField(
+        source="class_obj.name",
+        read_only=True,
+    )
+
+    student_name = serializers.SerializerMethodField()
+
+
+    class Meta:
+        model = ClassStudent
+
+        fields = [
+            "id",
+            "class_id",
+            "class_name",
+            "student_id",
+            "student_name",
+            "created_at",
+        ]
+
+        read_only_fields = [
+            "id",
+            "class_name",
+            "student_name",
+            "created_at",
+        ]
+
+    def get_student_name(self, obj):
+        return f"{obj.student.first_name} {obj.student.last_name}".strip()

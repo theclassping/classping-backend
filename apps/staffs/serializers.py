@@ -15,6 +15,7 @@ class StaffSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "branch",
+            "user",
             "first_name",
             "last_name",
             "email",

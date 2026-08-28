@@ -11,7 +11,6 @@ class User(AbstractBaseUser, PermissionsMixin):
         ADMIN = "ADMIN", "Admin"
         STAFF = "STAFF", "Staff"
         TEACHER = "TEACHER", "Teacher"
-        STUDENT = "STUDENT", "Student"
         PARENT = "PARENT", "Parent"
 
     email = models.EmailField(
@@ -30,7 +29,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     role = models.CharField(
         max_length=20,
         choices=Role.choices,
-        default=Role.STUDENT,
+        default=Role.STAFF,
     )
 
     is_active = models.BooleanField(
