@@ -1,17 +1,25 @@
 from rest_framework import serializers
 
 from .models import StudentInvoice
-from apps.classes.models import ClassStudent
 
 
 class StudentInvoiceSerializer(serializers.ModelSerializer):
 
-    class_student_id = serializers.PrimaryKeyRelatedField(
-        source="class_student",
-        queryset=ClassStudent.objects.select_related(
-            "student",
-            "class_obj",
-        ),
+    fee_type_name = serializers.CharField(
+        source="fee_type.name",
+        read_only=True,
+    )
+
+    fee_type_amount = serializers.DecimalField(
+        source="fee_type.amount",
+        max_digits=12,
+        decimal_places=2,
+        read_only=True,
+    )
+
+    student_id = serializers.IntegerField(
+        source="class_student.student.id",
+        read_only=True,
     )
 
     student_name = serializers.SerializerMethodField()
@@ -21,39 +29,46 @@ class StudentInvoiceSerializer(serializers.ModelSerializer):
         read_only=True,
     )
 
-    remaining_amount = serializers.SerializerMethodField()
-
     class Meta:
         model = StudentInvoice
 
         fields = [
             "id",
-            "class_student_id",
+            "invoice_no",
+
+            "class_student",
+            "student_id",
             "student_name",
             "class_name",
+
             "fee_type",
-            "invoice_no",
+            "fee_type_name",
+            "fee_type_amount",
+
             "invoice_date",
             "due_date",
             "status",
+
             "tax_amount",
             "subtotal",
             "total_amount",
             "currency",
             "total_discount",
             "amount_paid",
-            "remaining_amount",
+
             "remark",
+
             "created_at",
             "updated_at",
         ]
 
         read_only_fields = [
             "id",
+            "student_id",
             "student_name",
             "class_name",
-            "remaining_amount",
-            "status",
+            "fee_type_name",
+            "fee_type_amount",
             "created_at",
             "updated_at",
         ]
@@ -65,10 +80,3 @@ class StudentInvoiceSerializer(serializers.ModelSerializer):
             f"{student.first_name} "
             f"{student.last_name}"
         ).strip()
-
-    def get_remaining_amount(self, obj):
-        return (
-            obj.total_amount
-            - obj.total_discount
-            - obj.amount_paid
-        )
