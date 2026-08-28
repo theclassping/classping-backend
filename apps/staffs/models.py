@@ -1,4 +1,5 @@
 from django.db import models
+from django.conf import settings
 
 from apps.schools.models import Branch
 
@@ -14,6 +15,14 @@ class Staff(models.Model):
         Branch,
         on_delete=models.CASCADE,
         related_name="staffs",
+    )
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="staff",
+        null=True,
+        blank=True,
     )
 
     first_name = models.CharField(max_length=100)

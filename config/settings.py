@@ -51,6 +51,8 @@ INSTALLED_APPS = [
     "apps.staffs",
     "apps.academic_years",
     "apps.classes",
+    "apps.students",
+    "apps.guardians",
 ]
 
 MIDDLEWARE = [
