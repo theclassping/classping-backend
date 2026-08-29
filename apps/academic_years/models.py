@@ -1,12 +1,18 @@
 from django.db import models
 
-from apps.schools.models import School
+from apps.schools.models import Branch
 
 
 class AcademicYear(models.Model):
     name = models.CharField(max_length=20)
     start_date = models.DateField()
     end_date = models.DateField()
+
+    branch = models.ForeignKey(
+        Branch,
+        on_delete=models.CASCADE,
+        related_name="academic_years",
+    )
 
     is_current = models.BooleanField(default=False)
 
