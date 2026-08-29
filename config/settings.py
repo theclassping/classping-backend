@@ -1,6 +1,12 @@
 from pathlib import Path
 import os
-from dotenv import load_dotenv
+
+try:
+    from dotenv import load_dotenv
+except ModuleNotFoundError:
+    def load_dotenv(*args, **kwargs):
+        return False
+
 load_dotenv()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -11,10 +17,10 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-()x#erm&sib*1ms&tj4zn85&uz-vp0&%bz!7xl!^!b-s*(2zvy'
+DEFAULT_SECRET_KEY = 'django-insecure-()x#erm&sib*1ms&tj4zn85&uz-vp0&%bz!7xl!^!b-s*(2zvy'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY")
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", DEFAULT_SECRET_KEY)
 
 DEBUG = os.environ.get("DJANGO_DEBUG", "False") == "True"
 
@@ -50,6 +56,18 @@ INSTALLED_APPS = [
     "apps.guardians",
     "apps.fee_types",
     "apps.student_invoices",
+    "apps.report_layouts",
+    "apps.report_sections",
+    "apps.score_settings",
+    "apps.numeric_scores",
+    "apps.level_scores",
+    "apps.indicators",
+    "apps.activities",
+    "apps.activity_images",
+    "apps.activity_students",
+    "apps.assessments",
+    "apps.student_assessments",
+    "apps.assessment_images",
 ]
 
 MIDDLEWARE = [
