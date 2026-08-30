@@ -3,7 +3,11 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from .models import Student, StudentGuardian
-from .serializers import StudentSerializer, StudentGuardianSerializer
+from .serializers import (
+    StudentSerializer,
+    StudentDetailSerializer,
+    StudentGuardianSerializer,
+)
 from apps.student_invoices.models import StudentInvoice
 from apps.student_invoices.serializers import StudentInvoiceSerializer
 
@@ -11,6 +15,12 @@ from apps.student_invoices.serializers import StudentInvoiceSerializer
 class StudentViewSet(viewsets.ModelViewSet):
     queryset = Student.objects.all().order_by("-id")
     serializer_class = StudentSerializer
+
+    def get_serializer_class(self):
+        if self.action == "retrieve":
+            return StudentDetailSerializer
+
+        return StudentSerializer
 
     @action(
         detail=True,

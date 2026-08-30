@@ -1,4 +1,5 @@
 from pathlib import Path
+from datetime import timedelta
 import os
 
 try:
@@ -45,9 +46,11 @@ INSTALLED_APPS = [
     "drf_spectacular",
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
+    "mptt",
 
     # ClassPing
     "apps.users",
+    "apps.locations",
     "apps.schools",
     "apps.staffs",
     "apps.academic_years",
@@ -68,6 +71,8 @@ INSTALLED_APPS = [
     "apps.assessments",
     "apps.student_assessments",
     "apps.assessment_images",
+
+    "apps.core.apps.CoreConfig"
 ]
 
 MIDDLEWARE = [
@@ -163,6 +168,11 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": (
         "rest_framework.permissions.IsAuthenticated",
     ),
+}
+
+# Extended for easier local/manual testing (default is 5 minutes).
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(days=1),
 }
 
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"

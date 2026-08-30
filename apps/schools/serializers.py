@@ -1,9 +1,13 @@
 from rest_framework import serializers
 
+from apps.locations.models import Location
+from apps.locations.serializers import LocationSerializer
 from .models import Branch, School
 
 
 class BranchSerializer(serializers.ModelSerializer):
+    location = serializers.SerializerMethodField()
+
     class Meta:
         model = Branch
         fields = [
@@ -16,6 +20,7 @@ class BranchSerializer(serializers.ModelSerializer):
             "email",
             "is_active",
             "location_id",
+            "location",
             "created_at",
             "updated_at",
         ]
@@ -24,6 +29,17 @@ class BranchSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+
+    def get_location(self, obj):
+        if not obj.location_id:
+            return None
+
+        location = Location.objects.filter(pk=obj.location_id).first()
+
+        if not location:
+            return None
+
+        return LocationSerializer(location).data
 
 
 class SchoolSerializer(serializers.ModelSerializer):

@@ -1,3 +1,13 @@
-from django.shortcuts import render
+from rest_framework import viewsets
 
-# Create your views here.
+from .models import ActivityImage
+from .serializers import ActivityImageSerializer
+
+
+class ActivityImageViewSet(viewsets.ModelViewSet):
+    queryset = ActivityImage.objects.select_related(
+        "activity",
+        "student",
+    ).all()
+
+    serializer_class = ActivityImageSerializer

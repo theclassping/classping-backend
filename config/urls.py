@@ -72,4 +72,7 @@ urlpatterns = [
     path("api/", include("apps.guardians.urls")),
     path("api/", include("apps.fee_types.urls")),
     path("api/", include("apps.student_invoices.urls")),
+    path("api/", include("apps.activities.urls")),
+    path("api/", include("apps.activity_images.urls")),
+    path("api/", include("apps.activity_students.urls")),
 ]
