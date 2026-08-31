@@ -7,8 +7,8 @@ from apps.schools.models import Branch
 class ScoreSetting(models.Model):
 
     class ScoreType(models.TextChoices):
-        NUMERIC = "numeric", "Numeric"
-        LEVEL = "level", "Level"
+        NUMERIC = "NUMERIC", "Numeric"
+        LEVEL = "LEVEL", "Level"
 
     name = models.CharField(
         max_length=100,
@@ -127,6 +127,3 @@ class LevelScore(models.Model):
 
     def __str__(self):
         return f"{self.position}. {self.name}"
-
-    def __str__(self):
-        return self.name

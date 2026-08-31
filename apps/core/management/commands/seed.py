@@ -8,6 +8,12 @@ from apps.core.seeds.staffs import seed_staffs
 from apps.core.seeds.guardians import seed_guardians
 from apps.core.seeds.students import seed_students
 from apps.core.seeds.student_guardians import seed_student_guardians
+from apps.core.seeds.score_settings import seed_score_settings
+from apps.core.seeds.level_scores import seed_level_scores
+from apps.core.seeds.numeric_scores import seed_numeric_scores
+from apps.core.seeds.report_layouts import seed_report_layouts
+from apps.core.seeds.report_sections import seed_report_sections
+from apps.core.seeds.indicators import seed_indicators
 
 
 class Command(BaseCommand):
@@ -37,6 +43,24 @@ class Command(BaseCommand):
 
         self.stdout.write("Seeding student guardians...")
         seed_student_guardians()
+
+        self.stdout.write("Seeding score settings...")
+        seed_score_settings()
+
+        self.stdout.write("Seeding level scores...")
+        seed_level_scores()
+
+        self.stdout.write("Seeding numeric scores...")
+        seed_numeric_scores()
+
+        self.stdout.write("Seeding report layouts...")
+        seed_report_layouts()
+
+        self.stdout.write("Seeding report sections...")
+        seed_report_sections()
+
+        self.stdout.write("Seeding indicators...")
+        seed_indicators()
 
         self.stdout.write(
             self.style.SUCCESS(
