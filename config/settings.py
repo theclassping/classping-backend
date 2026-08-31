@@ -62,15 +62,9 @@ INSTALLED_APPS = [
     "apps.report_layouts",
     "apps.report_sections",
     "apps.score_settings",
-    "apps.numeric_scores",
-    "apps.level_scores",
     "apps.indicators",
     "apps.activities",
-    "apps.activity_images",
-    "apps.activity_students",
     "apps.assessments",
-    "apps.student_assessments",
-    "apps.assessment_images",
 
     "apps.core.apps.CoreConfig"
 ]

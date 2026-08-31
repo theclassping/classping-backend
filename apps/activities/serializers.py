@@ -1,11 +1,112 @@
 from rest_framework import serializers
 
-from apps.activity_images.models import ActivityImage
-from apps.activity_images.serializers import ActivityImageNestedSerializer
-from apps.activity_students.models import ActivityStudent
-from apps.activity_students.serializers import ActivityStudentNestedSerializer
 from apps.classes.models import Class, ClassTeacher
-from .models import Activity
+from apps.students.models import Student
+from .models import Activity, ActivityImage, ActivityStudent
+
+
+class ActivityImageSerializer(serializers.ModelSerializer):
+    activity_id = serializers.PrimaryKeyRelatedField(
+        source="activity",
+        queryset=Activity.objects.all(),
+    )
+
+    student_id = serializers.PrimaryKeyRelatedField(
+        source="student",
+        queryset=Student.objects.all(),
+        required=False,
+        allow_null=True,
+    )
+
+    class Meta:
+        model = ActivityImage
+        fields = [
+            "id",
+            "activity_id",
+            "student_id",
+            "image_data",
+            "caption",
+        ]
+        read_only_fields = [
+            "id",
+        ]
+
+
+class ActivityImageNestedSerializer(serializers.ModelSerializer):
+    # Excludes "activity_id" since it's assigned by the parent ActivitySerializer.
+    student_id = serializers.PrimaryKeyRelatedField(
+        source="student",
+        queryset=Student.objects.all(),
+        required=False,
+        allow_null=True,
+    )
+
+    class Meta:
+        model = ActivityImage
+        fields = [
+            "id",
+            "student_id",
+            "image_data",
+            "caption",
+        ]
+        read_only_fields = [
+            "id",
+        ]
+
+
+class ActivityStudentSerializer(serializers.ModelSerializer):
+    activity_id = serializers.PrimaryKeyRelatedField(
+        source="activity",
+        queryset=Activity.objects.all(),
+    )
+
+    student_id = serializers.PrimaryKeyRelatedField(
+        source="student",
+        queryset=Student.objects.all(),
+    )
+
+    student_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ActivityStudent
+        fields = [
+            "id",
+            "activity_id",
+            "student_id",
+            "student_name",
+        ]
+        read_only_fields = [
+            "id",
+            "student_name",
+        ]
+
+    def get_student_name(self, obj):
+        return f"{obj.student.first_name} {obj.student.last_name}".strip()
+
+
+class ActivityStudentNestedSerializer(serializers.ModelSerializer):
+    # Excludes "activity_id" since it's assigned by the parent ActivitySerializer.
+    student_id = serializers.PrimaryKeyRelatedField(
+        source="student",
+        queryset=Student.objects.all(),
+    )
+
+    student_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ActivityStudent
+        fields = [
+            "id",
+            "student_id",
+            "student_name",
+        ]
+        read_only_fields = [
+            "id",
+            "student_name",
+        ]
+
+    def get_student_name(self, obj):
+        return f"{obj.student.first_name} {obj.student.last_name}".strip()
 
 
 class ActivitySerializer(serializers.ModelSerializer):
@@ -88,4 +189,5 @@ class ActivitySerializer(serializers.ModelSerializer):
     def _sync_activity_students(self, activity, activity_students_data):
         for item in activity_students_data:
             ActivityStudent.objects.create(activity=activity, **item)
+
 

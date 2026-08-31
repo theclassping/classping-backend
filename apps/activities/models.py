@@ -1,6 +1,7 @@
 from django.db import models
 
 from apps.classes.models import Class, ClassTeacher
+from apps.students.models import Student
 
 
 class Activity(models.Model):
@@ -47,3 +48,64 @@ class Activity(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class ActivityImage(models.Model):
+    activity = models.ForeignKey(
+        Activity,
+        on_delete=models.CASCADE,
+        related_name="images",
+        db_column="activity_id",
+    )
+
+    student = models.ForeignKey(
+        Student,
+        on_delete=models.SET_NULL,
+        related_name="activity_images",
+        db_column="student_id",
+        null=True,
+        blank=True,
+    )
+
+    image_data = models.ImageField(
+        upload_to="activities/images/",
+    )
+
+    caption = models.TextField(
+        blank=True,
+    )
+
+    class Meta:
+        db_table = "activity_images"
+
+    def __str__(self):
+        return f"Image - {self.activity.name}"
+
+
+class ActivityStudent(models.Model):
+    activity = models.ForeignKey(
+        Activity,
+        on_delete=models.CASCADE,
+        related_name="activity_students",
+        db_column="activity_id",
+    )
+
+    student = models.ForeignKey(
+        Student,
+        on_delete=models.CASCADE,
+        related_name="activity_assignments",
+        db_column="student_id",
+    )
+
+    class Meta:
+        db_table = "activity_students"
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=["activity", "student"],
+                name="unique_activity_student",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.activity.name} - {self.student}"
