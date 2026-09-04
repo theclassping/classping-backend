@@ -36,7 +36,7 @@ class GuardianSerializer(serializers.ModelSerializer):
 class GuardianInlineSerializer(serializers.ModelSerializer):
     # Creates the login User account together with the Guardian record.
     # If user with email already exists, it's handled in StudentSerializer._sync_student_guardians()
-    password = serializers.CharField(write_only=True, min_length=8)
+    password = serializers.CharField(write_only=True, min_length=8, required=False, allow_blank=True)
     first_name = serializers.CharField(write_only=True, required=True)
     last_name = serializers.CharField(write_only=True, required=True)
 
@@ -52,17 +52,26 @@ class GuardianInlineSerializer(serializers.ModelSerializer):
         ]
 
     def create(self, validated_data):
-        password = validated_data.pop("password")
+        password = validated_data.pop("password", None)
         first_name = validated_data.pop("first_name")
         last_name = validated_data.pop("last_name")
 
+        # Create User first (with temp password if not provided)
+        temp_password = password or "temp_password_123"
+        
         user = User.objects.create_user(
             email=validated_data["email"],
-            password=password,
+            password=temp_password,
             first_name=first_name,
             last_name=last_name,
             role=User.Role.PARENT,
         )
+
+        # If no password provided, generate default password: cp{first_name}{last_name}{user_id}
+        if not password:
+            default_password = f"cp{first_name}{last_name}{user.id}"
+            user.set_password(default_password)
+            user.save()
 
         # Combine first_name and last_name for Guardian.name field
         name = f"{first_name} {last_name}"
