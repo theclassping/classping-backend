@@ -52,6 +52,16 @@ class ClassTeacherSerializer(serializers.ModelSerializer):
         read_only=True,
     )
 
+    academic_year = serializers.PrimaryKeyRelatedField(
+        source="class_obj.academic_year",
+        queryset=Class.objects.all(),
+    )
+
+    academic_year_name = serializers.CharField(
+        source="class_obj.academic_year.name",
+        read_only=True,
+    )
+
     teacher_name = serializers.SerializerMethodField()
 
     staff_type = serializers.CharField(
@@ -70,6 +80,8 @@ class ClassTeacherSerializer(serializers.ModelSerializer):
             "teacher_name",
             "staff_type",
             "created_at",
+            "academic_year",
+            "academic_year_name",
         ]
 
         read_only_fields = [
@@ -77,6 +89,7 @@ class ClassTeacherSerializer(serializers.ModelSerializer):
             "class_name",
             "teacher_name",
             "staff_type",
+            "academic_year_name",
             "created_at",
         ]
 
