@@ -1,4 +1,5 @@
 from django.db import models
+from django.utils import timezone
 
 from apps.classes.models import Class, ClassTeacher
 from apps.students.models import Student
@@ -12,6 +13,19 @@ class Activity(models.Model):
         db_column="class_teacher_id",
     )
 
+    class_obj = models.ForeignKey(
+        Class,
+        on_delete=models.CASCADE,
+        related_name="activities",
+        db_column="class_id",
+    )
+
+    students = models.ManyToManyField(
+        Student,
+        through="ActivityStudent",
+        related_name="activities",
+    )
+
     name = models.CharField(
         max_length=255,
     )
@@ -22,29 +36,15 @@ class Activity(models.Model):
 
     activity_date = models.DateField()
 
-    class_obj = models.ForeignKey(
-        Class,
-        on_delete=models.CASCADE,
-        related_name="activities",
-        db_column="class_id",
-    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = "activities"
-        ordering = ["-activity_date"]
-
-    def clean(self):
-        from django.core.exceptions import ValidationError
-
-        if (
-            self.class_teacher_id
-            and self.class_obj_id
-            and self.class_teacher.class_obj_id
-            != self.class_obj_id
-        ):
-            raise ValidationError(
-                "The class teacher must belong to the selected class."
-            )
+        ordering = [
+            "-activity_date",
+            "-created_at",
+        ]
 
     def __str__(self):
         return self.name
@@ -75,8 +75,19 @@ class ActivityImage(models.Model):
         blank=True,
     )
 
+    position = models.PositiveIntegerField(
+        default=0,
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
     class Meta:
         db_table = "activity_images"
+        ordering = [
+            "position",
+            "id",
+        ]
 
     def __str__(self):
         return f"Image - {self.activity.name}"
@@ -96,6 +107,13 @@ class ActivityStudent(models.Model):
         related_name="activity_assignments",
         db_column="student_id",
     )
+
+    position = models.PositiveIntegerField(
+        default=0,
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = "activity_students"

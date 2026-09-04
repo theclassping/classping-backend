@@ -13,8 +13,16 @@ from apps.student_invoices.serializers import StudentInvoiceSerializer
 
 
 class StudentViewSet(viewsets.ModelViewSet):
-    queryset = Student.objects.all().order_by("-id")
     serializer_class = StudentSerializer
+
+    def get_queryset(self):
+        if self.action == "retrieve":
+            return Student.objects.prefetch_related(
+                "student_guardians__guardian",
+                "class_student_assignments__class_obj",
+            ).order_by("-id")
+
+        return Student.objects.order_by("-id")
 
     def get_serializer_class(self):
         if self.action == "retrieve":

@@ -18,7 +18,7 @@ class ActivityViewSet(viewsets.ModelViewSet):
     ).all()
 
     serializer_class = ActivitySerializer
-
+    
 
 class ActivityImageViewSet(viewsets.ModelViewSet):
     queryset = ActivityImage.objects.select_related(
