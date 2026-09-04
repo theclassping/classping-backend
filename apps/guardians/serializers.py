@@ -35,29 +35,26 @@ class GuardianSerializer(serializers.ModelSerializer):
 
 class GuardianInlineSerializer(serializers.ModelSerializer):
     # Creates the login User account together with the Guardian record.
+    # If user with email already exists, it's handled in StudentSerializer._sync_student_guardians()
     password = serializers.CharField(write_only=True, min_length=8)
+    first_name = serializers.CharField(write_only=True, required=True)
+    last_name = serializers.CharField(write_only=True, required=True)
 
     class Meta:
         model = Guardian
         fields = [
             "email",
             "password",
-            "name",
+            "first_name",
+            "last_name",
             "phone_number",
             "image_data",
         ]
 
-    def validate_email(self, value):
-        if User.objects.filter(email=value).exists():
-            raise serializers.ValidationError(
-                "A user with this email already exists."
-            )
-        return value
-
     def create(self, validated_data):
         password = validated_data.pop("password")
-
-        first_name, _, last_name = validated_data["name"].partition(" ")
+        first_name = validated_data.pop("first_name")
+        last_name = validated_data.pop("last_name")
 
         user = User.objects.create_user(
             email=validated_data["email"],
@@ -67,4 +64,7 @@ class GuardianInlineSerializer(serializers.ModelSerializer):
             role=User.Role.PARENT,
         )
 
-        return Guardian.objects.create(user=user, **validated_data)
+        # Combine first_name and last_name for Guardian.name field
+        name = f"{first_name} {last_name}"
+
+        return Guardian.objects.create(user=user, name=name, **validated_data)

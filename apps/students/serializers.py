@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.contrib.auth import get_user_model
 
 from rest_framework import serializers
 
@@ -9,6 +10,8 @@ from apps.guardians.serializers import GuardianSerializer, GuardianInlineSeriali
 from apps.locations.models import Location
 from apps.locations.serializers import LocationSerializer
 from .models import Student, StudentGuardian
+
+User = get_user_model()
 
 
 class StudentGuardianNestedSerializer(serializers.ModelSerializer):
@@ -73,19 +76,73 @@ class StudentGuardianNestedSerializer(serializers.ModelSerializer):
         return attrs
 
 
+class ClassStudentNestedSerializer(serializers.ModelSerializer):
+    """
+    Nested serializer for class_students.
+    
+    - Omit "id": create new assignment (class_id required).
+    - Include "id": update is_current or other fields.
+    - Include "id" + "_destroy": true: remove assignment.
+    """
+
+    id = serializers.IntegerField(required=False)
+
+    class_id = serializers.PrimaryKeyRelatedField(
+        source="class_obj",
+        queryset=Class.objects.all(),
+        required=False,
+    )
+
+    is_current = serializers.BooleanField(
+        required=False,
+        default=False,
+    )
+
+    _destroy = serializers.BooleanField(
+        required=False,
+        default=False,
+        write_only=True,
+    )
+
+    class Meta:
+        model = ClassStudent
+        fields = [
+            "id",
+            "class_id",
+            "is_current",
+            "_destroy",
+        ]
+
+    def validate(self, attrs):
+        if attrs.get("_destroy"):
+            if not attrs.get("id"):
+                raise serializers.ValidationError(
+                    "'_destroy' requires an existing 'id'."
+                )
+            return attrs
+
+        if not attrs.get("id"):
+            if not attrs.get("class_obj"):
+                raise serializers.ValidationError(
+                    "'class_id' is required when creating a new class assignment."
+                )
+
+        return attrs
+
+
 class StudentSerializer(serializers.ModelSerializer):
 
     location = serializers.SerializerMethodField()
 
-    # Nested student guardians (write) - used in create/update
+    # Nested student guardians (write-only - input only for create/update)
     student_guardians = StudentGuardianNestedSerializer(
         many=True,
         required=False,
+        write_only=True,
     )
 
-    # Write-only class IDs (set-diff sync)
-    class_ids = serializers.PrimaryKeyRelatedField(
-        queryset=Class.objects.all(),
+    # Nested class_students (write-only - input only for create/update)
+    class_students = ClassStudentNestedSerializer(
         many=True,
         required=False,
         write_only=True,
@@ -105,8 +162,9 @@ class StudentSerializer(serializers.ModelSerializer):
             "address",
             "location_id",
             "location",
+            "status",
             "student_guardians",
-            "class_ids",
+            "class_students",
             "enroll_date",
             "created_at",
             "updated_at",
@@ -117,6 +175,42 @@ class StudentSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+
+    def to_representation(self, instance):
+        """
+        Customize response serialization to include class_students and student_guardians.
+        Since nested serializers are write_only, they don't appear in response.
+        This method manually adds them back for the response.
+        """
+        # Call parent which won't include write_only fields
+        data = super().to_representation(instance)
+        
+        # Add student_guardians as simple nested data (read response)
+        if instance and instance.pk:
+            student_guardians_data = []
+            for sg in instance.student_guardians.select_related("guardian").all():
+                student_guardians_data.append({
+                    "id": sg.id,
+                    "guardian_id": sg.guardian.id,
+                    "relationship": sg.relationship,
+                    "is_primary": sg.is_primary,
+                })
+            data["student_guardians"] = student_guardians_data
+            
+            # Add class_students as simple nested data (read response)
+            class_students_data = []
+            for cs in instance.class_students.select_related("class_obj").all():
+                class_students_data.append({
+                    "id": cs.id,
+                    "class_id": cs.class_obj.id,
+                    "is_current": cs.is_current,
+                })
+            data["class_students"] = class_students_data
+        else:
+            data["student_guardians"] = []
+            data["class_students"] = []
+        
+        return data
 
     # ========================================================
     # LOCATION
@@ -165,6 +259,8 @@ class StudentSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         """
         Create a new student with nested guardians and class assignments.
+        
+        First class in class_students will be marked as is_current=true.
         """
 
         # Remove custom fields before Student.objects.create()
@@ -173,8 +269,8 @@ class StudentSerializer(serializers.ModelSerializer):
             [],
         )
 
-        classes = validated_data.pop(
-            "class_ids",
+        class_students_data = validated_data.pop(
+            "class_students",
             [],
         )
 
@@ -187,10 +283,10 @@ class StudentSerializer(serializers.ModelSerializer):
             student_guardians_data,
         )
 
-        # Sync class assignments (set-diff)
-        self._sync_classes(
+        # Sync class assignments (create with is_current logic)
+        self._sync_class_students(
             student,
-            classes,
+            class_students_data,
         )
 
         return student
@@ -207,8 +303,8 @@ class StudentSerializer(serializers.ModelSerializer):
         If student_guardians is provided: sync (create/update/delete).
         If student_guardians is omitted: keep existing.
 
-        If class_ids is provided: sync (replace with new list).
-        If class_ids is omitted: keep existing.
+        If class_students is provided: sync (create/update/delete with is_current).
+        If class_students is omitted: keep existing.
         """
 
         # student_guardians:
@@ -219,11 +315,11 @@ class StudentSerializer(serializers.ModelSerializer):
             None,
         )
 
-        # class_ids:
-        # If provided: replace/sync class assignments.
+        # class_students:
+        # If provided: replace/sync class assignments with is_current handling.
         # If not provided: keep existing classes.
-        classes = validated_data.pop(
-            "class_ids",
+        class_students_data = validated_data.pop(
+            "class_students",
             None,
         )
 
@@ -250,10 +346,10 @@ class StudentSerializer(serializers.ModelSerializer):
         # Sync class assignments
         # ------------------------------------------------
 
-        if classes is not None:
-            self._sync_classes(
+        if class_students_data is not None:
+            self._sync_class_students(
                 instance,
-                classes,
+                class_students_data,
             )
 
         return instance
@@ -286,10 +382,11 @@ class StudentSerializer(serializers.ModelSerializer):
                 {
                     "user": {
                         "email": "newguardian@example.com",
-                        "first_name": "New",
-                        "last_name": "Guardian"
+                        "password": "SecurePassword123!",
+                        "first_name": "Jane",
+                        "last_name": "Smith"
                     },
-                    "relationship": "grandfather"
+                    "relationship": "mother"
                 }
             ]
         }
@@ -299,7 +396,7 @@ class StudentSerializer(serializers.ModelSerializer):
         ID 10 -> UPDATE
         ID 11 -> DELETE
         guardian_id 5 -> CREATE (link student to existing guardian)
-        "user" -> CREATE (new guardian + student link)
+        "user" -> CREATE (new User, new Guardian, new StudentGuardian link)
         """
 
         for item in student_guardians_data:
@@ -359,9 +456,26 @@ class StudentSerializer(serializers.ModelSerializer):
 
             # Create new guardian if inline data provided.
             if new_guardian_data:
-                guardian = GuardianInlineSerializer().create(
-                    new_guardian_data
-                )
+                email = new_guardian_data.get("email")
+                
+                # Check if User with this email already exists
+                existing_user = User.objects.filter(email=email).first()
+                
+                if existing_user:
+                    # User exists, get or create Guardian for this User
+                    guardian, _ = Guardian.objects.get_or_create(
+                        user=existing_user,
+                        defaults={
+                            "name": f"{new_guardian_data.get('first_name', '')} {new_guardian_data.get('last_name', '')}".strip(),
+                            "phone_number": new_guardian_data.get("phone_number"),
+                            "image_data": new_guardian_data.get("image_data"),
+                        }
+                    )
+                else:
+                    # User doesn't exist, create User and Guardian
+                    guardian = GuardianInlineSerializer().create(
+                        new_guardian_data
+                    )
 
             StudentGuardian.objects.create(
                 student=student,
@@ -370,71 +484,140 @@ class StudentSerializer(serializers.ModelSerializer):
             )
 
     # ========================================================
-    # SYNC CLASSES
+    # SYNC CLASS STUDENTS
     # ========================================================
 
-    def _sync_classes(self, student, classes):
+    def _sync_class_students(self, student, class_students_data):
         """
-        Replace student class assignments using set-diff.
+        Rails-like nested class_students handling with is_current logic.
+
+        When creating: first class is marked as is_current=true.
+        When updating: handle create/update/delete with flexible is_current.
 
         Example:
 
-        Current:
-        [1, 2, 3]
-
-        Incoming:
-        [2, 3, 4]
-
-        Result:
-        [2, 3, 4]
-
-        Class 1 -> removed from student
-        Class 4 -> added to student
-
-        The Class records themselves are NOT deleted.
-        """
-
-        current_class_ids = set(
-            student.class_student_assignments.values_list(
-                "class_obj_id",
-                flat=True,
-            )
-        )
-
-        incoming_class_ids = {
-            class_obj.pk
-            for class_obj in classes
+        {
+            "class_students": [
+                {
+                    "class_id": 1,
+                    "is_current": true
+                },
+                {
+                    "class_id": 2,
+                    "is_current": false
+                },
+                {
+                    "id": 5,
+                    "is_current": true
+                },
+                {
+                    "id": 6,
+                    "_destroy": true
+                }
+            ]
         }
 
-        # ------------------------------------------------
-        # Remove classes
-        # ------------------------------------------------
+        Result:
+        - Create new assignments for classes 1, 2
+        - Update is_current for existing ID 5
+        - Delete assignment ID 6
+        """
 
-        class_ids_to_remove = (
-            current_class_ids - incoming_class_ids
-        )
+        existing_assignments = {
+            cs.id: cs
+            for cs in student.class_students.all()
+        }
 
-        if class_ids_to_remove:
-            student.class_student_assignments.filter(
-                class_obj_id__in=class_ids_to_remove
-            ).delete()
+        new_assignments = []
+        is_current_count = 0
 
-        # ------------------------------------------------
-        # Add classes
-        # ------------------------------------------------
+        for index, item in enumerate(class_students_data):
 
-        class_ids_to_add = (
-            incoming_class_ids - current_class_ids
-        )
+            # Get existing assignment ID.
+            # None means this is a new assignment.
+            assignment_id = item.pop("id", None)
 
-        if class_ids_to_add:
-            ClassStudent.objects.bulk_create([
-                ClassStudent(
-                    student=student,
-                    class_obj_id=class_id,
+            # Get destroy flag.
+            destroy = item.pop("_destroy", False)
+
+            # Get is_current value.
+            is_current = item.pop("is_current", False)
+
+            # Get class object.
+            class_obj = item.pop("class_obj", None)
+
+            # ------------------------------------------------
+            # CREATE NEW ASSIGNMENT
+            # ------------------------------------------------
+
+            if assignment_id is None:
+
+                if not class_obj:
+                    raise serializers.ValidationError({
+                        "class_students": (
+                            f"'class_id' is required for new class assignment."
+                        )
+                    })
+
+                # On creation, mark first class as is_current
+                if index == 0 and not self.instance:
+                    is_current = True
+
+                new_assignments.append(
+                    ClassStudent(
+                        student=student,
+                        class_obj=class_obj,
+                        is_current=is_current,
+                    )
                 )
-                for class_id in class_ids_to_add
-            ])
+
+                if is_current:
+                    is_current_count += 1
+
+                continue
+
+            # ------------------------------------------------
+            # UPDATE OR DELETE EXISTING ASSIGNMENT
+            # ------------------------------------------------
+
+            assignment = existing_assignments.get(assignment_id)
+
+            if not assignment:
+                raise serializers.ValidationError({
+                    "class_students": (
+                        f"No existing assignment with "
+                        f"id {assignment_id} "
+                        f"for this student."
+                    )
+                })
+
+            # DELETE existing assignment
+            if destroy:
+                assignment.delete()
+                continue
+
+            # UPDATE existing assignment
+            assignment.is_current = is_current
+            assignment.save()
+
+            if is_current:
+                is_current_count += 1
+
+        # ------------------------------------------------
+        # Create new assignments in bulk
+        # ------------------------------------------------
+
+        if new_assignments:
+            ClassStudent.objects.bulk_create(new_assignments)
+
+        # Optional: Validate only one is_current per student
+        # Uncomment if strict validation is needed
+        # if is_current_count > 1:
+        #     raise serializers.ValidationError({
+        #         "class_students": (
+        #             "Only one class can be marked as current per student."
+        #         )
+        #     })
 
 
 class StudentGuardianDetailSerializer(serializers.ModelSerializer):
@@ -451,24 +634,39 @@ class StudentGuardianDetailSerializer(serializers.ModelSerializer):
 
 
 class StudentDetailSerializer(StudentSerializer):
+    """
+    Detail response serializer for Student.
+    Shows full nested data for guardians and classes.
+    """
     student_guardians = StudentGuardianDetailSerializer(
         many=True,
         read_only=True,
     )
 
-    classes = serializers.SerializerMethodField()
-
     class Meta(StudentSerializer.Meta):
-        fields = StudentSerializer.Meta.fields + [
-            "classes",
-        ]
+        fields = StudentSerializer.Meta.fields
+        read_only_fields = StudentSerializer.Meta.read_only_fields
 
-    def get_classes(self, obj):
-        classes = Class.objects.filter(
-            class_students__student=obj,
-        ).select_related("branch", "academic_year")
-
-        return ClassSerializer(classes, many=True).data
+    def to_representation(self, instance):
+        """
+        Detail response includes full class serializer data.
+        """
+        data = super().to_representation(instance)
+        
+        # Override class_students with full ClassSerializer data
+        class_students_list = instance.class_students.select_related("class_obj").all()
+        
+        class_students_data = []
+        for cs in class_students_list:
+            class_students_data.append({
+                "id": cs.id,
+                "class_id": cs.class_obj.id,
+                "is_current": cs.is_current,
+                "class": ClassSerializer(cs.class_obj).data,
+            })
+        
+        data["class_students"] = class_students_data
+        return data
 
 
 class StudentGuardianSerializer(serializers.ModelSerializer):

@@ -19,7 +19,7 @@ class StudentViewSet(viewsets.ModelViewSet):
         if self.action == "retrieve":
             return Student.objects.prefetch_related(
                 "student_guardians__guardian",
-                "class_student_assignments__class_obj",
+                "class_students__class_obj",
             ).order_by("-id")
 
         return Student.objects.order_by("-id")

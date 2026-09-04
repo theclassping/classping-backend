@@ -10,6 +10,13 @@ class Student(models.Model):
         ("other", "Other"),
     ]
 
+    STATUS_CHOICES = [
+        ("inactive", "Inactive"),
+        ("active", "Active"),
+        ("out", "Out"),
+        ("graduated", "Graduated"),
+    ]
+
     first_name = models.CharField(max_length=100)
     middle_name = models.CharField(max_length=100, blank=True, null=True)
     last_name = models.CharField(max_length=100)
@@ -32,6 +39,12 @@ class Student(models.Model):
     )
 
     enroll_date = models.DateField()
+
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default="ACTIVE",
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

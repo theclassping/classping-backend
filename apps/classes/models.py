@@ -92,7 +92,12 @@ class ClassStudent(models.Model):
     student = models.ForeignKey(
         Student,
         on_delete=models.CASCADE,
-        related_name="class_student_assignments",
+        related_name="class_students",
+    )
+
+    is_current = models.BooleanField(
+        default=False,
+        help_text="Only one class should be marked as current per student",
     )
 
     created_at = models.DateTimeField(auto_now_add=True)
