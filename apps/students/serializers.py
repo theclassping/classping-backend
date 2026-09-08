@@ -201,6 +201,9 @@ class StudentSerializer(serializers.ModelSerializer):
                 student_guardians_data.append({
                     "id": sg.id,
                     "guardian_id": sg.guardian.id,
+                    "guardian_name": sg.guardian.name,
+                    "guardian_phone_number": sg.guardian.phone_number,
+                    "guardian_email": sg.guardian.email,
                     "relationship": sg.relationship,
                     "is_primary": sg.is_primary,
                 })
@@ -212,6 +215,7 @@ class StudentSerializer(serializers.ModelSerializer):
                 class_students_data.append({
                     "id": cs.id,
                     "class_id": cs.class_obj.id,
+                    "class_name": cs.class_obj.name,
                     "is_current": cs.is_current,
                 })
             data["class_students"] = class_students_data
