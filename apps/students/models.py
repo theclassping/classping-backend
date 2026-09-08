@@ -1,9 +1,10 @@
 from django.db import models
 
 from apps.guardians.models import Guardian
+from apps.uploads.utils import MediaFieldMixin
 
 
-class Student(models.Model):
+class Student(models.Model, MediaFieldMixin):
     GENDER_CHOICES = [
         ("male", "Male"),
         ("female", "Female"),
@@ -24,7 +25,12 @@ class Student(models.Model):
 
     date_of_birth = models.DateField()
 
-    image_data = models.TextField(blank=True, null=True)
+    image_data = models.JSONField(
+        null=True,
+        blank=True,
+        default=None,
+        help_text="Stores media metadata: {id, storage, metadata: {filename, size, mime_type}}"
+    )
 
     gender = models.CharField(
         max_length=20,
@@ -54,6 +60,11 @@ class Student(models.Model):
 
     def __str__(self):
         return f"{self.first_name} {self.last_name}"
+    
+    @property
+    def image_url(self):
+        """Get the full URL to access the student's image."""
+        return self.get_image_url()
 
 
 class StudentGuardian(models.Model):
