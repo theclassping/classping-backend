@@ -36,6 +36,10 @@ class Activity(models.Model):
 
     activity_date = models.DateField()
 
+    is_publish = models.BooleanField(
+        default=False,
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

@@ -3,6 +3,55 @@ from rest_framework import serializers
 from .models import Class, ClassTeacher, ClassStudent
 from apps.staffs.models import Staff
 from apps.students.models import Student
+from apps.academic_years.serializers import AcademicYearSerializer
+from apps.staffs.serializers import StaffSerializer
+
+
+class ClassStudentDetailSerializer(serializers.ModelSerializer):
+    """Serializer for ClassStudent join table with nested student details"""
+    
+    student = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = ClassStudent
+        fields = [
+            "id",
+            "student",
+            "is_current",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+    def get_student(self, obj):
+        """Return full student details"""
+        student = obj.student
+        return {
+            "id": student.id,
+            "first_name": student.first_name,
+            "last_name": student.last_name,
+            "status": student.status,
+            "date_of_birth": student.date_of_birth,
+            "gender": student.gender,
+            "nickname": student.nickname,
+            "location_id": student.location_id,
+            "enroll_date": student.enroll_date,
+        }
+
+
+class ClassTeacherDetailSerializer(serializers.ModelSerializer):
+    """Serializer for ClassTeacher with nested staff details"""
+    
+    staff = StaffSerializer(read_only=True)
+    
+    class Meta:
+        model = ClassTeacher
+        fields = [
+            "id",
+            "staff",
+            "created_at",
+        ]
+        read_only_fields = fields
+
 
 class ClassSerializer(serializers.ModelSerializer):
     branch_name = serializers.CharField(
@@ -33,6 +82,52 @@ class ClassSerializer(serializers.ModelSerializer):
             "id",
             "branch_name",
             "academic_year_name",
+            "created_at",
+            "updated_at",
+        ]
+
+
+class ClassDetailSerializer(serializers.ModelSerializer):
+    """Enhanced serializer for Class detail, create, and update with full nested relations"""
+    
+    branch_name = serializers.CharField(
+        source="branch.name",
+        read_only=True,
+    )
+
+    academic_year = AcademicYearSerializer(read_only=True)
+    
+    class_teachers = ClassTeacherDetailSerializer(
+        many=True,
+        read_only=True,
+    )
+    
+    class_students = ClassStudentDetailSerializer(
+        many=True,
+        read_only=True,
+    )
+
+    class Meta:
+        model = Class
+
+        fields = [
+            "id",
+            "name",
+            "branch",
+            "branch_name",
+            "academic_year",
+            "class_teachers",
+            "class_students",
+            "created_at",
+            "updated_at",
+        ]
+
+        read_only_fields = [
+            "id",
+            "branch_name",
+            "academic_year",
+            "class_teachers",
+            "class_students",
             "created_at",
             "updated_at",
         ]

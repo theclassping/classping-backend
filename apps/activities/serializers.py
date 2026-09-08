@@ -1,3 +1,4 @@
+import logging
 from django.db import transaction
 
 from rest_framework import serializers
@@ -11,12 +12,15 @@ from .models import (
     ActivityStudent,
 )
 
+logger = logging.getLogger(__name__)
+
 
 # ============================================================
 # STUDENT SUMMARY
 # ============================================================
 
 class ActivityStudentSummarySerializer(serializers.ModelSerializer):
+    """Full student details for activity responses"""
 
     class Meta:
         model = Student
@@ -24,9 +28,13 @@ class ActivityStudentSummarySerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "first_name",
-            "middle_name",
             "last_name",
+            "status",
+            "date_of_birth",
+            "gender",
             "nickname",
+            "location_id",
+            "enroll_date",
         ]
 
 
@@ -80,8 +88,10 @@ class ActivityImageNestedSerializer(serializers.ModelSerializer):
     # Existing image ID.
     # If ID exists -> update/delete existing image.
     # If ID does not exist -> create new image.
+    # Note: This id is for lookup only, not for updating the model's id.
     id = serializers.IntegerField(
         required=False,
+        read_only=False,  # Allow it to be provided in input data for lookup
     )
 
     student_id = serializers.PrimaryKeyRelatedField(
@@ -114,6 +124,27 @@ class ActivityImageNestedSerializer(serializers.ModelSerializer):
                 "required": False,
             },
         }
+
+    def to_internal_value(self, data):
+        """
+        Override to ensure 'id' field is preserved in validated data
+        for lookup purposes (not for model instance update).
+        """
+        # Get the id before calling super()
+        # This ensures it's preserved even if it's a string from form data
+        image_id = data.get('id', None)
+        
+        # Call parent to validate all fields
+        result = super().to_internal_value(data)
+        
+        # Re-add the id if it was present (it might get removed by the parent)
+        if image_id is not None:
+            try:
+                result['id'] = int(image_id) if isinstance(image_id, str) else image_id
+            except (ValueError, TypeError):
+                pass
+        
+        return result
 
 
 # ============================================================
@@ -184,13 +215,15 @@ class ActivitySerializer(serializers.ModelSerializer):
     )
 
     # Nested images
-    images = ActivityImageNestedSerializer(
+    activity_images = ActivityImageNestedSerializer(
+        source="images",
         many=True,
         required=False,
     )
 
     # Read-only student data
-    students = ActivityStudentSummarySerializer(
+    activity_students = ActivityStudentSummarySerializer(
+        source="students",
         many=True,
         read_only=True,
     )
@@ -214,8 +247,9 @@ class ActivitySerializer(serializers.ModelSerializer):
             "name",
             "description",
             "activity_date",
-            "images",
-            "students",
+            "is_publish",
+            "activity_images",
+            "activity_students",
             "student_ids",
             "created_at",
             "updated_at",
@@ -224,7 +258,7 @@ class ActivitySerializer(serializers.ModelSerializer):
         read_only_fields = [
             "id",
             "class_name",
-            "students",
+            "activity_students",
             "created_at",
             "updated_at",
         ]
@@ -261,7 +295,7 @@ class ActivitySerializer(serializers.ModelSerializer):
         )
 
         images = attrs.get(
-            "images",
+            "images",  # Internal field name (from source in serializer)
             None,
         )
 
@@ -336,7 +370,7 @@ class ActivitySerializer(serializers.ModelSerializer):
                     and image_id not in existing_image_ids
                 ):
                     raise serializers.ValidationError({
-                        "images": (
+                        "activity_images": (
                             f"Image ID {image_id} does not "
                             "belong to this activity."
                         )
@@ -562,13 +596,19 @@ class ActivitySerializer(serializers.ModelSerializer):
         ID 11 -> DELETE
         No ID -> CREATE
         """
+        logger.debug(f"_sync_images called with {len(images) if images else 0} image(s)")
+        logger.debug(f"Images data: {images}")
 
         existing_images = {
             image.id: image
             for image in activity.images.all()
         }
+        
+        logger.debug(f"Existing image IDs: {list(existing_images.keys())}")
 
-        for image_data in images:
+        for idx, image_data in enumerate(images):
+            
+            logger.debug(f"Processing image {idx}: {image_data}")
 
             # Get existing image ID.
             # None means this is a new image.
@@ -576,6 +616,8 @@ class ActivitySerializer(serializers.ModelSerializer):
                 "id",
                 None,
             )
+            
+            logger.debug(f"  Extracted id: {image_id} (type: {type(image_id)})")
 
             # Get destroy flag.
             # Default is False.
@@ -583,6 +625,8 @@ class ActivitySerializer(serializers.ModelSerializer):
                 "_destroy",
                 False,
             )
+            
+            logger.debug(f"  Should destroy: {should_destroy}")
 
             # ------------------------------------------------
             # CREATE NEW IMAGE
@@ -599,8 +643,10 @@ class ActivitySerializer(serializers.ModelSerializer):
                 # because there is no existing image to delete.
 
                 if should_destroy:
+                    logger.debug("  Ignoring destroy flag for non-existent image")
                     continue
 
+                logger.info(f"  Creating new image with data: {image_data}")
                 ActivityImage.objects.create(
                     activity=activity,
                     **image_data,
@@ -620,6 +666,7 @@ class ActivitySerializer(serializers.ModelSerializer):
             # in validate(), but keeping this is safer.
             if image is None:
 
+                logger.error(f"  Image ID {image_id} not found in activity")
                 raise serializers.ValidationError({
                     "images": (
                         f"Image ID {image_id} does not "
@@ -633,6 +680,7 @@ class ActivitySerializer(serializers.ModelSerializer):
 
             if should_destroy:
 
+                logger.info(f"  Deleting image {image_id}")
                 image.delete()
 
                 continue
@@ -641,6 +689,7 @@ class ActivitySerializer(serializers.ModelSerializer):
             # UPDATE EXISTING IMAGE
             # ------------------------------------------------
 
+            logger.info(f"  Updating image {image_id} with data: {image_data}")
             for attr, value in image_data.items():
 
                 setattr(

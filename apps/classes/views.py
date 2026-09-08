@@ -3,13 +3,16 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from .models import Class, ClassTeacher, ClassStudent
-from .serializers import ClassSerializer, ClassTeacherSerializer, ClassStudentSerializer
+from .serializers import ClassSerializer, ClassDetailSerializer, ClassTeacherSerializer, ClassStudentSerializer
 
 
 class ClassViewSet(viewsets.ModelViewSet):
     queryset = Class.objects.select_related(
         "branch",
         "academic_year",
+    ).prefetch_related(
+        "class_students__student",
+        "class_teachers__staff",
     ).all()
 
     serializer_class = ClassSerializer
@@ -17,6 +20,12 @@ class ClassViewSet(viewsets.ModelViewSet):
     permission_classes = [
         permissions.IsAuthenticated
     ]
+    
+    def get_serializer_class(self):
+        """Use ClassDetailSerializer for detail, create, and update actions"""
+        if self.action in ["retrieve", "create", "update", "partial_update"]:
+            return ClassDetailSerializer
+        return ClassSerializer
 
     @action(
         detail=True,
