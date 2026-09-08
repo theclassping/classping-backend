@@ -3,6 +3,7 @@ from django.utils import timezone
 
 from apps.classes.models import Class, ClassTeacher
 from apps.students.models import Student
+from apps.uploads.utils import MediaFieldMixin
 
 
 class Activity(models.Model):
@@ -54,7 +55,7 @@ class Activity(models.Model):
         return self.name
 
 
-class ActivityImage(models.Model):
+class ActivityImage(models.Model, MediaFieldMixin):
     activity = models.ForeignKey(
         Activity,
         on_delete=models.CASCADE,
@@ -71,8 +72,11 @@ class ActivityImage(models.Model):
         blank=True,
     )
 
-    image_data = models.ImageField(
-        upload_to="activities/images/",
+    image_data = models.JSONField(
+        null=True,
+        blank=True,
+        default=None,
+        help_text="Stores media metadata: {id, storage, metadata: {filename, size, mime_type}}"
     )
 
     caption = models.TextField(
@@ -95,6 +99,11 @@ class ActivityImage(models.Model):
 
     def __str__(self):
         return f"Image - {self.activity.name}"
+    
+    @property
+    def image_url(self):
+        """Get the full URL to access the image."""
+        return self.get_image_url()
 
 
 class ActivityStudent(models.Model):

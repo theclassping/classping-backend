@@ -3,6 +3,7 @@ from django.db import models
 from apps.classes.models import Class, ClassTeacher
 from apps.score_settings.models import LevelScore
 from apps.students.models import Student
+from apps.uploads.utils import MediaFieldMixin
 
 
 class Assessment(models.Model):
@@ -120,7 +121,7 @@ class StudentAssessment(models.Model):
         return f"{self.student} - {self.assessment}"
 
 
-class AssessmentImage(models.Model):
+class AssessmentImage(models.Model, MediaFieldMixin):
     student_assessment = models.ForeignKey(
         StudentAssessment,
         on_delete=models.CASCADE,
@@ -128,8 +129,11 @@ class AssessmentImage(models.Model):
         db_column="student_assessment_id",
     )
 
-    image_data = models.ImageField(
-        upload_to="assessments/images/",
+    image_data = models.JSONField(
+        null=True,
+        blank=True,
+        default=None,
+        help_text="Stores media metadata: {id, storage, object_key, filename, content_type, size, width, height}"
     )
 
     caption = models.TextField(
@@ -144,3 +148,8 @@ class AssessmentImage(models.Model):
             f"Image - "
             f"{self.student_assessment.student}"
         )
+    
+    @property
+    def image_url(self):
+        """Get the full URL to access the image."""
+        return self.get_image_url()
