@@ -1,9 +1,31 @@
+from django.utils import timezone
 from rest_framework import serializers
+
+from apps.fee_types.models import FeeType
+from apps.payments.serializers import PaymentDetailSerializer, PaymentSummarySerializer
 
 from .models import StudentInvoice
 
 
+class FeeTypeMiniSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = FeeType
+        fields = [
+            "id",
+            "name",
+            "description",
+            "amount",
+            "currency",
+            "is_recurring",
+            "recurring_frequency",
+            "is_active",
+        ]
+
+
 class StudentInvoiceSerializer(serializers.ModelSerializer):
+
+    fee_type = FeeTypeMiniSerializer(read_only=True)
 
     fee_type_name = serializers.CharField(
         source="fee_type.name",
@@ -17,6 +39,12 @@ class StudentInvoiceSerializer(serializers.ModelSerializer):
         read_only=True,
     )
 
+    fee_type_class_name = serializers.CharField(
+        source="fee_type_class.class_obj.name",
+        read_only=True,
+        default=None,
+    )
+
     student_id = serializers.IntegerField(
         source="class_student.student.id",
         read_only=True,
@@ -28,6 +56,10 @@ class StudentInvoiceSerializer(serializers.ModelSerializer):
         source="class_student.class_obj.name",
         read_only=True,
     )
+
+    payment = PaymentSummarySerializer(read_only=True)
+
+    is_overdue = serializers.SerializerMethodField()
 
     class Meta:
         model = StudentInvoice
@@ -45,9 +77,13 @@ class StudentInvoiceSerializer(serializers.ModelSerializer):
             "fee_type_name",
             "fee_type_amount",
 
+            "fee_type_class",
+            "fee_type_class_name",
+
             "invoice_date",
             "due_date",
             "status",
+            "is_overdue",
 
             "tax_amount",
             "subtotal",
@@ -55,6 +91,8 @@ class StudentInvoiceSerializer(serializers.ModelSerializer):
             "currency",
             "total_discount",
             "amount_paid",
+
+            "payment",
 
             "remark",
 
@@ -69,6 +107,8 @@ class StudentInvoiceSerializer(serializers.ModelSerializer):
             "class_name",
             "fee_type_name",
             "fee_type_amount",
+            "fee_type_class_name",
+            "is_overdue",
             "created_at",
             "updated_at",
         ]
@@ -80,3 +120,14 @@ class StudentInvoiceSerializer(serializers.ModelSerializer):
             f"{student.first_name} "
             f"{student.last_name}"
         ).strip()
+
+    def get_is_overdue(self, obj):
+        return (
+            obj.status != StudentInvoice.Status.PAID
+            and obj.due_date < timezone.now().date()
+        )
+
+
+class StudentInvoiceDetailSerializer(StudentInvoiceSerializer):
+
+    payment = PaymentDetailSerializer(read_only=True)

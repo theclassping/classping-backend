@@ -8,7 +8,9 @@ django-mptt==0.18.0
 django-extensions==3.2.3
 djangorestframework==3.16.1
 djangorestframework_simplejwt==5.5.1
+django-apscheduler==0.6.2
 drf-spectacular==0.30.0
+boto3>=1.26.0
 gunicorn==23.0.0
 inflection==0.5.1
 jsonschema==4.25.1

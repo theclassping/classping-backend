@@ -12,5 +12,46 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: classping-web
+    restart: unless-stopped
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py runserver 0.0.0.0:8000"
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgres://classping:classping@db:5432/classping
+      - DJANGO_DEBUG=True
+      - DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY:-django-insecure-local}
+    depends_on:
+      - db
+    volumes:
+      - .:/app
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: classping-scheduler
+    restart: unless-stopped
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py run_scheduler"
+    environment:
+      - DATABASE_URL=postgres://classping:classping@db:5432/classping
+      - DJANGO_DEBUG=True
+      - DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY:-django-insecure-local}
+    depends_on:
+      - db
+      - web
+    volumes:
+      - .:/app
+
 volumes:
   postgres_data:

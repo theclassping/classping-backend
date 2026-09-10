@@ -48,6 +48,7 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
     "mptt",
+    "django_apscheduler",
 
     # ClassPing
     "apps.users",
@@ -60,12 +61,14 @@ INSTALLED_APPS = [
     "apps.guardians",
     "apps.fee_types",
     "apps.student_invoices",
+    "apps.payments",
     "apps.report_layouts",
     "apps.report_sections",
     "apps.score_settings",
     "apps.indicators",
     "apps.activities",
     "apps.assessments",
+    "apps.uploads.apps.UploadsConfig",
 
     "apps.core.apps.CoreConfig"
 ]
@@ -200,3 +203,21 @@ SPECTACULAR_SETTINGS = {
         }
     ],
 }
+
+# Media Files Configuration
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"
+
+# Storage Configuration
+# Set to 'r2' for Cloudflare R2, or 'local' for local filesystem
+STORAGE_TYPE = os.environ.get("STORAGE_TYPE", "local")
+
+# Cloudflare R2 Configuration
+R2_BUCKET_NAME = os.environ.get("R2_BUCKET_NAME", "classping-media")
+R2_ACCOUNT_ID = os.environ.get("R2_ACCOUNT_ID", "")
+R2_ACCESS_KEY_ID = os.environ.get("R2_ACCESS_KEY_ID", "")
+R2_SECRET_ACCESS_KEY = os.environ.get("R2_SECRET_ACCESS_KEY", "")
+R2_REGION = os.environ.get("R2_REGION", "auto")
+
+# Site URL for generating full URLs
+SITE_URL = os.environ.get("SITE_URL", "http://localhost:8000")
