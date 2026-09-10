@@ -1,4 +1,4 @@
-from rest_framework import permissions, status
+from rest_framework import permissions, serializers, status
 from rest_framework import viewsets
 from django.utils import timezone
 
@@ -60,7 +60,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
                     "Only staff members can verify or reject payments."
                 )
 
-            payment.verified_by = staff
+            payment.verified_by_id = staff.id
             payment.verified_at = timezone.now()
 
             if payment.status == Payment.Status.COMPLETED:
@@ -94,3 +94,31 @@ class PaymentProofViewSet(viewsets.ModelViewSet):
     ).all()
     serializer_class = PaymentProofSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def perform_create(self, serializer):
+        if not serializer.validated_data.get("payment"):
+            raise serializers.ValidationError({
+                "payment_id": "This field is required."
+            })
+
+        proof = serializer.save()
+        payment = proof.payment
+
+        if payment.status == Payment.Status.REJECTED:
+            payment.status = Payment.Status.SUBMITTED
+            payment.rejection_reason = None
+            payment.verified_by = None
+            payment.verified_at = None
+            payment.save(
+                update_fields=[
+                    "status",
+                    "rejection_reason",
+                    "verified_by",
+                    "verified_at",
+                    "updated_at",
+                ]
+            )
+
+            invoice = payment.student_invoice
+            invoice.status = StudentInvoice.Status.PAYMENT_SUBMITTED
+            invoice.save(update_fields=["status", "updated_at"])

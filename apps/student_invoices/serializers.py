@@ -27,24 +27,6 @@ class StudentInvoiceSerializer(serializers.ModelSerializer):
 
     fee_type = FeeTypeMiniSerializer(read_only=True)
 
-    fee_type_name = serializers.CharField(
-        source="fee_type.name",
-        read_only=True,
-    )
-
-    fee_type_amount = serializers.DecimalField(
-        source="fee_type.amount",
-        max_digits=12,
-        decimal_places=2,
-        read_only=True,
-    )
-
-    fee_type_class_name = serializers.CharField(
-        source="fee_type_class.class_obj.name",
-        read_only=True,
-        default=None,
-    )
-
     student_id = serializers.IntegerField(
         source="class_student.student.id",
         read_only=True,
@@ -72,14 +54,7 @@ class StudentInvoiceSerializer(serializers.ModelSerializer):
             "student_id",
             "student_name",
             "class_name",
-
             "fee_type",
-            "fee_type_name",
-            "fee_type_amount",
-
-            "fee_type_class",
-            "fee_type_class_name",
-
             "invoice_date",
             "due_date",
             "status",
@@ -105,9 +80,7 @@ class StudentInvoiceSerializer(serializers.ModelSerializer):
             "student_id",
             "student_name",
             "class_name",
-            "fee_type_name",
-            "fee_type_amount",
-            "fee_type_class_name",
+            "fee_type",
             "is_overdue",
             "created_at",
             "updated_at",

@@ -16,12 +16,29 @@ from apps.core.seeds.numeric_scores import seed_numeric_scores
 from apps.core.seeds.report_layouts import seed_report_layouts
 from apps.core.seeds.report_sections import seed_report_sections
 from apps.core.seeds.indicators import seed_indicators
+from apps.core.seeds.billing import seed_billing
 
 
 class Command(BaseCommand):
     help = "Seed initial application data"
 
+    def add_arguments(self, parser):
+        parser.add_argument(
+            "seed_group",
+            nargs="?",
+            choices=["billing"],
+            help="Seed only the selected data group.",
+        )
+
     def handle(self, *args, **options):
+        if options["seed_group"] == "billing":
+            self.stdout.write("Seeding billing data...")
+            seed_billing()
+            self.stdout.write(
+                self.style.SUCCESS("Billing data seeded successfully.")
+            )
+            return
+
         self.stdout.write("Seeding locations...")
         seed_locations()
 
@@ -69,6 +86,9 @@ class Command(BaseCommand):
 
         self.stdout.write("Seeding indicators...")
         seed_indicators()
+
+        self.stdout.write("Seeding billing data...")
+        seed_billing()
 
         self.stdout.write(
             self.style.SUCCESS(
