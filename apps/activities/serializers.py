@@ -5,6 +5,7 @@ from rest_framework import serializers
 
 from apps.classes.models import Class, ClassTeacher
 from apps.students.models import Student
+from apps.uploads.services.media import MediaService
 
 from .models import (
     Activity,
@@ -57,6 +58,8 @@ class ActivityImageSerializer(serializers.ModelSerializer):
         allow_null=True,
     )
 
+    image_url = serializers.SerializerMethodField()
+
     class Meta:
         model = ActivityImage
 
@@ -65,6 +68,7 @@ class ActivityImageSerializer(serializers.ModelSerializer):
             "activity_id",
             "student_id",
             "image_data",
+            "image_url",
             "caption",
             "position",
             "created_at",
@@ -73,9 +77,39 @@ class ActivityImageSerializer(serializers.ModelSerializer):
 
         read_only_fields = [
             "id",
+            "image_url",
             "created_at",
             "updated_at",
         ]
+    
+    def validate(self, attrs):
+        """
+        Validate activity image data:
+        - Image data is valid and processable
+        """
+        # Process image_data if provided
+        if 'image_data' in attrs and attrs['image_data']:
+            image_data_input = attrs['image_data']
+            # If it's a string (file path or R2 URL), process it
+            if isinstance(image_data_input, str):
+                try:
+                    processed_metadata = MediaService.process_image_data(image_data_input)
+                    # Store processed metadata as dict
+                    attrs['image_data'] = processed_metadata
+                except FileNotFoundError:
+                    raise serializers.ValidationError({
+                        "image_data": f"File not found. Please provide the full file path, e.g. 'C:/Users/audia/Downloads/brownies.jpg'"
+                    })
+                except Exception as e:
+                    raise serializers.ValidationError({
+                        "image_data": f"Error processing image: {str(e)}"
+                    })
+        
+        return attrs
+
+    def get_image_url(self, obj):
+        """Get the full URL for the image if metadata exists."""
+        return obj.image_url
 
 
 # ============================================================
@@ -101,6 +135,8 @@ class ActivityImageNestedSerializer(serializers.ModelSerializer):
         allow_null=True,
     )
 
+    image_url = serializers.SerializerMethodField()
+
     # Rails-like nested attributes destroy flag.
     _destroy = serializers.BooleanField(
         required=False,
@@ -114,6 +150,7 @@ class ActivityImageNestedSerializer(serializers.ModelSerializer):
             "id",
             "student_id",
             "image_data",
+            "image_url",
             "caption",
             "position",
             "_destroy",
@@ -124,6 +161,35 @@ class ActivityImageNestedSerializer(serializers.ModelSerializer):
                 "required": False,
             },
         }
+
+    def get_image_url(self, obj):
+        """Get the full URL for the image if metadata exists."""
+        return obj.image_url
+    
+    def validate(self, attrs):
+        """
+        Validate activity image data:
+        - Image data is valid and processable
+        """
+        # Process image_data if provided
+        if 'image_data' in attrs and attrs['image_data']:
+            image_data_input = attrs['image_data']
+            # If it's a string (file path or R2 URL), process it
+            if isinstance(image_data_input, str):
+                try:
+                    processed_metadata = MediaService.process_image_data(image_data_input)
+                    # Store processed metadata as dict
+                    attrs['image_data'] = processed_metadata
+                except FileNotFoundError:
+                    raise serializers.ValidationError({
+                        "image_data": f"File not found. Please provide the full file path, e.g. 'C:/Users/audia/Downloads/brownies.jpg'"
+                    })
+                except Exception as e:
+                    raise serializers.ValidationError({
+                        "image_data": f"Error processing image: {str(e)}"
+                    })
+        
+        return attrs
 
     def to_internal_value(self, data):
         """

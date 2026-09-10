@@ -9,6 +9,7 @@ from apps.guardians.models import Guardian
 from apps.guardians.serializers import GuardianSerializer, GuardianInlineSerializer
 from apps.locations.models import Location
 from apps.locations.serializers import LocationSerializer
+from apps.uploads.services.media import MediaService
 from .models import Student, StudentGuardian
 
 User = get_user_model()
@@ -133,6 +134,8 @@ class ClassStudentNestedSerializer(serializers.ModelSerializer):
 class StudentSerializer(serializers.ModelSerializer):
 
     location = serializers.SerializerMethodField()
+    
+    image_url = serializers.SerializerMethodField()
 
     # Nested student guardians (write-only - input only for create/update)
     student_guardians = StudentGuardianNestedSerializer(
@@ -158,6 +161,7 @@ class StudentSerializer(serializers.ModelSerializer):
             "nickname",
             "date_of_birth",
             "image_data",
+            "image_url",
             "gender",
             "address",
             "location_id",
@@ -172,9 +176,14 @@ class StudentSerializer(serializers.ModelSerializer):
 
         read_only_fields = [
             "id",
+            "image_url",
             "created_at",
             "updated_at",
         ]
+    
+    def get_image_url(self, obj):
+        """Get the full URL for the student's image if metadata exists."""
+        return obj.image_url
 
     def to_representation(self, instance):
         """
@@ -192,6 +201,9 @@ class StudentSerializer(serializers.ModelSerializer):
                 student_guardians_data.append({
                     "id": sg.id,
                     "guardian_id": sg.guardian.id,
+                    "guardian_name": sg.guardian.name,
+                    "guardian_phone_number": sg.guardian.phone_number,
+                    "guardian_email": sg.guardian.email,
                     "relationship": sg.relationship,
                     "is_primary": sg.is_primary,
                 })
@@ -203,6 +215,7 @@ class StudentSerializer(serializers.ModelSerializer):
                 class_students_data.append({
                     "id": cs.id,
                     "class_id": cs.class_obj.id,
+                    "class_name": cs.class_obj.name,
                     "is_current": cs.is_current,
                 })
             data["class_students"] = class_students_data
@@ -236,6 +249,7 @@ class StudentSerializer(serializers.ModelSerializer):
         Validate student data:
         - Location exists if provided
         - Enrollment date is valid
+        - Image data is valid and processable
         """
 
         location_id = attrs.get(
@@ -248,6 +262,24 @@ class StudentSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({
                     "location_id": "Location does not exist."
                 })
+
+        # Process image_data if provided
+        if 'image_data' in attrs and attrs['image_data']:
+            image_data_input = attrs['image_data']
+            # If it's a string (file path or R2 URL), process it
+            if isinstance(image_data_input, str):
+                try:
+                    processed_metadata = MediaService.process_image_data(image_data_input)
+                    # Store processed metadata as dict
+                    attrs['image_data'] = processed_metadata
+                except FileNotFoundError:
+                    raise serializers.ValidationError({
+                        "image_data": f"File not found. Please provide the full file path, e.g. 'C:/Users/audia/Downloads/brownies.jpg'"
+                    })
+                except Exception as e:
+                    raise serializers.ValidationError({
+                        "image_data": f"Error processing image: {str(e)}"
+                    })
 
         return attrs
 
