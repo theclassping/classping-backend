@@ -48,6 +48,7 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
     "mptt",
+    "django_apscheduler",
 
     # ClassPing
     "apps.users",
@@ -60,6 +61,7 @@ INSTALLED_APPS = [
     "apps.guardians",
     "apps.fee_types",
     "apps.student_invoices",
+    "apps.payments",
     "apps.report_layouts",
     "apps.report_sections",
     "apps.score_settings",
