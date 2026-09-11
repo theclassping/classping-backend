@@ -13,6 +13,7 @@ from apps.uploads.serializers import (
     PresignUrlSerializer,
     PresignUrlResponseSerializer,
 )
+from apps.uploads.storage import get_storage
 
 
 class PresignUrlView(APIView):
