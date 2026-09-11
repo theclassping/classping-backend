@@ -12,6 +12,7 @@ import io
 
 import boto3
 from django.conf import settings
+from django.contrib.messages import storage
 
 from apps.uploads.storage import get_storage, generate_file_key
 
@@ -70,6 +71,19 @@ class MediaService:
             'content_type': content_type,
         }
     
+    @classmethod
+    def generate_download_url(
+        cls,
+        file_key: str,
+        expires_in: int = 3600,
+    ) -> str:
+        storage = get_storage()
+
+        return storage.generate_presigned_download_url(
+            file_key=file_key,
+            expires_in=expires_in,
+        )
+        
     @classmethod
     def complete_upload(
         cls,
