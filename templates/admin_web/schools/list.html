@@ -1,0 +1,143 @@
+{% extends "admin_web/base.html" %}
+
+
+{% block title %}
+    Schools - ClassPing Admin
+{% endblock %}
+
+
+{% block page_title %}
+    <h1>Schools</h1>
+{% endblock %}
+
+
+{% block content %}
+
+<div class="page-header">
+
+    <div>
+        <h2>Schools</h2>
+
+        <p class="text-muted">
+            Manage schools and their branches.
+        </p>
+    </div>
+
+    <a
+        href="{% url 'admin_web:school_create' %}"
+        class="btn btn-primary"
+    >
+        + Add School
+    </a>
+
+</div>
+
+
+<div class="card">
+
+    {% if schools %}
+
+        <table class="data-table">
+
+            <thead>
+
+                <tr>
+                    <th>School</th>
+                    <th>Register Number</th>
+                    <th>Branches</th>
+                    <th>Status</th>
+                    <th>Action</th>
+                </tr>
+
+            </thead>
+
+
+            <tbody>
+
+                {% for school in schools %}
+
+                    <tr>
+
+                        <td>
+
+                            <strong>
+                                {{ school.name }}
+                            </strong>
+
+                        </td>
+
+
+                        <td>
+                            {{ school.register_number }}
+                        </td>
+
+
+                        <td>
+                            {{ school.branches.all|length }}
+                        </td>
+
+
+                        <td>
+
+                            {% if school.is_active %}
+
+                                <span class="status status-active">
+                                    Active
+                                </span>
+
+                            {% else %}
+
+                                <span class="status status-inactive">
+                                    Inactive
+                                </span>
+
+                            {% endif %}
+
+                        </td>
+
+
+                        <td>
+
+                            <a
+                                href="{% url 'admin_web:school_detail' school.pk %}"
+                                class="btn btn-small"
+                            >
+                                View
+                            </a>
+
+                        </td>
+
+                    </tr>
+
+                {% endfor %}
+
+            </tbody>
+
+        </table>
+
+    {% else %}
+
+        <div class="empty-state">
+
+            <h3>
+                No schools yet
+            </h3>
+
+            <p>
+                Create your first school to get started.
+            </p>
+
+            <a
+                href="{% url 'admin_web:school_create' %}"
+                class="btn btn-primary"
+            >
+                Add School
+            </a>
+
+        </div>
+
+    {% endif %}
+
+</div>
+
+{% endblock %}

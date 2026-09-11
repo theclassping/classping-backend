@@ -77,4 +77,10 @@ urlpatterns = [
     path("api/", include("apps.payments.urls")),
     path("api/", include("apps.activities.urls")),
     path("api/media/", include("apps.uploads.urls")),
+
+    # ClassPing Admin Web
+    path(
+        "admin-web/",
+        include("apps.admin_web.urls"),
+    ),
 ]

@@ -1,0 +1,790 @@
+{% extends "admin_web/base.html" %}
+
+{% block title %}
+    {% if is_edit %}
+        Edit Branch - ClassPing Admin
+    {% else %}
+        Add Branch - ClassPing Admin
+    {% endif %}
+{% endblock %}
+
+{% block page_title %}
+    {% if is_edit %}
+        Edit Branch
+    {% else %}
+        Add Branch
+    {% endif %}
+{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+
+    <div>
+
+        <a
+            href="{% url 'admin_web:school_detail' school.pk %}"
+            class="back-link"
+        >
+            ← Back to {{ school.name }}
+        </a>
+
+        <h1>
+            {% if is_edit %}
+                Edit Branch
+            {% else %}
+                Add Branch
+            {% endif %}
+        </h1>
+
+        <p class="text-muted">
+            {% if is_edit %}
+                Update branch information.
+            {% else %}
+                Create a new branch for {{ school.name }}.
+            {% endif %}
+        </p>
+
+    </div>
+
+</div>
+
+
+<!-- =========================================================
+     Validation Errors
+========================================================= -->
+
+{% if errors %}
+
+<div class="alert alert-error">
+
+    <ul>
+        {% for error in errors %}
+            <li>{{ error }}</li>
+        {% endfor %}
+    </ul>
+
+</div>
+
+{% endif %}
+
+
+<!-- =========================================================
+     Branch Form
+========================================================= -->
+
+<form
+    method="post"
+    class="form-card"
+>
+
+    {% csrf_token %}
+
+
+    <!-- =====================================================
+         Basic Information
+    ====================================================== -->
+
+    <div class="form-section">
+
+        <h3>Branch Information</h3>
+
+        <p class="text-muted">
+            Enter the basic information for this branch.
+        </p>
+
+
+        <!-- Branch Name -->
+
+        <div class="form-group">
+
+            <label for="name">
+                Branch Name
+            </label>
+
+            <input
+                type="text"
+                id="name"
+                name="name"
+                value="{{ name|default:'' }}"
+                placeholder="e.g. Main Branch"
+                required
+            >
+
+        </div>
+
+
+        <!-- Branch Code -->
+
+        <div class="form-group">
+
+            <label for="code">
+                Branch Code
+            </label>
+
+            <input
+                type="text"
+                id="code"
+                name="code"
+                value="{{ code|default:'' }}"
+                placeholder="e.g. MAIN"
+                required
+            >
+
+            <small class="text-muted">
+                Branch code must be unique within this school.
+            </small>
+
+        </div>
+
+
+        <!-- Address -->
+
+        <div class="form-group">
+            <div class="form-section">
+
+            <!-- =================================================
+                 Province
+            ================================================== -->
+
+            <div class="form-group">
+
+                <label for="province_id">
+                    Province
+                </label>
+
+                <select
+                    id="province_id"
+                    name="province_id"
+                >
+
+                    <option value="">
+                        Select Province
+                    </option>
+
+                    {% for province in provinces %}
+
+                        <option
+                            value="{{ province.id }}"
+                        >
+                            {{ province.name }}
+                        </option>
+
+                    {% endfor %}
+
+                </select>
+                
+            </div>
+
+
+        <!-- =================================================
+             City / Regency
+        ================================================== -->
+
+        <div class="form-group">
+
+            <label for="city_id">
+                City / Regency
+            </label>
+
+            <select
+                id="city_id"
+                name="city_id"
+                disabled
+            >
+
+                <option value="">
+                    Select City / Regency
+                </option>
+
+            </select>
+
+        </div>
+
+
+        <!-- =================================================
+             District
+        ================================================== -->
+
+        <div class="form-group">
+
+            <label for="district_id">
+                District
+            </label>
+
+            <select
+                id="district_id"
+                name="district_id"
+                disabled
+            >
+
+                <option value="">
+                    Select District
+                </option>
+
+            </select>
+
+        </div>
+
+
+        <!-- =================================================
+             Village
+        ================================================== -->
+
+        <div class="form-group">
+
+            <label for="village_id">
+                Village
+            </label>
+
+            <select
+                id="village_id"
+                name="village_id"
+                disabled
+            >
+
+                <option value="">
+                    Select Village
+                </option>
+
+            </select>
+
+        </div>
+
+        <input
+            type="hidden"
+            id="location_id"
+            name="location_id"
+            value="{{ location_id|default:'' }}"
+        >
+
+        </div> <!-- End of Location form-section -->
+
+            <label for="address">
+                Address
+            </label>
+
+            <textarea
+                id="address"
+                name="address"
+                rows="4"
+                placeholder="Branch address"
+            >{{ address|default:'' }}</textarea>
+
+        </div>
+
+
+        <!-- Phone -->
+
+        <div class="form-group">
+
+            <label for="phone">
+                Phone
+            </label>
+
+            <input
+                type="text"
+                id="phone"
+                name="phone"
+                value="{{ phone|default:'' }}"
+                placeholder="e.g. 022-1234567"
+            >
+
+        </div>
+
+
+        <!-- Email -->
+
+        <div class="form-group">
+
+            <label for="email">
+                Email
+            </label>
+
+            <input
+                type="email"
+                id="email"
+                name="email"
+                value="{{ email|default:'' }}"
+                placeholder="branch@example.com"
+            >
+
+        </div>
+
+    </div>
+
+
+
+
+
+    <!-- =====================================================
+         Status
+    ====================================================== -->
+
+    <div class="form-section">
+
+        <h3>Status</h3>
+
+        <div class="form-group checkbox-group">
+
+            <label>
+                <input
+                    type="checkbox"
+                    name="is_active"
+                    {% if is_active %}checked{% endif %}
+                >
+                Active
+            </label>
+        </div>
+
+    </div>
+
+
+    <!-- =====================================================
+         Form Actions
+    ====================================================== -->
+
+    <div class="form-actions">
+
+        <a
+            href="{% url 'admin_web:school_detail' school.pk %}"
+            class="btn btn-secondary"
+        >
+            Cancel
+        </a>
+
+        <button
+            type="submit"
+            class="btn btn-primary"
+        >
+            Create Branch
+        </button>
+
+    </div>
+
+</form>
+
+
+<!-- =========================================================
+     Location Dropdown JavaScript
+========================================================= -->
+
+<script>
+
+document.addEventListener("DOMContentLoaded", function () {
+
+    /*
+     * =======================================================
+     * Elements
+     * =======================================================
+     */
+
+    const provinceSelect =
+        document.getElementById("province_id");
+
+    const citySelect =
+        document.getElementById("city_id");
+
+    const districtSelect =
+        document.getElementById("district_id");
+
+    const villageSelect =
+        document.getElementById("village_id");
+
+    const locationInput =
+        document.getElementById("location_id");
+
+
+    /*
+     * =======================================================
+     * Admin Web Location API
+     * =======================================================
+     */
+
+    const LOCATION_API_URL =
+        "/admin-web/locations/children/";
+
+
+    /*
+     * =======================================================
+     * Existing selected values
+     *
+     * These are populated by Django when editing.
+     * =======================================================
+     */
+
+    const selectedProvinceId =
+        "{{ selected_province_id|default:'' }}";
+
+    const selectedCityId =
+        "{{ selected_city_id|default:'' }}";
+
+    const selectedDistrictId =
+        "{{ selected_district_id|default:'' }}";
+
+    const selectedVillageId =
+        "{{ selected_village_id|default:'' }}";
+
+
+    /*
+     * =======================================================
+     * Reset select
+     * =======================================================
+     */
+
+    function resetSelect(
+        selectElement,
+        placeholder
+    ) {
+
+        selectElement.innerHTML = "";
+
+        const option =
+            document.createElement("option");
+
+        option.value = "";
+        option.textContent = placeholder;
+
+        selectElement.appendChild(option);
+
+        selectElement.disabled = true;
+    }
+
+
+    /*
+     * =======================================================
+     * Load locations
+     * =======================================================
+     */
+
+    async function loadLocations(
+        selectElement,
+        parentId,
+        placeholder,
+        selectedId = ""
+    ) {
+
+        resetSelect(
+            selectElement,
+            placeholder
+        );
+
+        if (!parentId) {
+            return;
+        }
+
+        try {
+
+            const response = await fetch(
+                `${LOCATION_API_URL}?parent_id=${parentId}`
+            );
+
+            if (!response.ok) {
+
+                throw new Error(
+                    "Failed to load locations."
+                );
+
+            }
+
+            const data =
+                await response.json();
+
+            const locations =
+                data.results || [];
+
+
+            /*
+             * Add options
+             */
+
+            locations.forEach(function (location) {
+
+                const option =
+                    document.createElement("option");
+
+                option.value =
+                    location.id;
+
+                option.textContent =
+                    location.name;
+
+
+                /*
+                 * Select existing location
+                 * when editing.
+                 */
+
+                if (
+                    String(location.id) ===
+                    String(selectedId)
+                ) {
+
+                    option.selected = true;
+
+                }
+
+                selectElement.appendChild(option);
+
+            });
+
+
+            /*
+             * Enable dropdown
+             */
+
+            if (locations.length > 0) {
+
+                selectElement.disabled = false;
+
+            }
+
+        }
+        catch (error) {
+
+            console.error(
+                "Location loading error:",
+                error
+            );
+
+        }
+
+    }
+
+
+    /*
+     * =======================================================
+     * Province changed
+     * =======================================================
+     */
+
+    provinceSelect.addEventListener(
+        "change",
+        async function () {
+
+            const provinceId =
+                this.value;
+
+            resetSelect(
+                citySelect,
+                "Select City / Regency"
+            );
+
+            resetSelect(
+                districtSelect,
+                "Select District"
+            );
+
+            resetSelect(
+                villageSelect,
+                "Select Village"
+            );
+
+            locationInput.value = "";
+
+            await loadLocations(
+                citySelect,
+                provinceId,
+                "Select City / Regency"
+            );
+
+        }
+    );
+
+
+    /*
+     * =======================================================
+     * City changed
+     * =======================================================
+     */
+
+    citySelect.addEventListener(
+        "change",
+        async function () {
+
+            const cityId =
+                this.value;
+
+            resetSelect(
+                districtSelect,
+                "Select District"
+            );
+
+            resetSelect(
+                villageSelect,
+                "Select Village"
+            );
+
+            locationInput.value = "";
+
+            await loadLocations(
+                districtSelect,
+                cityId,
+                "Select District"
+            );
+
+        }
+    );
+
+
+    /*
+     * =======================================================
+     * District changed
+     * =======================================================
+     */
+
+    districtSelect.addEventListener(
+        "change",
+        async function () {
+
+            const districtId =
+                this.value;
+
+            resetSelect(
+                villageSelect,
+                "Select Village"
+            );
+
+            locationInput.value = "";
+
+            await loadLocations(
+                villageSelect,
+                districtId,
+                "Select Village"
+            );
+
+        }
+    );
+
+
+    /*
+     * =======================================================
+     * Village changed
+     * =======================================================
+     */
+
+    villageSelect.addEventListener(
+        "change",
+        function () {
+
+            locationInput.value =
+                this.value;
+
+        }
+    );
+
+
+    /*
+     * =======================================================
+     * EDIT MODE
+     *
+     * Automatically rebuild the location hierarchy.
+     * =======================================================
+     */
+
+    async function initializeExistingLocation() {
+
+        /*
+         * Nothing to initialize when creating.
+         */
+
+        if (!selectedProvinceId) {
+            return;
+        }
+
+
+        /*
+         * Select Province
+         */
+
+        provinceSelect.value =
+            selectedProvinceId;
+
+
+        /*
+         * Load City
+         */
+
+        await loadLocations(
+            citySelect,
+            selectedProvinceId,
+            "Select City / Regency",
+            selectedCityId
+        );
+
+
+        /*
+         * Load District
+         */
+
+        if (selectedCityId) {
+
+            await loadLocations(
+                districtSelect,
+                selectedCityId,
+                "Select District",
+                selectedDistrictId
+            );
+
+        }
+
+
+        /*
+         * Load Village
+         */
+
+        if (selectedDistrictId) {
+
+            await loadLocations(
+                villageSelect,
+                selectedDistrictId,
+                "Select Village",
+                selectedVillageId
+            );
+
+        }
+
+
+        /*
+         * Restore final location
+         */
+
+        if (selectedVillageId) {
+
+            locationInput.value =
+                selectedVillageId;
+
+        }
+        else if (selectedDistrictId) {
+
+            locationInput.value =
+                selectedDistrictId;
+
+        }
+        else if (selectedCityId) {
+
+            locationInput.value =
+                selectedCityId;
+
+        }
+        else {
+
+            locationInput.value =
+                selectedProvinceId;
+
+        }
+
+    }
+
+
+    /*
+     * Run edit initialization.
+     */
+
+    initializeExistingLocation();
+
+});
+
+</script>
+
+{% endblock %}

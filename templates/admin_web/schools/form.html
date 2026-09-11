@@ -1,0 +1,196 @@
+{% extends "admin_web/base.html" %}
+
+
+{% block title %}
+
+    {% if is_edit %}
+        Edit School - ClassPing Admin
+    {% else %}
+        Add School - ClassPing Admin
+    {% endif %}
+
+{% endblock %}
+
+
+{% block page_title %}
+
+    {% if is_edit %}
+        <h1>Edit School</h1>
+    {% else %}
+        <h1>Add School</h1>
+    {% endif %}
+
+{% endblock %}
+
+
+{% block content %}
+
+<div class="page-header">
+
+    <div>
+
+        <a
+            href="{% if is_edit %}{% url 'admin_web:school_detail' school.pk %}{% else %}{% url 'admin_web:school_list' %}{% endif %}"
+            class="back-link"
+        >
+            ← Back
+        </a>
+
+
+        <h2>
+
+            {% if is_edit %}
+                Edit School
+            {% else %}
+                Add School
+            {% endif %}
+
+        </h2>
+
+
+        <p class="text-muted">
+
+            {% if is_edit %}
+                Update the school information.
+            {% else %}
+                Create a new school in ClassPing.
+            {% endif %}
+
+        </p>
+
+    </div>
+
+</div>
+
+
+<div class="card">
+
+    <!-- ================================================
+         Validation Errors
+         ================================================ -->
+
+    {% if errors %}
+
+        <div class="alert alert-error">
+
+            <ul>
+
+                {% for error in errors %}
+
+                    <li>
+                        {{ error }}
+                    </li>
+
+                {% endfor %}
+
+            </ul>
+
+        </div>
+
+    {% endif %}
+
+
+    <!-- ================================================
+         School Form
+         ================================================ -->
+
+    <form method="post">
+
+        {% csrf_token %}
+
+
+        <!-- School Name -->
+
+        <div class="form-group">
+
+            <label for="name">
+                School Name
+            </label>
+
+            <input
+                type="text"
+                id="name"
+                name="name"
+                value="{{ name|default:'' }}"
+                placeholder="e.g. TK Harapan Bangsa"
+                required
+            >
+
+        </div>
+
+
+        <!-- Register Number -->
+
+        <div class="form-group">
+
+            <label for="register_number">
+                Register Number
+            </label>
+
+            <input
+                type="text"
+                id="register_number"
+                name="register_number"
+                value="{{ register_number|default:'' }}"
+                placeholder="e.g. SCH-2026-001"
+                required
+            >
+
+        </div>
+
+
+        <!-- Active -->
+
+        <div class="form-group">
+
+            <label class="checkbox-label">
+
+                <input
+                    type="checkbox"
+                    name="is_active"
+                    {% if is_active %}checked{% endif %}
+                >
+
+                <span>
+                    Active
+                </span>
+
+            </label>
+
+        </div>
+
+
+        <!-- ============================================
+             Actions
+             ============================================ -->
+
+        <div class="form-actions">
+
+            <a
+                href="{% if is_edit %}{% url 'admin_web:school_detail' school.pk %}{% else %}{% url 'admin_web:school_list' %}{% endif %}"
+                class="btn"
+            >
+                Cancel
+            </a>
+
+
+            <button
+                type="submit"
+                class="btn btn-primary"
+            >
+
+                {% if is_edit %}
+                    Save Changes
+                {% else %}
+                    Create School
+                {% endif %}
+
+            </button>
+
+        </div>
+
+    </form>
+
+</div>
+
+{% endblock %}

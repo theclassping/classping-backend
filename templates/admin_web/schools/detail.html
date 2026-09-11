@@ -1,0 +1,165 @@
+{% extends 'admin_web/base.html' %}
+
+{% block title %}
+  {{ school.name }} - ClassPing Admin
+{% endblock %}
+
+{% block page_title %}
+  <h1>School</h1>
+{% endblock %}
+
+{% block content %}
+  <!--  =====================================================
+     School Header
+     =====================================================  -->
+
+  <div class="page-header">
+    <div>
+      <a href="{% url 'admin_web:school_list' %}" class="back-link">← Back to Schools</a>
+
+      <h2>{{ school.name }}</h2>
+
+      <p class="text-muted">School information and branches.</p>
+    </div>
+
+    <div>
+      <a href="{% url 'admin_web:school_edit' school.pk %}" class="btn btn-primary">Edit School</a>
+    </div>
+  </div>
+
+  <!--  =====================================================
+     School Information
+     =====================================================  -->
+
+  <div class="card">
+    <div class="section-header">
+      <div>
+        <h3>School Information</h3>
+      </div>
+    </div>
+
+    <div class="detail-grid">
+      <div class="detail-item">
+        <span class="detail-label">School Name</span>
+
+        <strong>{{ school.name }}</strong>
+      </div>
+
+      <div class="detail-item">
+        <span class="detail-label">Register Number</span>
+
+        <strong>{{ school.register_number }}</strong>
+      </div>
+
+      <div class="detail-item">
+        <span class="detail-label">Status</span>
+
+        {% if school.is_active %}
+          <span class="status status-active">Active</span>
+        {% else %}
+          <span class="status status-inactive">Inactive</span>
+        {% endif %}
+      </div>
+
+      <div class="detail-item">
+        <span class="detail-label">Created</span>
+
+        <span>{{ school.created_at|date:'d M Y H:i' }}</span>
+      </div>
+
+      <div class="detail-item">
+        <span class="detail-label">Last Updated</span>
+
+        <span>{{ school.updated_at|date:'d M Y H:i' }}</span>
+      </div>
+    </div>
+  </div>
+
+  <!--  =====================================================
+     Branches
+     =====================================================  -->
+
+  <div class="card section-card">
+    <div class="section-header">
+      <div>
+        <h3>Branches</h3>
+
+        <p class="text-muted">Branches belonging to this school.</p>
+      </div>
+      <a href="{% url 'admin_web:branch_create' school.pk %}" class="btn btn-primary">+ Add Branch</a>
+    </div>
+
+    {% if school.branches.all %}
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+
+            <th>Code</th>
+
+            <th>Phone</th>
+
+            <th>Email</th>
+
+            <th>Status</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {% for branch in school.branches.all %}
+            <tr>
+              <td>
+                <strong>{{ branch.name }}</strong>
+              </td>
+
+              <td>{{ branch.code }}</td>
+
+              <td>{{ branch.phone|default:'-' }}</td>
+
+              <td>{{ branch.email|default:'-' }}</td>
+
+              <td>
+                {% if branch.is_active %}
+                  <span class="status status-active">Active</span>
+                {% else %}
+                  <span class="status status-inactive">Inactive</span>
+                {% endif %}
+              </td>
+              <td>
+                <a href="{% url 'admin_web:branch_edit' school.pk branch.pk %}" class="btn btn-secondary btn-sm">Edit</a>
+                {% if branch.is_active %}
+                <form
+                    method="post"
+                    action="{% url 'admin_web:branch_deactivate' school.pk branch.pk %}"
+                    style="display: inline;"
+                    onsubmit="return confirm('Are you sure you want to deactivate this branch?');"
+                >
+               {% csrf_token %}
+
+                    <button
+                        type="submit"
+                        class="btn btn-danger"
+                    >
+                    Deactivate
+                    </button>
+                </form>
+                {% endif %}
+              </td>
+            </tr>
+          {% empty %}
+            <tr>
+              <td colspan="5">No branches found.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="empty-state">
+        <h3>No branches</h3>
+
+        <p>This school does not have any branches yet.</p>
+      </div>
+    {% endif %}
+  </div>
+{% endblock %}

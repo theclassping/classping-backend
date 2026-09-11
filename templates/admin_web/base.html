@@ -1,0 +1,111 @@
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>
+        {% block title %}
+            ClassPing Admin
+        {% endblock %}
+    </title>
+
+    <!-- Our Admin Web CSS -->
+    <link
+        rel="stylesheet"
+        href="{% static 'admin_web/css/admin.css' %}"
+    >
+
+</head>
+
+<body>
+
+    {% if request.user.is_authenticated %}
+
+        <!-- Sidebar -->
+        <aside class="sidebar">
+
+            <div class="sidebar-logo">
+                ClassPing
+            </div>
+
+            <nav>
+
+                <a
+                    href="{% url 'admin_web:dashboard' %}"
+                >
+                    Dashboard
+                </a>
+
+                <a
+                    href="{% url 'admin_web:school_list' %}"
+                >
+                    Schools
+                </a>
+                <a
+                    href="{% url 'admin_web:user_list' %}"
+                >
+                    Users
+                </a>
+                <a
+                    href="{% url 'admin_web:staff_list' %}"
+                    class="sidebar-link"
+                >
+                    Staff
+                </a>
+            </nav>
+        </aside>
+
+        <!-- Main content -->
+        <main class="main-content">
+
+            <!-- Top header -->
+            <header class="topbar">
+
+                <div>
+                    {% block page_title %}
+                    {% endblock %}
+                </div>
+
+                <div class="user-menu">
+
+                    <span>
+                        {{ request.user.email }}
+                    </span>
+
+                    <a
+                        href="{% url 'admin_web:logout' %}"
+                    >
+                        Logout
+                    </a>
+
+                </div>
+
+            </header>
+
+            <!-- Page content -->
+            <section class="content">
+
+                {% block content %}
+                {% endblock %}
+
+            </section>
+
+        </main>
+
+    {% else %}
+
+        {% block auth_content %}
+        {% endblock %}
+
+    {% endif %}
+
+</body>
+</html>
