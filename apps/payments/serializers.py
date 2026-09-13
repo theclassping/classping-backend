@@ -3,6 +3,8 @@ from django.utils import timezone
 
 from apps.student_invoices.models import StudentInvoice
 from apps.uploads.services.media import MediaService
+from apps.mailer.services import Mailer
+from django.conf import settings
 
 from .models import Payment, PaymentProof
 
@@ -175,6 +177,9 @@ class PaymentSerializer(serializers.ModelSerializer):
                 for proof_data in proofs_data
             ]
         )
+
+        self._send_status_email(payment)
+
         return payment
 
     def update(self, instance, validated_data):
@@ -200,8 +205,35 @@ class PaymentSerializer(serializers.ModelSerializer):
                 setattr(instance, attr, value)
 
         instance.save()
+        self._send_status_email(instance)
 
         return instance
+
+    def _send_status_email(self, payment):
+        template_key = {
+            Payment.Status.SUBMITTED: "payment_submitted",
+            Payment.Status.COMPLETED: "payment_completed",
+            Payment.Status.REJECTED: "payment_rejected",
+        }.get(payment.status)
+
+        if not template_key:
+            return
+
+        template_id = settings.MAILJET_TEMPLATES[template_key]
+        student = payment.student_invoice.class_student.student
+        guardian = student.student_guardians.filter(is_primary=True).first().guardian
+
+        Mailer().send_template(
+            to_email="raniaakhmalia@gmail.com",
+            to_name=guardian.user.full_name,
+            template_id=template_id,
+            variables={
+                "student_name": student.full_name(),
+                "amount": str(payment.amount),
+                "status": payment.status,
+                "rejection_reason": payment.rejection_reason or "",
+            },
+        )
 
 class PaymentSummarySerializer(serializers.ModelSerializer):
 

@@ -16,9 +16,10 @@ class Mailer:
         self,
         *,
         to_email,
-        to_name=None,
+        to_name,
         template_id,
         variables=None,
+        subject=None,
     ):
         message = {
             "From": {
@@ -28,7 +29,7 @@ class Mailer:
             "To": [
                 {
                     "Email": to_email,
-                    **({"Name": to_name} if to_name else {}),
+                    "Name": to_name,
                 }
             ],
             "TemplateID": template_id,
@@ -36,8 +37,20 @@ class Mailer:
             "Variables": variables or {},
         }
 
-        return self.client.send.create(
-            data={
-                "Messages": [message],
-            }
-        )
+        if subject:
+            message["Subject"] = subject
+
+        data = {
+            "Messages": [message]
+        }
+
+        result = self.client.send.create(data=data)
+
+        if result.status_code >= 400:
+            raise Exception(
+                f"Mailjet error {result.status_code}: {result.json()}"
+            )
+
+        print(result.json())
+
+        return result.json()
