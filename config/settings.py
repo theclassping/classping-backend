@@ -219,3 +219,16 @@ R2_REGION = os.environ.get("R2_REGION", "auto")
 
 # Site URL for generating full URLs
 SITE_URL = os.environ.get("SITE_URL", "http://localhost:8000")
+
+# Mailjet Configuration
+MAILJET_API_KEY = os.environ.get("MAILJET_API_KEY")
+MAILJET_API_SECRET = os.environ.get("MAILJET_API_SECRET")
+MAIL_FROM_EMAIL = os.environ.get("MAIL_FROM_EMAIL", "no-reply@classping.com")
+MAIL_FROM_NAME = os.environ.get("MAIL_FROM_NAME", "ClassPing")
+MAILJET_TEMPLATES = {
+    "forgot_password": 8345502,
+    "invoice_reminder": 8345505,
+    "payment_submitted": 8345507,
+    "payment_completed": 8345508,
+    "payment_rejected": 8345509,
+}
