@@ -1,17 +1,16 @@
 from django.db import models
 
 from apps.classes.models import ClassStudent
-from apps.fee_types.models import FeeType
+from apps.fee_types.models import FeeType, FeeTypeClass
 
 
 class StudentInvoice(models.Model):
 
     class Status(models.TextChoices):
         UNPAID = "unpaid", "Unpaid"
-        PARTIAL = "partial", "Partial"
+        PAYMENT_SUBMITTED = "payment_submitted", "Payment Submitted"
         PAID = "paid", "Paid"
         OVERDUE = "overdue", "Overdue"
-        CANCELLED = "cancelled", "Cancelled"
 
     class_student = models.ForeignKey(
         ClassStudent,
@@ -23,6 +22,14 @@ class StudentInvoice(models.Model):
         FeeType,
         on_delete=models.PROTECT,
         related_name="student_invoices",
+    )
+
+    fee_type_class = models.ForeignKey(
+        FeeTypeClass,
+        on_delete=models.SET_NULL,
+        related_name="student_invoices",
+        blank=True,
+        null=True,
     )
 
     invoice_no = models.CharField(
@@ -89,6 +96,13 @@ class StudentInvoice(models.Model):
     class Meta:
         db_table = "student_invoices"
         ordering = ["-invoice_date"]
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=["class_student", "fee_type", "invoice_date"],
+                name="unique_invoice_per_student_fee_type_date",
+            )
+        ]
 
     def __str__(self):
         return self.invoice_no

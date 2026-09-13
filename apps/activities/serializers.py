@@ -6,6 +6,7 @@ from rest_framework import serializers
 from apps.classes.models import Class, ClassTeacher
 from apps.students.models import Student
 from apps.uploads.services.media import MediaService
+from apps.uploads.storage import get_storage
 
 from .models import (
     Activity,
@@ -108,8 +109,23 @@ class ActivityImageSerializer(serializers.ModelSerializer):
         return attrs
 
     def get_image_url(self, obj):
-        """Get the full URL for the image if metadata exists."""
-        return obj.image_url
+        if not obj.image_data:
+            return None
+
+        object_key = obj.image_data.get("object_key")
+
+        if not object_key:
+            return None
+
+        try:
+            storage = get_storage()
+
+            return storage.generate_presigned_download_url(
+                file_key=object_key,
+                expires_in=3600,
+            )
+        except Exception:
+            return None
 
 
 # ============================================================
@@ -163,8 +179,23 @@ class ActivityImageNestedSerializer(serializers.ModelSerializer):
         }
 
     def get_image_url(self, obj):
-        """Get the full URL for the image if metadata exists."""
-        return obj.image_url
+            if not obj.image_data:
+                return None
+    
+            object_key = obj.image_data.get("object_key")
+    
+            if not object_key:
+                return None
+    
+            try:
+                storage = get_storage()
+    
+                return storage.generate_presigned_download_url(
+                    file_key=object_key,
+                    expires_in=3600,
+                )
+            except Exception:
+                return None
     
     def validate(self, attrs):
         """

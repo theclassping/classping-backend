@@ -1,5 +1,6 @@
 from django.db import models
 
+from apps.locations.models import Location
 from apps.uploads.utils import MediaFieldMixin
 
 
@@ -41,7 +42,11 @@ class Branch(models.Model):
     phone = models.CharField(max_length=50, blank=True)
     email = models.EmailField(blank=True)
     is_active = models.BooleanField(default=True)
-    location_id = models.IntegerField()
+    location = models.ForeignKey(
+        Location,
+        on_delete=models.PROTECT,
+        related_name="branches",
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

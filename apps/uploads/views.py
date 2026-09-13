@@ -13,6 +13,7 @@ from apps.uploads.serializers import (
     PresignUrlSerializer,
     PresignUrlResponseSerializer,
 )
+from apps.uploads.storage import get_storage
 
 
 class PresignUrlView(APIView):
@@ -94,4 +95,44 @@ class UploadView(APIView):
             return Response(
                 {'error': f'File upload failed: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+class MediaDownloadUrlView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        file_key = request.query_params.get("file_key")
+
+        if not file_key:
+            return Response(
+                {"error": "file_key is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            storage = get_storage()
+
+            if not storage.verify_object_exists(file_key):
+                return Response(
+                    {"error": "File not found"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            url = storage.generate_presigned_download_url(
+                file_key=file_key,
+                expires_in=3600,
+            )
+
+            return Response(
+                {
+                    "url": url,
+                    "expires_in": 3600,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        except Exception as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )

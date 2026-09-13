@@ -1,0 +1,89 @@
+{% extends "admin_web/base.html" %}
+
+{% block title %}
+    Login - ClassPing Admin
+{% endblock %}
+
+
+{% block auth_content %}
+
+<div class="login-page">
+
+    <div class="login-card">
+
+        <div class="login-header">
+
+            <h1>
+                ClassPing
+            </h1>
+
+            <p>
+                Admin Portal
+            </p>
+
+        </div>
+
+
+        {% if error %}
+
+            <div class="alert alert-error">
+                {{ error }}
+            </div>
+
+        {% endif %}
+
+
+        <form method="post">
+
+            {% csrf_token %}
+
+            <div class="form-group">
+
+                <label for="email">
+                    Email
+                </label>
+
+                <input
+                    type="email"
+                    id="email"
+                    name="email"
+                    value="{{ email|default:'' }}"
+                    placeholder="admin@example.com"
+                    required
+                    autofocus
+                >
+
+            </div>
+
+
+            <div class="form-group">
+
+                <label for="password">
+                    Password
+                </label>
+
+                <input
+                    type="password"
+                    id="password"
+                    name="password"
+                    placeholder="Enter your password"
+                    required
+                >
+
+            </div>
+
+
+            <button
+                type="submit"
+                class="btn btn-primary btn-full"
+            >
+                Login
+            </button>
+
+        </form>
+
+    </div>
+
+</div>
+
+{% endblock %}

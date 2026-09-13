@@ -48,6 +48,7 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
     "mptt",
+    "django_apscheduler",
 
     # ClassPing
     "apps.users",
@@ -60,6 +61,7 @@ INSTALLED_APPS = [
     "apps.guardians",
     "apps.fee_types",
     "apps.student_invoices",
+    "apps.payments",
     "apps.report_layouts",
     "apps.report_sections",
     "apps.score_settings",
@@ -68,11 +70,15 @@ INSTALLED_APPS = [
     "apps.assessments",
     "apps.uploads.apps.UploadsConfig",
 
-    "apps.core.apps.CoreConfig"
+    "apps.core.apps.CoreConfig",
+
+    # Admin web application
+    "apps.admin_web",
 ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -86,7 +92,7 @@ ROOT_URLCONF = 'config.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        "DIRS": [BASE_DIR / "templates"],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -150,6 +156,10 @@ DEBUG = True
 # https://docs.djangoproject.com/en/4.2/howto/static-files/
 
 STATIC_URL = "/static/"
+
+STATICFILES_DIRS = [
+    BASE_DIR / "static",
+]
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
 # Default primary key field type

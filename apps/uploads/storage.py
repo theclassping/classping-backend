@@ -27,6 +27,15 @@ class StorageBackend(ABC):
     def verify_object_exists(self, file_key: str) -> bool:
         """Verify if an object exists in storage."""
         pass
+    
+    @abstractmethod
+    def generate_presigned_download_url(
+        self,
+        file_key: str,
+        expires_in: int = 3600,
+    ) -> str:
+        """Generate a presigned URL for downloading/viewing a file."""
+        pass
 
 
 class R2Storage(StorageBackend):
@@ -71,6 +80,28 @@ class R2Storage(StorageBackend):
         except Exception:
             return False
 
+    def generate_presigned_download_url(
+        self,
+        file_key: str,
+        expires_in: int = 3600,
+    ) -> str:
+        """
+        Generate a presigned GET URL for reading/downloading an object.
+
+        This is the URL that should be used by Next.js <img> / <Image>
+        when the R2 bucket is private.
+        """
+
+        return self.client.generate_presigned_url(
+            "get_object",
+            Params={
+                "Bucket": self.bucket_name,
+                "Key": file_key,
+            },
+            ExpiresIn=expires_in,
+            HttpMethod="GET",
+        )
+
 
 class LocalStorage(StorageBackend):
     """Local file system storage backend (development/testing)."""
@@ -93,6 +124,20 @@ class LocalStorage(StorageBackend):
         """Verify if a local file exists."""
         file_path = os.path.join(self.media_root, file_key)
         return os.path.exists(file_path)
+    
+    def generate_presigned_download_url(
+        self,
+        file_key: str,
+        expires_in: int = 3600,
+    ) -> str:
+        """
+        For local development, return the normal media URL.
+
+        expires_in is ignored because local development does not
+        use presigned URLs.
+        """
+
+        return self.get_object_url(file_key)
 
 
 class StorageFactory:

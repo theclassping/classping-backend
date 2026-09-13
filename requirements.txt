@@ -1,9 +1,11 @@
+APScheduler==3.11.3
 asgiref==3.11.1
 attrs==26.1.0
 boto3==1.42.97
 botocore==1.42.97
 dj-database-url==3.0.1
 Django==4.2.30
+django-apscheduler==0.7.0
 django-cors-headers==4.9.0
 django-extensions==3.2.3
 django-js-asset==2.2.0
@@ -29,5 +31,7 @@ s3transfer==0.16.1
 six==1.17.0
 sqlparse==0.5.5
 typing_extensions==4.16.0
+tzlocal==5.3.1
 uritemplate==4.2.0
 urllib3==1.26.20
+whitenoise==6.11.0

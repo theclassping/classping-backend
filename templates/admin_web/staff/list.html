@@ -1,0 +1,182 @@
+{% extends "admin_web/base.html" %}
+
+{% block title %}
+    Staff
+{% endblock %}
+
+{% block page_title %}
+    Staff
+{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+
+    <div>
+        <h1>Staff</h1>
+        <p class="text-muted">
+            Manage teachers, principals, and officers.
+        </p>
+    </div>
+
+    <div>
+        <a
+            href="{% url 'admin_web:staff_create' %}"
+            class="btn btn-primary"
+        >
+            + Add Staff
+        </a>
+    </div>
+
+</div>
+
+
+<div class="card">
+
+    <div class="table-wrapper">
+
+        <table class="data-table">
+
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Type</th>
+                    <th>Branch</th>
+                    <th>Hire Date</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+
+            <tbody>
+
+                {% for staff in staffs %}
+
+                <tr>
+
+                    <td>
+                        <strong>
+                            {{ staff.first_name }}
+                            {{ staff.last_name }}
+                        </strong>
+                    </td>
+
+                    <td>
+                        {{ staff.email }}
+                    </td>
+
+                    <td>
+                        {{ staff.get_staff_type_display }}
+                    </td>
+
+                    <td>
+                        {{ staff.branch.name }}
+                        <br>
+
+                        <small class="text-muted">
+                            {{ staff.branch.school.name }}
+                        </small>
+                    </td>
+
+                    <td>
+                        {{ staff.hire_date|date:"d M Y" }}
+                    </td>
+
+                    <td>
+
+                        {% if staff.is_active %}
+
+                            <span class="status-active">
+                                Active
+                            </span>
+
+                        {% else %}
+
+                            <span class="status-inactive">
+                                Inactive
+                            </span>
+
+                        {% endif %}
+
+                    </td>
+
+                    <td>
+
+                        <a
+                            href="{% url 'admin_web:staff_edit' staff.pk %}"
+                            class="btn btn-secondary"
+                        >
+                            Edit
+                        </a>
+
+
+                        {% if staff.is_active %}
+
+                            <form
+                                method="post"
+                                action="{% url 'admin_web:staff_deactivate' staff.pk %}"
+                                style="display: inline;"
+                                onsubmit="return confirm('Are you sure you want to deactivate this staff member?');"
+                            >
+
+                                {% csrf_token %}
+
+                                <button
+                                    type="submit"
+                                    class="btn btn-danger"
+                                >
+                                    Deactivate
+                                </button>
+
+                            </form>
+
+                        {% else %}
+
+                            <form
+                                method="post"
+                                action="{% url 'admin_web:staff_activate' staff.pk %}"
+                                style="display: inline;"
+                            >
+
+                                {% csrf_token %}
+
+                                <button
+                                    type="submit"
+                                    class="btn btn-primary"
+                                >
+                                    Activate
+                                </button>
+
+                            </form>
+
+                        {% endif %}
+
+                    </td>
+
+                </tr>
+
+                {% empty %}
+
+                <tr>
+
+                    <td
+                        colspan="7"
+                        class="empty-state"
+                    >
+                        No staff members found.
+                    </td>
+
+                </tr>
+
+                {% endfor %}
+
+            </tbody>
+
+        </table>
+
+    </div>
+
+</div>
+
+{% endblock %}
