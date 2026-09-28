@@ -66,6 +66,10 @@ class Student(models.Model, MediaFieldMixin):
         """Get the full URL to access the student's image."""
         return self.get_image_url()
 
+    def full_name(self):
+        """Get the student's full name."""
+        return f"{self.first_name} {self.last_name}".strip()
+
 
 class StudentGuardian(models.Model):
     RELATIONSHIP_CHOICES = [
