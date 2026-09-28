@@ -111,6 +111,76 @@ def generate_recurring_invoices(reference_date: date = None):
     return created_count
 
 
+@transaction.atomic
+def generate_manual_invoices(
+    fee_type: FeeType,
+    invoice_date: date = None,
+    due_date: date = None,
+    remark: str = None,
+):
+    """Generate invoices for a non-recurring fee type."""
+    if fee_type.is_recurring:
+        raise ValueError("Manual invoices can only be generated for non-recurring fee types.")
+
+    invoice_date = invoice_date or timezone.now().date()
+    due_date = due_date or get_due_date(invoice_date)
+    fee_classes = list(fee_type.fee_type_classes.all())
+
+    if fee_classes:
+        class_ids = [fee_class.class_obj_id for fee_class in fee_classes]
+        class_students = ClassStudent.objects.filter(
+            class_obj_id__in=class_ids,
+            is_current=True,
+        )
+    else:
+        class_students = ClassStudent.objects.filter(
+            is_current=True,
+        )
+
+    class_students = class_students.select_related(
+        "student",
+        "class_obj",
+    )
+
+    created_count = 0
+    for class_student in class_students:
+        fee_class = next(
+            (
+                fee_class
+                for fee_class in fee_classes
+                if fee_class.class_obj_id == class_student.class_obj_id
+            ),
+            None,
+        )
+
+        _, created = StudentInvoice.objects.get_or_create(
+            class_student=class_student,
+            fee_type=fee_type,
+            invoice_date=invoice_date,
+            defaults={
+                "fee_type_class": fee_class,
+                "invoice_no": generate_invoice_number(
+                    fee_type,
+                    class_student,
+                    invoice_date,
+                ),
+                "due_date": due_date,
+                "subtotal": fee_type.amount,
+                "total_amount": fee_type.amount,
+                "currency": fee_type.currency,
+                "tax_amount": Decimal("0.00"),
+                "total_discount": Decimal("0.00"),
+                "amount_paid": Decimal("0.00"),
+                "remark": remark,
+            },
+        )
+
+        if created:
+            created_count += 1
+
+    return created_count
+
+
 def _resolve_fee_type_class(fee_type: FeeType, class_student: ClassStudent):
     """Return the FeeTypeClass linker for the student's class, if any."""
     fee_class = fee_type.fee_type_classes.filter(

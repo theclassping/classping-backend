@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from django.utils import timezone
 
 from .models import FeeType, FeeTypeClass
 
@@ -113,8 +114,6 @@ class FeeTypeSerializer(serializers.ModelSerializer):
         return fee_type
 
     def _assign_classes(self, fee_type, class_ids):
-        from apps.classes.models import Class
-
         existing_ids = set(
             fee_type.fee_type_classes.values_list("class_obj_id", flat=True)
         )
@@ -125,3 +124,34 @@ class FeeTypeSerializer(serializers.ModelSerializer):
                     fee_type=fee_type,
                     class_obj_id=class_id,
                 )
+
+
+class GenerateInvoicesSerializer(serializers.Serializer):
+
+    invoice_date = serializers.DateField(
+        required=False,
+        default=timezone.localdate,
+    )
+
+    due_date = serializers.DateField(
+        required=False,
+    )
+
+    remark = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+    )
+
+    def validate(self, data):
+        invoice_date = data["invoice_date"]
+        due_date = data.get("due_date")
+
+        if due_date and due_date < invoice_date:
+            raise serializers.ValidationError(
+                {
+                    "due_date": "Due date cannot be earlier than invoice date."
+                }
+            )
+
+        return data
