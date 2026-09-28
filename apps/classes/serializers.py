@@ -3,6 +3,7 @@ from rest_framework import serializers
 from .models import Class, ClassTeacher, ClassStudent
 from apps.staffs.models import Staff
 from apps.students.models import Student
+from apps.academic_years.models import AcademicYear
 from apps.academic_years.serializers import AcademicYearSerializer
 from apps.staffs.serializers import StaffSerializer
 
@@ -95,7 +96,9 @@ class ClassDetailSerializer(serializers.ModelSerializer):
         read_only=True,
     )
 
-    academic_year = AcademicYearSerializer(read_only=True)
+    academic_year = serializers.PrimaryKeyRelatedField(
+        queryset=AcademicYear.objects.all(),
+    )
     
     class_teachers = ClassTeacherDetailSerializer(
         many=True,
@@ -125,7 +128,6 @@ class ClassDetailSerializer(serializers.ModelSerializer):
         read_only_fields = [
             "id",
             "branch_name",
-            "academic_year",
             "class_teachers",
             "class_students",
             "created_at",
