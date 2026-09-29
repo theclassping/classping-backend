@@ -232,6 +232,9 @@ class PaymentSerializer(serializers.ModelSerializer):
                 "amount": str(payment.amount),
                 "status": payment.status,
                 "rejection_reason": payment.rejection_reason or "",
+                "invoice_no": payment.student_invoice.invoice_no,
+                "updated_at": payment.updated_at,
+                "due_date": payment.student_invoice.due_date,
             },
         )
 

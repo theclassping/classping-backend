@@ -8,6 +8,7 @@ from django.http import JsonResponse
 from apps.locations.models import Location
 from apps.staffs.models import Staff
 from apps.schools.models import Branch, School
+from apps.users.managers import generate_temporary_password
 from apps.users.models import User
 
 
@@ -1634,20 +1635,18 @@ def staff_create(request):
             with transaction.atomic():
 
                 # Create login account
-                user = User(
+                temporary_password = (
+                    generate_temporary_password() if not password else None
+                )
+                user = User.objects.create_user(
                     email=email,
+                    password=password,
+                    temporary_password=temporary_password,
                     first_name=first_name,
                     last_name=last_name,
                     role=user_role,
                     is_active=is_active,
                 )
-
-                user.set_password(password or "temp_password_123")
-                user.save()
-
-                if not password:
-                    user.set_password(f"cp{first_name}{last_name}{user.id}")
-                    user.save(update_fields=["password", "updated_at"])
 
                 # Create staff
                 Staff.objects.create(
@@ -1882,20 +1881,18 @@ def staff_edit(request, pk):
                     # password when one was not entered.
                     # -------------------------------------------------
 
-                    user = User(
+                    temporary_password = (
+                        generate_temporary_password() if not password else None
+                    )
+                    user = User.objects.create_user(
                         email=email,
+                        password=password,
+                        temporary_password=temporary_password,
                         first_name=first_name,
                         last_name=last_name,
                         role=user_role,
                         is_active=is_active,
                     )
-
-                    user.set_password(password or "temp_password_123")
-                    user.save()
-
-                    if not password:
-                        user.set_password(f"cp{first_name}{last_name}{user.id}")
-                        user.save(update_fields=["password", "updated_at"])
 
                     staff.user = user
                     staff.save(

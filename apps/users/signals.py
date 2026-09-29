@@ -13,6 +13,8 @@ from apps.mailer.services import Mailer
 @receiver(post_save, sender=get_user_model())
 def email_new_user_account(sender, instance, created, **kwargs):
     if created and instance.email:
+        temporary_password = getattr(instance, "_temporary_password", "")
+
         def send_welcome_email():
             uid = urlsafe_base64_encode(force_bytes(instance.pk))
             token = default_token_generator.make_token(instance)
@@ -28,8 +30,9 @@ def email_new_user_account(sender, instance, created, **kwargs):
                     "name": instance.full_name,
                     "email": instance.email,
                     "reset_url": reset_url,
+                    "temporary_password": temporary_password,
                 },
-                subject="Your ClassPing account is ready",
+                subject="Akun Anda berhasil dibuat",
             )
 
         transaction.on_commit(
