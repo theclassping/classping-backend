@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.tokens import default_token_generator
 from django.core.mail import send_mail
@@ -113,10 +114,7 @@ class ForgotPasswordView(GenericAPIView):
 
         token = default_token_generator.make_token(user)
 
-        reset_url = (
-            f"http://localhost:3000/reset-password/"
-            f"?uid={uid}&token={token}"
-        )
+        reset_url = f"{settings.PASSWORD_RESET_URL}?uid={uid}&token={token}"
 
         send_mail(
             subject="ClassPing Password Reset",

@@ -1,6 +1,7 @@
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
+from django.db import transaction
 from django.shortcuts import get_object_or_404, redirect, render
 from django.http import JsonResponse
 
@@ -1551,10 +1552,7 @@ def staff_create(request):
         if not qualification:
             errors.append("Qualification is required.")
 
-        if not password:
-            errors.append("Password is required.")
-
-        if password != confirm_password:
+        if password and password != confirm_password:
             errors.append("Password and confirmation password do not match.")
 
         # ---------------------------------------------------------
@@ -1644,8 +1642,12 @@ def staff_create(request):
                     is_active=is_active,
                 )
 
-                user.set_password(password)
+                user.set_password(password or "temp_password_123")
                 user.save()
+
+                if not password:
+                    user.set_password(f"cp{first_name}{last_name}{user.id}")
+                    user.save(update_fields=["password", "updated_at"])
 
                 # Create staff
                 Staff.objects.create(
@@ -1876,29 +1878,32 @@ def staff_edit(request, pk):
                     # Because Staff.user is nullable, this can happen
                     # with old records.
                     #
-                    # We only create a User if a password is provided.
+                    # Create the missing login account with a generated
+                    # password when one was not entered.
                     # -------------------------------------------------
 
-                    if password:
+                    user = User(
+                        email=email,
+                        first_name=first_name,
+                        last_name=last_name,
+                        role=user_role,
+                        is_active=is_active,
+                    )
 
-                        user = User(
-                            email=email,
-                            first_name=first_name,
-                            last_name=last_name,
-                            role=user_role,
-                            is_active=is_active,
-                        )
+                    user.set_password(password or "temp_password_123")
+                    user.save()
 
-                        user.set_password(password)
-                        user.save()
+                    if not password:
+                        user.set_password(f"cp{first_name}{last_name}{user.id}")
+                        user.save(update_fields=["password", "updated_at"])
 
-                        staff.user = user
-                        staff.save(
-                            update_fields=[
-                                "user",
-                                "updated_at",
-                            ]
-                        )
+                    staff.user = user
+                    staff.save(
+                        update_fields=[
+                            "user",
+                            "updated_at",
+                        ]
+                    )
 
             messages.success(
                 request,
