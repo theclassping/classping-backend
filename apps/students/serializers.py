@@ -494,6 +494,14 @@ class StudentSerializer(serializers.ModelSerializer):
                 existing_user = User.objects.filter(email=email).first()
                 
                 if existing_user:
+                    if existing_user.role != User.Role.PARENT:
+                        raise serializers.ValidationError({
+                            "student_guardians": (
+                                f"The user with email {email} must have the PARENT role "
+                                "to be linked as a guardian."
+                            )
+                        })
+
                     # User exists, get or create Guardian for this User
                     guardian, _ = Guardian.objects.get_or_create(
                         user=existing_user,

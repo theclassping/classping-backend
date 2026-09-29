@@ -1,12 +1,14 @@
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
+from django.db import transaction
 from django.shortcuts import get_object_or_404, redirect, render
 from django.http import JsonResponse
 
 from apps.locations.models import Location
 from apps.staffs.models import Staff
 from apps.schools.models import Branch, School
+from apps.users.managers import generate_temporary_password
 from apps.users.models import User
 
 
@@ -1551,10 +1553,7 @@ def staff_create(request):
         if not qualification:
             errors.append("Qualification is required.")
 
-        if not password:
-            errors.append("Password is required.")
-
-        if password != confirm_password:
+        if password and password != confirm_password:
             errors.append("Password and confirmation password do not match.")
 
         # ---------------------------------------------------------
@@ -1636,16 +1635,18 @@ def staff_create(request):
             with transaction.atomic():
 
                 # Create login account
-                user = User(
+                temporary_password = (
+                    generate_temporary_password() if not password else None
+                )
+                user = User.objects.create_user(
                     email=email,
+                    password=password,
+                    temporary_password=temporary_password,
                     first_name=first_name,
                     last_name=last_name,
                     role=user_role,
                     is_active=is_active,
                 )
-
-                user.set_password(password)
-                user.save()
 
                 # Create staff
                 Staff.objects.create(
@@ -1876,29 +1877,30 @@ def staff_edit(request, pk):
                     # Because Staff.user is nullable, this can happen
                     # with old records.
                     #
-                    # We only create a User if a password is provided.
+                    # Create the missing login account with a generated
+                    # password when one was not entered.
                     # -------------------------------------------------
 
-                    if password:
+                    temporary_password = (
+                        generate_temporary_password() if not password else None
+                    )
+                    user = User.objects.create_user(
+                        email=email,
+                        password=password,
+                        temporary_password=temporary_password,
+                        first_name=first_name,
+                        last_name=last_name,
+                        role=user_role,
+                        is_active=is_active,
+                    )
 
-                        user = User(
-                            email=email,
-                            first_name=first_name,
-                            last_name=last_name,
-                            role=user_role,
-                            is_active=is_active,
-                        )
-
-                        user.set_password(password)
-                        user.save()
-
-                        staff.user = user
-                        staff.save(
-                            update_fields=[
-                                "user",
-                                "updated_at",
-                            ]
-                        )
+                    staff.user = user
+                    staff.save(
+                        update_fields=[
+                            "user",
+                            "updated_at",
+                        ]
+                    )
 
             messages.success(
                 request,
