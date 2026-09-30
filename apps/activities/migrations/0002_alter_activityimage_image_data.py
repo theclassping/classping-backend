@@ -8,7 +8,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('activities', '0001_initial'),
+        ('activities', '0002_merge_activity_images_students'),
     ]
 
     operations = [
