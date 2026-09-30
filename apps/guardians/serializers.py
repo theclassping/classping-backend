@@ -2,6 +2,7 @@ from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
 from apps.uploads.services.media import MediaService
+from apps.users.managers import generate_temporary_password
 from .models import Guardian
 
 User = get_user_model()
@@ -43,6 +44,12 @@ class GuardianSerializer(serializers.ModelSerializer):
     
     def validate(self, attrs):
         """Process image_data if provided."""
+        user = attrs.get("user", getattr(self.instance, "user", None))
+        if user and user.role != User.Role.PARENT:
+            raise serializers.ValidationError({
+                "user_id": "A guardian must be linked to a user with the PARENT role."
+            })
+
         if 'image_data' in attrs and attrs['image_data']:
             image_data_input = attrs['image_data']
             if isinstance(image_data_input, str):
@@ -103,22 +110,18 @@ class GuardianInlineSerializer(serializers.ModelSerializer):
         first_name = validated_data.pop("first_name")
         last_name = validated_data.pop("last_name")
 
-        # Create User first (with temp password if not provided)
-        temp_password = password or "temp_password_123"
+        temporary_password = (
+            generate_temporary_password() if not password else None
+        )
         
         user = User.objects.create_user(
             email=validated_data["email"],
-            password=temp_password,
+            password=password,
+            temporary_password=temporary_password,
             first_name=first_name,
             last_name=last_name,
             role=User.Role.PARENT,
         )
-
-        # If no password provided, generate default password: cp{first_name}{last_name}{user_id}
-        if not password:
-            default_password = f"cp{first_name}{last_name}{user.id}"
-            user.set_password(default_password)
-            user.save()
 
         # Combine first_name and last_name for Guardian.name field
         name = f"{first_name} {last_name}"

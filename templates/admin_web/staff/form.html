@@ -289,6 +289,7 @@
 
         <p class="text-muted">
             A User login account is created automatically for this staff member.
+            Leave the password blank to generate one automatically.
         </p>
 
 
@@ -306,6 +307,10 @@
                         <span class="text-muted">
                             (leave blank to keep current password)
                         </span>
+                    {% else %}
+                        <span class="text-muted">
+                            (leave blank to generate automatically)
+                        </span>
                     {% endif %}
 
                 </label>
@@ -314,9 +319,6 @@
                     type="password"
                     id="password"
                     name="password"
-                    {% if not is_edit %}
-                        required
-                    {% endif %}
                 >
 
             </div>
@@ -334,9 +336,6 @@
                     type="password"
                     id="confirm_password"
                     name="confirm_password"
-                    {% if not is_edit %}
-                        required
-                    {% endif %}
                 >
 
             </div>

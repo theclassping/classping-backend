@@ -184,6 +184,10 @@ SIMPLE_JWT = {
 
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 DEFAULT_FROM_EMAIL = "noreply@classping.com"
+PASSWORD_RESET_URL = os.environ.get(
+    "PASSWORD_RESET_URL",
+    "http://localhost:3000/reset-password/",
+)
 
 SPECTACULAR_SETTINGS = {
     "TITLE": "ClassPing API",
@@ -233,7 +237,7 @@ SITE_URL = os.environ.get("SITE_URL", "http://localhost:8000")
 # Mailjet Configuration
 MAILJET_API_KEY = os.environ.get("MAILJET_API_KEY")
 MAILJET_API_SECRET = os.environ.get("MAILJET_API_SECRET")
-MAIL_FROM_EMAIL = os.environ.get("MAIL_FROM_EMAIL", "no-reply@classping.com")
+MAIL_FROM_EMAIL = os.environ.get("MAIL_FROM_EMAIL", "the.class.ping@gmail.com")
 MAIL_FROM_NAME = os.environ.get("MAIL_FROM_NAME", "ClassPing")
 MAILJET_TEMPLATES = {
     "forgot_password": 8345502,
@@ -241,4 +245,5 @@ MAILJET_TEMPLATES = {
     "payment_submitted": 8345507,
     "payment_completed": 8345508,
     "payment_rejected": 8345509,
+    "welcome_email": 8388105,
 }
