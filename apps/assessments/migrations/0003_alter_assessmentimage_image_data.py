@@ -3,18 +3,23 @@
 from django.db import migrations, models
 
 
-def create_assessment_join_tables(apps, schema_editor):
-    """Create tables from the removed assessment apps on fresh databases.
+def create_missing_legacy_tables(apps, schema_editor):
+    """Create legacy tables missing from databases upgraded from old app splits.
 
-    Migration 0002 intentionally only added these models to Django's migration
-    state because the tables already existed in the original deployment.  A
-    fresh database does not have those tables, so create any that are missing
-    before altering ``AssessmentImage.image_data`` below.
+    The original split apps owned score and assessment join tables. Their
+    replacement migrations initially recorded only Django state, so a database
+    without the legacy tables must be repaired before adding foreign keys or
+    altering ``AssessmentImage.image_data``.
     """
     existing_tables = set(schema_editor.connection.introspection.table_names())
 
-    for model_name in ("StudentAssessment", "AssessmentImage"):
-        model = apps.get_model("assessments", model_name)
+    for app_label, model_name in (
+        ("score_settings", "NumericScore"),
+        ("score_settings", "LevelScore"),
+        ("assessments", "StudentAssessment"),
+        ("assessments", "AssessmentImage"),
+    ):
+        model = apps.get_model(app_label, model_name)
         if model._meta.db_table not in existing_tables:
             schema_editor.create_model(model)
 
@@ -27,7 +32,7 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.RunPython(
-            create_assessment_join_tables,
+            create_missing_legacy_tables,
             migrations.RunPython.noop,
         ),
         migrations.RemoveField(

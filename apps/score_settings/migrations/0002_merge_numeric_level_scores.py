@@ -2,6 +2,16 @@ from django.db import migrations, models
 import django.db.models.deletion
 
 
+def create_score_tables(apps, schema_editor):
+    """Create tables moved from removed apps when bootstrapping a new DB."""
+    existing_tables = set(schema_editor.connection.introspection.table_names())
+
+    for model_name in ("NumericScore", "LevelScore"):
+        model = apps.get_model("score_settings", model_name)
+        if model._meta.db_table not in existing_tables:
+            schema_editor.create_model(model)
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -102,5 +112,9 @@ class Migration(migrations.Migration):
                     ),
                 ),
             ],
+        ),
+        migrations.RunPython(
+            create_score_tables,
+            migrations.RunPython.noop,
         ),
     ]
