@@ -17,7 +17,6 @@ def platform_admin_required(view_func):
     return wrapped_view
 
 
-@login_required(login_url="admin_web:login")
 def login_view(request):
     """
     Handle Admin Web login.

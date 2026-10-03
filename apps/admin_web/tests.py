@@ -18,6 +18,11 @@ class RolePermissionAdminTests(TestCase):
 	def setUp(self):
 		self.url = reverse("admin_web:role_permissions")
 
+	def test_login_page_is_accessible_without_authentication(self):
+		response = self.client.get(reverse("admin_web:login"))
+
+		self.assertEqual(response.status_code, 200)
+
 	def test_only_platform_superusers_can_open_permissions(self):
 		user = User.objects.create_user(
 			email="school-user@example.com",
