@@ -229,6 +229,7 @@ class ClassStudentSerializer(serializers.ModelSerializer):
             "class_name",
             "student_id",
             "student_name",
+            "is_current",
             "created_at",
         ]
 

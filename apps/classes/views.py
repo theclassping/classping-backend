@@ -112,8 +112,13 @@ class ClassStudentViewSet(viewsets.ModelViewSet):
         queryset = super().get_queryset()
         class_id = self.request.query_params.get("class_id")
         student_id = self.request.query_params.get("student_id")
+        is_current = self.request.query_params.get("is_current")
         if class_id:
             queryset = queryset.filter(class_obj_id=class_id)
         if student_id:
             queryset = queryset.filter(student_id=student_id)
+        if is_current is not None:
+            queryset = queryset.filter(
+                is_current=is_current.lower() == "true"
+            )
         return queryset
