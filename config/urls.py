@@ -1,5 +1,7 @@
 from django.contrib import admin
 from django.urls import include, path
+from django.conf import settings
+from django.conf.urls.static import static
 from drf_spectacular.views import (
     SpectacularAPIView,
     SpectacularSwaggerView,
@@ -12,8 +14,9 @@ from rest_framework_simplejwt.views import (
 from apps.users.views import (
     LogoutView,
     ForgotPasswordView,
-    ResetPasswordView
-    )
+    ResetPasswordView,
+    ChangePasswordView,
+)
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -62,6 +65,11 @@ urlpatterns = [
         ResetPasswordView.as_view(),
         name="reset-password",
     ),
+    path(
+        "api/auth/change-password/",
+        ChangePasswordView.as_view(),
+        name="change-password",
+    ),
 
     path("api/", include("apps.users.urls")),
     path("api/", include("apps.schools.urls")),
@@ -84,3 +92,6 @@ urlpatterns = [
         include("apps.admin_web.urls"),
     ),
 ]
+
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

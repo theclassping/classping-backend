@@ -5,9 +5,31 @@ Supports both local storage and Cloudflare R2.
 import os
 import uuid
 from abc import ABC, abstractmethod
+from pathlib import PurePosixPath
+from urllib.parse import quote
 from typing import Optional, Dict, Any
 import boto3
 from django.conf import settings
+
+
+def validate_file_key(file_key: str) -> str:
+    """Reject absolute or traversal paths before they reach disk or URLs."""
+    if not file_key or not isinstance(file_key, str):
+        raise ValueError("file_key is required")
+
+    normalized = file_key.replace('\\', '/')
+    if normalized.startswith('/') or normalized.startswith('../') or normalized.startswith('./'):
+        raise ValueError("Invalid file_key path")
+
+    parts = [part for part in PurePosixPath(normalized).parts if part not in ('', '.', '..')]
+    if not parts:
+        raise ValueError("Invalid file_key path")
+
+    safe_key = '/'.join(parts)
+    if safe_key in {'.', '..'} or safe_key.startswith('../') or safe_key.startswith('/'):
+        raise ValueError("Invalid file_key path")
+
+    return safe_key
 
 
 class StorageBackend(ABC):
@@ -111,18 +133,29 @@ class LocalStorage(StorageBackend):
         self.media_url = settings.MEDIA_URL
     
     def generate_presigned_url(self, file_key: str, expires_in: int = 3600) -> str:
-        """For local storage, return the upload endpoint URL."""
-        # In production, this would be a signed URL
-        # For local dev, return a simple POST endpoint
-        return f"{settings.SITE_URL}/api/media/upload/{file_key}"
+        """For local storage, return the upload endpoint URL with the required PUT method."""
+        safe_key = validate_file_key(file_key)
+        encoded_key = quote(safe_key, safe='/')
+        return f"{settings.SITE_URL}/api/media/upload/{encoded_key}?method=PUT"
     
     def get_object_url(self, file_key: str) -> str:
         """Get the full URL for accessing a local file."""
-        return f"{settings.SITE_URL}{self.media_url}{file_key}"
+        safe_key = validate_file_key(file_key)
+        return f"{settings.SITE_URL}{self.media_url}{quote(safe_key, safe='/')}"
     
     def verify_object_exists(self, file_key: str) -> bool:
-        """Verify if a local file exists."""
-        file_path = os.path.join(self.media_root, file_key)
+        """Verify if a local file exists within the media root."""
+        try:
+            safe_key = validate_file_key(file_key)
+        except ValueError:
+            return False
+
+        file_path = os.path.abspath(os.path.join(self.media_root, safe_key))
+        media_root = os.path.abspath(self.media_root)
+
+        if os.path.commonpath([media_root, file_path]) != media_root:
+            return False
+
         return os.path.exists(file_path)
     
     def generate_presigned_download_url(

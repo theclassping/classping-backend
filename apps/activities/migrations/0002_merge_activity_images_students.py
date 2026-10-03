@@ -14,7 +14,97 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.SeparateDatabaseAndState(
-            database_operations=[],
+            # These models were previously owned by separate apps.  The
+            # original merge migration only updated Django's migration state
+            # and did not create the tables on a fresh database, causing
+            # clean test databases and new deployments to fail at migration
+            # time.  Keep the state operation below, but create the physical
+            # tables as well.
+            database_operations=[
+                migrations.CreateModel(
+                    name="ActivityImage",
+                    fields=[
+                        (
+                            "id",
+                            models.BigAutoField(
+                                auto_created=True,
+                                primary_key=True,
+                                serialize=False,
+                                verbose_name="ID",
+                            ),
+                        ),
+                        (
+                            "image_data",
+                            models.ImageField(upload_to="activities/images/"),
+                        ),
+                        (
+                            "caption",
+                            models.TextField(blank=True),
+                        ),
+                        (
+                            "activity",
+                            models.ForeignKey(
+                                db_column="activity_id",
+                                on_delete=django.db.models.deletion.CASCADE,
+                                related_name="images",
+                                to="activities.activity",
+                            ),
+                        ),
+                        (
+                            "student",
+                            models.ForeignKey(
+                                blank=True,
+                                db_column="student_id",
+                                null=True,
+                                on_delete=django.db.models.deletion.SET_NULL,
+                                related_name="activity_images",
+                                to="students.student",
+                            ),
+                        ),
+                    ],
+                    options={"db_table": "activity_images"},
+                ),
+                migrations.CreateModel(
+                    name="ActivityStudent",
+                    fields=[
+                        (
+                            "id",
+                            models.BigAutoField(
+                                auto_created=True,
+                                primary_key=True,
+                                serialize=False,
+                                verbose_name="ID",
+                            ),
+                        ),
+                        (
+                            "activity",
+                            models.ForeignKey(
+                                db_column="activity_id",
+                                on_delete=django.db.models.deletion.CASCADE,
+                                related_name="activity_students",
+                                to="activities.activity",
+                            ),
+                        ),
+                        (
+                            "student",
+                            models.ForeignKey(
+                                db_column="student_id",
+                                on_delete=django.db.models.deletion.CASCADE,
+                                related_name="activity_assignments",
+                                to="students.student",
+                            ),
+                        ),
+                    ],
+                    options={"db_table": "activity_students"},
+                ),
+                migrations.AddConstraint(
+                    model_name="activitystudent",
+                    constraint=models.UniqueConstraint(
+                        fields=("activity", "student"),
+                        name="unique_activity_student",
+                    ),
+                ),
+            ],
             state_operations=[
                 migrations.CreateModel(
                     name="ActivityImage",

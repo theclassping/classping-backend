@@ -2,6 +2,7 @@ from rest_framework import permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework import viewsets
+from apps.users.permissions import RoleBasedAccessPermission
 
 from apps.student_invoices.services import generate_manual_invoices
 
@@ -18,7 +19,7 @@ class FeeTypeViewSet(viewsets.ModelViewSet):
     serializer_class = FeeTypeSerializer
 
     permission_classes = [
-        permissions.IsAuthenticated
+        RoleBasedAccessPermission
     ]
 
     def get_queryset(self):

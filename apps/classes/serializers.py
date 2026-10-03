@@ -151,7 +151,7 @@ class ClassTeacherSerializer(serializers.ModelSerializer):
 
     academic_year = serializers.PrimaryKeyRelatedField(
         source="class_obj.academic_year",
-        queryset=Class.objects.all(),
+        read_only=True,
     )
 
     academic_year_name = serializers.CharField(
@@ -187,6 +187,7 @@ class ClassTeacherSerializer(serializers.ModelSerializer):
             "teacher_name",
             "staff_type",
             "academic_year_name",
+            "academic_year",
             "created_at",
         ]
 

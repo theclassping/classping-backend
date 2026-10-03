@@ -1,5 +1,6 @@
 from django.db.models import Q
 from rest_framework import permissions, viewsets
+from apps.users.permissions import RoleBasedAccessPermission
 
 from .models import Location
 from .serializers import LocationSerializer
@@ -7,7 +8,7 @@ from .serializers import LocationSerializer
 
 class LocationViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = LocationSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [RoleBasedAccessPermission]
 
     def get_queryset(self):
         queryset = Location.objects.all().order_by("tree_id", "lft")

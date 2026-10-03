@@ -257,6 +257,19 @@ class StudentSerializer(serializers.ModelSerializer):
             getattr(self.instance, "location_id", None),
         )
 
+        # A student must be created with a primary guardian. Updates may
+        # omit guardians and preserve the existing relationships.
+        if self.instance is None:
+            guardians = attrs.get("student_guardians") or []
+            if not guardians:
+                raise serializers.ValidationError({
+                    "student_guardians": "At least one primary guardian is required."
+                })
+            if not any(item.get("is_primary") and not item.get("_destroy") for item in guardians):
+                raise serializers.ValidationError({
+                    "student_guardians": "At least one primary guardian is required."
+                })
+
         if location_id:
             if not Location.objects.filter(pk=location_id).exists():
                 raise serializers.ValidationError({
