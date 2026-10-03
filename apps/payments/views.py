@@ -57,13 +57,13 @@ class PaymentViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         payment = serializer.instance
-        new_status = serializer.validated_data.get("status")
+        # new_status = serializer.validated_data.get("status")
         staff = getattr(self.request.user, "staff", None)
 
-        if new_status in [Payment.Status.COMPLETED, Payment.Status.REJECTED] and not staff:
-            raise PermissionDenied(
-                "Only staff members can verify or reject payments."
-            )
+        # if new_status in [Payment.Status.COMPLETED, Payment.Status.REJECTED] and not staff:
+        #     raise PermissionDenied(
+        #         "Only staff members can verify or reject payments."
+        #     )
 
         payment = serializer.save()
         invoice = payment.student_invoice
