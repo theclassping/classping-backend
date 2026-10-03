@@ -1,0 +1,19 @@
+{% extends "admin_web/base.html" %}
+
+{% block title %}{{ user_obj.full_name }} - ClassPing Admin{% endblock %}
+{% block page_title %}<h1>User Review</h1>{% endblock %}
+
+{% block content %}
+<div class="page-header"><div><h2>{{ user_obj.full_name }}</h2><p class="text-muted">User account details.</p></div><div class="form-actions"><a href="{% url 'admin_web:user_list' %}" class="btn">Back</a><a href="{% url 'admin_web:user_edit' user_obj.pk %}" class="btn btn-primary">Edit User</a></div></div>
+<div class="card">
+    <div class="detail-row"><div class="detail-label">Email</div><div>{{ user_obj.email }}</div></div>
+    <div class="detail-row"><div class="detail-label">Role</div><div>{{ user_obj.get_role_display }}</div></div>
+    <div class="detail-row"><div class="detail-label">Status</div><div>{% if user_obj.is_active %}Active{% else %}Inactive{% endif %}</div></div>
+    <div class="detail-row"><div class="detail-label">Staff access</div><div>{% if user_obj.is_staff %}Yes{% else %}No{% endif %}</div></div>
+    <div class="detail-row"><div class="detail-label">Platform administrator</div><div>{% if user_obj.is_superuser %}Yes{% else %}No{% endif %}</div></div>
+    <div class="detail-row"><div class="detail-label">Last login</div><div>{{ user_obj.last_login|date:"d M Y H:i"|default:"-" }}</div></div>
+    <div class="detail-row"><div class="detail-label">Created</div><div>{{ user_obj.created_at|date:"d M Y H:i" }}</div></div>
+    {% if user_obj.staff %}<div class="detail-row"><div class="detail-label">Staff record</div><div><a href="{% url 'admin_web:staff_detail' user_obj.staff.pk %}">{{ user_obj.staff.get_staff_type_display }} · {{ user_obj.staff.branch.name }}</a></div></div>{% endif %}
+    {% if user_obj.guardian %}<div class="detail-row"><div class="detail-label">Guardian record</div><div><a href="{% url 'admin_web:guardian_detail' user_obj.guardian.pk %}">{{ user_obj.guardian.name }}</a></div></div>{% endif %}
+</div>
+{% endblock %}

@@ -63,134 +63,29 @@
 </div>
 
 
-<div class="card">
-
-    <!-- ================================================
-         Validation Errors
-         ================================================ -->
-
-    {% if errors %}
-
-        <div class="alert alert-error">
-
-            <ul>
-
-                {% for error in errors %}
-
-                    <li>
-                        {{ error }}
-                    </li>
-
-                {% endfor %}
-
-            </ul>
-
-        </div>
-
-    {% endif %}
-
-
-    <!-- ================================================
-         School Form
-         ================================================ -->
-
-    <form method="post">
-
+<div class="card form-card">
+    <form method="post" enctype="multipart/form-data">
         {% csrf_token %}
-
-
-        <!-- School Name -->
-
-        <div class="form-group">
-
-            <label for="name">
-                School Name
-            </label>
-
-            <input
-                type="text"
-                id="name"
-                name="name"
-                value="{{ name|default:'' }}"
-                placeholder="e.g. TK Harapan Bangsa"
-                required
-            >
-
-        </div>
-
-
-        <!-- Register Number -->
-
-        <div class="form-group">
-
-            <label for="register_number">
-                Register Number
-            </label>
-
-            <input
-                type="text"
-                id="register_number"
-                name="register_number"
-                value="{{ register_number|default:'' }}"
-                placeholder="e.g. SCH-2026-001"
-                required
-            >
-
-        </div>
-
-
-        <!-- Active -->
-
-        <div class="form-group">
-
-            <label class="checkbox-label">
-
-                <input
-                    type="checkbox"
-                    name="is_active"
-                    {% if is_active %}checked{% endif %}
-                >
-
-                <span>
-                    Active
-                </span>
-
-            </label>
-
-        </div>
-
-
-        <!-- ============================================
-             Actions
-             ============================================ -->
-
+        {% for field in form %}
+            <div class="form-group">
+                {{ field.label_tag }}{{ field }}
+                {% if field.help_text %}<small class="help-text">{{ field.help_text }}</small>{% endif %}
+                {% if field.errors %}<ul class="field-errors">{% for error in field.errors %}<li>{{ error }}</li>{% endfor %}</ul>{% endif %}
+            </div>
+        {% endfor %}
+        {% if form.non_field_errors %}<ul class="field-errors">{% for error in form.non_field_errors %}<li>{{ error }}</li>{% endfor %}</ul>{% endif %}
         <div class="form-actions">
-
-            <a
-                href="{% if is_edit %}{% url 'admin_web:school_detail' school.pk %}{% else %}{% url 'admin_web:school_list' %}{% endif %}"
-                class="btn"
-            >
-                Cancel
-            </a>
-
-
-            <button
-                type="submit"
-                class="btn btn-primary"
-            >
-
-                {% if is_edit %}
-                    Save Changes
-                {% else %}
-                    Create School
-                {% endif %}
-
-            </button>
-
+            <a href="{% if is_edit %}{% url 'admin_web:school_detail' school.pk %}{% else %}{% url 'admin_web:school_list' %}{% endif %}" class="btn">Cancel</a>
+            <button type="submit" class="btn btn-primary">{% if is_edit %}Save Changes{% else %}Create School{% endif %}</button>
         </div>
-
     </form>
-
 </div>
+
+{% if is_edit %}
+    <form method="post" action="{% if school.is_active %}{% url 'admin_web:school_deactivate' school.pk %}{% else %}{% url 'admin_web:school_activate' school.pk %}{% endif %}" class="detail-actions">
+        {% csrf_token %}
+        <button class="btn" type="submit">{% if school.is_active %}Deactivate School{% else %}Activate School{% endif %}</button>
+    </form>
+{% endif %}
 
 {% endblock %}

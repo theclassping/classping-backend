@@ -1,0 +1,36 @@
+{% extends "admin_web/base.html" %}
+
+{% block title %}{{ student.full_name }} - ClassPing Admin{% endblock %}
+{% block page_title %}<h1>Student Review</h1>{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div><h2>{{ student.first_name }} {% if student.middle_name %}{{ student.middle_name }} {% endif %}{{ student.last_name }}</h2><p class="text-muted">Student record and current enrollment.</p></div>
+    <div class="form-actions"><a href="{% url 'admin_web:student_list' %}" class="btn">Back</a><a href="{% url 'admin_web:student_edit' student.pk %}" class="btn btn-primary">Edit Student</a></div>
+</div>
+<div class="card">
+    <div class="detail-row"><div class="detail-label">Nickname</div><div>{{ student.nickname|default:"-" }}</div></div>
+    <div class="detail-row"><div class="detail-label">Gender</div><div>{{ student.get_gender_display }}</div></div>
+    <div class="detail-row"><div class="detail-label">Date of birth</div><div>{{ student.date_of_birth|date:"d M Y" }}</div></div>
+    <div class="detail-row"><div class="detail-label">Enrollment date</div><div>{{ student.enroll_date|date:"d M Y" }}</div></div>
+    <div class="detail-row"><div class="detail-label">Status</div><div>{{ student.status|title }}</div></div>
+    <div class="detail-row"><div class="detail-label">Address</div><div>{{ student.address|default:"-"|linebreaksbr }}</div></div>
+    <div class="detail-row"><div class="detail-label">Location</div><div>{{ location.name|default:"-" }}</div></div>
+    <div class="detail-row"><div class="detail-label">Image</div><div>{% if student.image_url %}<a href="{{ student.image_url }}" target="_blank" rel="noopener">View image</a>{% else %}-{% endif %}</div></div>
+    <div class="detail-row"><div class="detail-label">Current class</div><div>{% if current_assignment %}{{ current_assignment.class_obj.name }}{% else %}-{% endif %}</div></div>
+    <div class="detail-row"><div class="detail-label">School / Branch</div><div>{% if current_assignment %}{{ current_assignment.class_obj.branch.school.name }} / {{ current_assignment.class_obj.branch.name }}{% else %}-{% endif %}</div></div>
+    <div class="detail-row"><div class="detail-label">Created / Updated</div><div>{{ student.created_at|date:"d M Y H:i" }} / {{ student.updated_at|date:"d M Y H:i" }}</div></div>
+    <div class="detail-section">
+        <h3>Guardians</h3>
+        {% for link in student.student_guardians.all %}
+            <p><a href="{% url 'admin_web:guardian_detail' link.guardian_id %}">{{ link.guardian.name }}</a> · {{ link.get_relationship_display|default:link.relationship }}{% if link.is_primary %} · Primary{% endif %}</p>
+        {% empty %}<p class="text-muted">No guardians linked.</p>{% endfor %}
+    </div>
+    <div class="detail-section">
+        <h3>Class history</h3>
+        {% for assignment in student.class_students.all %}
+            <p><a href="{% url 'admin_web:class_detail' assignment.class_obj_id %}">{{ assignment.class_obj.name }}</a> · {{ assignment.class_obj.branch.school.name }} / {{ assignment.class_obj.branch.name }} · {{ assignment.class_obj.academic_year.name }}{% if assignment.is_current %} · Current{% endif %}</p>
+        {% empty %}<p class="text-muted">No class history.</p>{% endfor %}
+    </div>
+</div>
+{% endblock %}

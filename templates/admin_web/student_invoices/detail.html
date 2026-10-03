@@ -1,0 +1,14 @@
+{% extends "admin_web/base.html" %}
+{% block title %}{{ invoice.invoice_no }} - ClassPing Admin{% endblock %}
+{% block page_title %}<h1>Student Invoice</h1>{% endblock %}
+{% block content %}
+<div class="page-header"><div><h2>{{ invoice.invoice_no }}</h2><p class="text-muted">Student invoice detail.</p></div><a class="back-link" href="{% url 'admin_web:student_invoice_list' %}">Back to invoices</a></div>
+<div class="card detail-section">
+<div class="detail-row"><div class="detail-label">Student</div><div>{{ invoice.class_student.student.first_name }} {{ invoice.class_student.student.last_name }}</div></div>
+<div class="detail-row"><div class="detail-label">School / Branch / Class</div><div>{{ invoice.class_student.class_obj.branch.school.name }} / {{ invoice.class_student.class_obj.branch.name }} / {{ invoice.class_student.class_obj.name }}</div></div>
+<div class="detail-row"><div class="detail-label">Fee type</div><div>{{ invoice.fee_type.name }}</div></div>
+<div class="detail-row"><div class="detail-label">Invoice / due date</div><div>{{ invoice.invoice_date|date:"d M Y" }} / {{ invoice.due_date|date:"d M Y" }}</div></div>
+<div class="detail-row"><div class="detail-label">Total / paid</div><div>{{ invoice.total_amount }} {{ invoice.currency }} / {{ invoice.amount_paid }} {{ invoice.currency }}</div></div>
+<div class="detail-row"><div class="detail-label">Status</div><div>{{ invoice.get_status_display }}</div></div>
+</div>
+{% endblock %}

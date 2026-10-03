@@ -1,0 +1,29 @@
+{% extends "admin_web/base.html" %}
+
+{% block title %}{{ activity.name }} - ClassPing Admin{% endblock %}
+{% block page_title %}<h1>Activity Review</h1>{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div><h2>{{ activity.name }}</h2><p class="text-muted">Activity details and participants.</p></div>
+    <div class="form-actions"><a href="{% url 'admin_web:activity_list' %}" class="btn">Back</a><a href="{% url 'admin_web:activity_edit' activity.pk %}" class="btn btn-primary">Edit Activity</a></div>
+</div>
+<div class="card">
+    <div class="detail-row"><div class="detail-label">Date</div><div>{{ activity.activity_date|date:"d M Y" }}</div></div>
+    <div class="detail-row"><div class="detail-label">Class</div><div>{{ activity.class_obj.name }}</div></div>
+    <div class="detail-row"><div class="detail-label">School / Branch</div><div>{{ activity.class_obj.branch.school.name }} / {{ activity.class_obj.branch.name }}</div></div>
+    <div class="detail-row"><div class="detail-label">Academic year</div><div>{{ activity.class_obj.academic_year.name }}</div></div>
+    <div class="detail-row"><div class="detail-label">Teacher</div><div>{{ activity.class_teacher.staff.first_name }} {{ activity.class_teacher.staff.last_name }}</div></div>
+    <div class="detail-row"><div class="detail-label">Published</div><div>{% if activity.is_publish %}Yes{% else %}No{% endif %}</div></div>
+    <div class="detail-row"><div class="detail-label">Description</div><div>{{ activity.description|default:"-"|linebreaksbr }}</div></div>
+    <div class="detail-row"><div class="detail-label">Created / Updated</div><div>{{ activity.created_at|date:"d M Y H:i" }} / {{ activity.updated_at|date:"d M Y H:i" }}</div></div>
+    <div class="detail-section"><h3>Students</h3>
+        {% for assignment in activity.activity_students.all %}<p><a href="{% url 'admin_web:student_detail' assignment.student_id %}">{{ assignment.student.full_name }}</a> · Position {{ assignment.position }}</p>
+        {% empty %}<p class="text-muted">No students assigned.</p>{% endfor %}
+    </div>
+    <div class="detail-section"><h3>Images</h3>
+        {% for image in activity.images.all %}<p>{{ image.caption|default:"Activity image" }}{% if image.image_url %} · <a href="{{ image.image_url }}" target="_blank" rel="noopener">View image</a>{% endif %}</p>
+        {% empty %}<p class="text-muted">No images attached.</p>{% endfor %}
+    </div>
+</div>
+{% endblock %}

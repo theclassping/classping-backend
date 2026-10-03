@@ -1,0 +1,70 @@
+{% extends "admin_web/base.html" %}
+
+{% block title %}
+    Role Permissions - ClassPing Admin
+{% endblock %}
+
+{% block page_title %}
+    <h1>Role Permissions</h1>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h2>Role Permissions</h2>
+    </div>
+</div>
+
+{% if errors %}
+    <div class="alert alert-error">
+        <ul>
+            {% for error in errors %}
+                <li>{{ error }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+{% endif %}
+
+<form method="get" class="form-card">
+    <div class="form-group">
+        <label for="role">Role</label>
+        <select id="role" name="role" onchange="this.form.submit()">
+            {% for role_value, role_label in roles %}
+                <option value="{{ role_value }}" {% if role_value == selected_role %}selected{% endif %}>
+                    {{ role_label }}
+                </option>
+            {% endfor %}
+        </select>
+    </div>
+</form>
+
+<form method="post" class="form-card">
+    {% csrf_token %}
+    <input type="hidden" name="role" value="{{ selected_role }}">
+
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>API module</th>
+                <th>Read</th>
+                <th>Create</th>
+                <th>Edit</th>
+                <th>Delete</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for module in modules %}
+                <tr>
+                    <td>{{ module.label }}</td>
+                    <td><input type="checkbox" name="{{ module.key }}_can_read" {% if module.permission.can_read %}checked{% endif %}></td>
+                    <td><input type="checkbox" name="{{ module.key }}_can_create" {% if module.permission.can_create %}checked{% endif %}></td>
+                    <td><input type="checkbox" name="{{ module.key }}_can_edit" {% if module.permission.can_edit %}checked{% endif %}></td>
+                    <td><input type="checkbox" name="{{ module.key }}_can_delete" {% if module.permission.can_delete %}checked{% endif %}></td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <button type="submit" class="btn btn-primary">Save permissions</button>
+</form>
+{% endblock %}

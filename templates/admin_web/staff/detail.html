@@ -1,0 +1,18 @@
+{% extends "admin_web/base.html" %}
+
+{% block title %}{{ staff.first_name }} {{ staff.last_name }} - ClassPing Admin{% endblock %}
+{% block page_title %}<h1>Staff Review</h1>{% endblock %}
+
+{% block content %}
+<div class="page-header"><div><h2>{{ staff.first_name }} {{ staff.last_name }}</h2><p class="text-muted">{{ staff.get_staff_type_display }}</p></div><div class="form-actions"><a href="{% url 'admin_web:staff_list' %}" class="btn">Back</a><a href="{% url 'admin_web:staff_edit' staff.pk %}" class="btn btn-primary">Edit Staff</a></div></div>
+<div class="card">
+    <div class="detail-row"><div class="detail-label">Email</div><div>{{ staff.email }}</div></div>
+    <div class="detail-row"><div class="detail-label">Phone</div><div>{{ staff.phone|default:"-" }}</div></div>
+    <div class="detail-row"><div class="detail-label">School / Branch</div><div>{{ staff.branch.school.name }} / {{ staff.branch.name }}</div></div>
+    <div class="detail-row"><div class="detail-label">Hire date</div><div>{{ staff.hire_date|date:"d M Y" }}</div></div>
+    <div class="detail-row"><div class="detail-label">Qualification</div><div>{{ staff.qualification }}</div></div>
+    <div class="detail-row"><div class="detail-label">Status</div><div>{% if staff.is_active %}Active{% else %}Inactive{% endif %}</div></div>
+    <div class="detail-row"><div class="detail-label">Created / Updated</div><div>{{ staff.created_at|date:"d M Y H:i" }} / {{ staff.updated_at|date:"d M Y H:i" }}</div></div>
+    <div class="detail-row"><div class="detail-label">Login user</div><div>{% if staff.user %}<a href="{% url 'admin_web:user_detail' staff.user_id %}">{{ staff.user.email }}</a>{% else %}-{% endif %}</div></div>
+</div>
+{% endblock %}

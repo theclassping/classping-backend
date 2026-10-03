@@ -1,0 +1,14 @@
+{% extends "admin_web/base.html" %}
+
+{% block title %}{{ module.title }} Review - ClassPing Admin{% endblock %}
+{% block page_title %}<h1>{{ module.title }} Review</h1>{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div><h2>{{ object }}</h2><p class="text-muted">Settings record details.</p></div>
+    <div class="form-actions"><a href="{% url 'admin_web:settings_list' section %}" class="btn">Back</a><a href="{% url 'admin_web:settings_edit' section object.pk %}" class="btn btn-primary">Edit</a></div>
+</div>
+<div class="card">
+    {% for label, value in details %}<div class="detail-row"><div class="detail-label">{{ label }}</div><div>{{ value|default:"-"|linebreaksbr }}</div></div>{% endfor %}
+</div>
+{% endblock %}

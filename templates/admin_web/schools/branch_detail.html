@@ -1,0 +1,40 @@
+{% extends "admin_web/base.html" %}
+
+{% block title %}{{ branch.name }} - ClassPing Admin{% endblock %}
+{% block page_title %}<h1>Branch Review</h1>{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div><h2>{{ branch.name }}</h2><p class="text-muted">{{ school.name }}</p></div>
+    <div class="form-actions">
+        <a href="{% url 'admin_web:school_detail' school.pk %}" class="btn">Back to School</a>
+        <a href="{% url 'admin_web:branch_edit' school.pk branch.pk %}" class="btn btn-primary">Edit Branch</a>
+        <form method="post" action="{% if branch.is_active %}{% url 'admin_web:branch_deactivate' school.pk branch.pk %}{% else %}{% url 'admin_web:branch_activate' school.pk branch.pk %}{% endif %}">
+            {% csrf_token %}<button class="btn" type="submit">{% if branch.is_active %}Deactivate{% else %}Activate{% endif %}</button>
+        </form>
+    </div>
+</div>
+<div class="card">
+    <div class="detail-row"><div class="detail-label">School</div><div>{{ school.name }}</div></div>
+    <div class="detail-row"><div class="detail-label">Branch name</div><div>{{ branch.name }}</div></div>
+    <div class="detail-row"><div class="detail-label">Code</div><div>{{ branch.code }}</div></div>
+    <div class="detail-row"><div class="detail-label">Address</div><div>{{ branch.address|default:"-"|linebreaksbr }}</div></div>
+    <div class="detail-row"><div class="detail-label">Phone</div><div>{{ branch.phone|default:"-" }}</div></div>
+    <div class="detail-row"><div class="detail-label">Email</div><div>{{ branch.email|default:"-" }}</div></div>
+    <div class="detail-row"><div class="detail-label">Location</div><div>{{ location_path }}</div></div>
+    <div class="detail-row"><div class="detail-label">Status</div><div>{% if branch.is_active %}Active{% else %}Inactive{% endif %}</div></div>
+    <div class="detail-row"><div class="detail-label">Created / Updated</div><div>{{ branch.created_at|date:"d M Y H:i" }} / {{ branch.updated_at|date:"d M Y H:i" }}</div></div>
+    <div class="detail-section"><h3>Academic years</h3>
+        {% for year in branch.academic_years.all %}<p>{{ year.name }} · {{ year.start_date|date:"d M Y" }} to {{ year.end_date|date:"d M Y" }}{% if year.is_current %} · Current{% endif %}</p>
+        {% empty %}<p class="text-muted">No academic years configured.</p>{% endfor %}
+    </div>
+    <div class="detail-section"><h3>Classes</h3>
+        {% for class_obj in branch.classes.all %}<p><a href="{% url 'admin_web:class_detail' class_obj.pk %}">{{ class_obj.name }}</a> · {{ class_obj.academic_year.name }}</p>
+        {% empty %}<p class="text-muted">No classes configured.</p>{% endfor %}
+    </div>
+    <div class="detail-section"><h3>Staff</h3>
+        {% for member in branch.staffs.all %}<p><a href="{% url 'admin_web:staff_detail' member.pk %}">{{ member.first_name }} {{ member.last_name }}</a> · {{ member.get_staff_type_display }}{% if not member.is_active %} · Inactive{% endif %}</p>
+        {% empty %}<p class="text-muted">No staff assigned.</p>{% endfor %}
+    </div>
+</div>
+{% endblock %}

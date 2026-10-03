@@ -1,0 +1,56 @@
+{% extends "admin_web/base.html" %}
+
+{% block title %}Payment Review - ClassPing Admin{% endblock %}
+{% block page_title %}<h1>Payment Review</h1>{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div><h2>Payment {{ payment.pk }}</h2><p class="text-muted">Invoice {{ payment.student_invoice.invoice_no }}</p></div>
+    <div class="form-actions">
+        <a href="{% url 'admin_web:payment_list' %}" class="btn">Back to payments</a>
+        {% if payment.status == 'submitted' %}<a href="{% url 'admin_web:payment_edit' payment.pk %}" class="btn btn-primary">Edit</a>{% endif %}
+    </div>
+</div>
+<div class="card">
+    <div class="detail-row"><div class="detail-label">Student</div><div>{{ payment.student_invoice.class_student.student.first_name }} {{ payment.student_invoice.class_student.student.last_name }}</div></div>
+    <div class="detail-row"><div class="detail-label">Fee type</div><div>{{ payment.student_invoice.fee_type.name|default:"-" }}</div></div>
+    <div class="detail-row"><div class="detail-label">Amount</div><div>{{ payment.amount }} {{ payment.student_invoice.currency }}</div></div>
+    <div class="detail-row"><div class="detail-label">Payment method</div><div>{{ payment.get_payment_method_display }}</div></div>
+    <div class="detail-row"><div class="detail-label">Submitted</div><div>{{ payment.submitted_at|date:"Y-m-d H:i" }}</div></div>
+    <div class="detail-row"><div class="detail-label">Paid at</div><div>{{ payment.paid_at|date:"Y-m-d H:i"|default:"-" }}</div></div>
+    <div class="detail-row"><div class="detail-label">Payment status</div><div>{{ payment.get_status_display }}</div></div>
+    <div class="detail-row"><div class="detail-label">Invoice status</div><div>{{ payment.student_invoice.get_status_display }}</div></div>
+    {% if payment.rejection_reason %}<div class="detail-row"><div class="detail-label">Rejection reason</div><div>{{ payment.rejection_reason }}</div></div>{% endif %}
+    {% if payment.verified_by %}<div class="detail-row"><div class="detail-label">Reviewed by</div><div>{{ payment.verified_by.user.get_full_name|default:payment.verified_by.user.email }}{% if payment.verified_at %} on {{ payment.verified_at|date:"Y-m-d H:i" }}{% endif %}</div></div>{% endif %}
+    <div class="detail-row"><div class="detail-label">Created / Updated</div><div>{{ payment.created_at|date:"Y-m-d H:i" }} / {{ payment.updated_at|date:"Y-m-d H:i" }}</div></div>
+
+    <div class="detail-section">
+        <h3>Payment proofs</h3>
+        {% for proof in payment.proofs.all %}
+            <p>{{ proof.image_data.filename|default:"Uploaded proof" }} · {{ proof.image_data.object_key|default:proof.image_data.id|default:"Metadata stored" }} <span class="text-muted">{{ proof.uploaded_at|date:"Y-m-d H:i" }}</span></p>
+        {% empty %}
+            <p class="text-muted">No proof uploaded.</p>
+        {% endfor %}
+    </div>
+
+    {% if payment.status == 'submitted' %}
+        {% if can_review %}
+            <div class="detail-section form-actions">
+                <form method="post" action="{% url 'admin_web:payment_review' payment.pk 'approve' %}">
+                    {% csrf_token %}<button class="btn btn-primary" type="submit">Approve Payment</button>
+                </form>
+                <form method="post" action="{% url 'admin_web:payment_review' payment.pk 'reject' %}" class="inline-actions">
+                    {% csrf_token %}<label for="rejection-reason">Reason</label><input id="rejection-reason" name="rejection_reason" required maxlength="2000"><button class="btn danger-button" type="submit">Reject</button>
+                </form>
+            </div>
+        {% else %}
+            <p class="alert alert-error detail-section">A staff profile is required to approve or reject payments.</p>
+        {% endif %}
+    {% endif %}
+    {% if payment.status == 'submitted' %}
+        <form method="post" action="{% url 'admin_web:payment_delete' payment.pk %}" class="detail-actions" onsubmit="return confirm('Delete this unverified payment and its proofs?');">
+            {% csrf_token %}<button class="btn danger-button" type="submit">Delete Unverified Payment</button>
+        </form>
+    {% endif %}
+</div>
+{% endblock %}
