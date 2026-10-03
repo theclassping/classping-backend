@@ -102,6 +102,12 @@
                     </td>
 
                     <td>
+                        <a
+                            href="{% url 'admin_web:staff_detail' staff.pk %}"
+                            class="btn btn-secondary"
+                        >
+                            Review
+                        </a>
 
                         <a
                             href="{% url 'admin_web:staff_edit' staff.pk %}"

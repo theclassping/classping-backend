@@ -15,11 +15,11 @@ from .models import RevokedAccessToken
 from .serializers import (
     UserCreateSerializer,
     UserSerializer,
-    UserUpdateSerializer, 
+    UserUpdateSerializer,
     LogoutSerializer,
-    ForgotPasswordSerializer, 
+    ForgotPasswordSerializer,
     ResetPasswordSerializer,
-    ChangePasswordSerializer
+    ChangePasswordSerializer,
 )
 
 User = get_user_model()
@@ -53,6 +53,9 @@ class LogoutView(GenericAPIView):
     serializer_class = LogoutSerializer
 
     def post(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
         access_token = request.auth
 
         if access_token:
@@ -69,13 +72,16 @@ class LogoutView(GenericAPIView):
                 },
             )
 
-        refresh_token = request.data.get("refresh")
+        refresh_token = serializer.validated_data.get("refresh")
 
         if refresh_token:
             try:
                 RefreshToken(refresh_token).blacklist()
             except Exception:
-                pass
+                return Response(
+                    {"detail": "Invalid refresh token."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
         return Response(
             {"detail": "Successfully logged out."},
@@ -138,20 +144,33 @@ class ForgotPasswordView(GenericAPIView):
         )
     
     
+class ChangePasswordView(GenericAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = ChangePasswordSerializer
+
+    def post(self, request):
+        serializer = self.get_serializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+
+        request.user.set_password(serializer.validated_data["new_password"])
+        request.user.save(update_fields=["password"])
+
+        return Response(
+            {"detail": "Password has been changed successfully."},
+            status=status.HTTP_200_OK,
+        )
+
+
 class ResetPasswordView(GenericAPIView):
     permission_classes = [AllowAny]
     serializer_class = ResetPasswordSerializer
 
     def post(self, request):
-        serializer = self.get_serializer(
-            data=request.data
-        )
-
+        serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
         uid = serializer.validated_data["uid"]
         token = serializer.validated_data["token"]
-        new_password = serializer.validated_data["new_password"]
 
         try:
             user_id = force_str(
@@ -162,22 +181,22 @@ class ResetPasswordView(GenericAPIView):
                 pk=user_id,
                 is_active=True,
             )
-
         except (TypeError, ValueError, OverflowError, User.DoesNotExist):
             return Response(
                 {"detail": "Invalid password reset link."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        if not default_token_generator.check_token(
-            user,
-            token,
-        ):
+        if not default_token_generator.check_token(user, token):
             return Response(
                 {"detail": "Invalid or expired password reset link."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        serializer.user = user
+        serializer.is_valid(raise_exception=True)
+
+        new_password = serializer.validated_data["new_password"]
         user.set_password(new_password)
         user.save(update_fields=["password"])
 

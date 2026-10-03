@@ -1,0 +1,59 @@
+{% extends "admin_web/base.html" %}
+
+{% block title %}Activities - ClassPing Admin{% endblock %}
+{% block page_title %}<h1>Activities</h1>{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h2>Activities</h2>
+        <p class="text-muted">Review and manage classroom activities.</p>
+    </div>
+    <a href="{% url 'admin_web:activity_create' %}" class="btn btn-primary">Add Activity</a>
+</div>
+
+<form method="get" class="filter-bar">
+    <div class="form-group">
+        <label for="activity-search">Search</label>
+        <input id="activity-search" type="search" name="q" value="{{ search }}" placeholder="Activity, class, or teacher">
+    </div>
+    <div class="form-group">
+        <label for="activity-published">Publishing</label>
+        <select id="activity-published" name="published">
+            <option value="">All activities</option>
+            <option value="true" {% if publish_status == 'true' %}selected{% endif %}>Published</option>
+            <option value="false" {% if publish_status == 'false' %}selected{% endif %}>Draft</option>
+        </select>
+    </div>
+    <div class="form-group"><label>School</label><select name="school" data-searchable><option value="">All schools</option>{% for school in schools %}<option value="{{ school.pk }}" {% if school_id == school.pk|stringformat:'s' %}selected{% endif %}>{{ school.name }}</option>{% endfor %}</select></div>
+    <div class="form-group"><label>Branch</label><select name="branch" data-searchable><option value="">All branches</option>{% for branch in branches %}<option value="{{ branch.pk }}" {% if branch_id == branch.pk|stringformat:'s' %}selected{% endif %}>{{ branch.school.name }} - {{ branch.name }}</option>{% endfor %}</select></div>
+    <div class="form-group"><label>Class</label><select name="class_obj" data-searchable><option value="">All classes</option>{% for class_obj in classes %}<option value="{{ class_obj.pk }}" {% if class_id == class_obj.pk|stringformat:'s' %}selected{% endif %}>{{ class_obj.branch.school.name }} - {{ class_obj.branch.name }} - {{ class_obj.name }}</option>{% endfor %}</select></div>
+    <button class="btn" type="submit">Filter</button>
+</form>
+
+<div class="card">
+    {% if activities %}
+        <table class="data-table">
+            <thead><tr><th>Activity</th><th>Class</th><th>Teacher</th><th>Date</th><th>Students</th><th>Status</th><th>Action</th></tr></thead>
+            <tbody>
+                {% for activity in activities %}
+                    <tr>
+                        <td><strong>{{ activity.name }}</strong></td>
+                        <td>{{ activity.class_obj.name }} <span class="text-muted">/ {{ activity.class_obj.branch.name }}</span></td>
+                        <td>{{ activity.class_teacher.staff.user.get_full_name|default:activity.class_teacher.staff.user.email }}</td>
+                        <td>{{ activity.activity_date }}</td>
+                        <td>{{ activity.students.all|length }}</td>
+                        <td>{% if activity.is_publish %}<span class="status status-active">Published</span>{% else %}<span class="status status-inactive">Draft</span>{% endif %}</td>
+                        <td class="inline-actions">
+                            <a class="btn btn-small" href="{% url 'admin_web:activity_detail' activity.pk %}">Review</a>
+                            <a class="btn btn-small" href="{% url 'admin_web:activity_edit' activity.pk %}">Edit</a>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <div class="empty-state"><h3>No activities found</h3><p>Create an activity or adjust your filters.</p></div>
+    {% endif %}
+</div>
+{% endblock %}

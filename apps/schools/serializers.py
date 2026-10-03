@@ -7,6 +7,11 @@ from .models import Branch, School
 
 
 class BranchSerializer(serializers.ModelSerializer):
+    location_id = serializers.PrimaryKeyRelatedField(
+        source="location",
+        queryset=Location.objects.all(),
+        required=True,
+    )
     location = serializers.SerializerMethodField()
 
     class Meta:

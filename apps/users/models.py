@@ -5,6 +5,24 @@ from django.utils import timezone
 from .managers import UserManager
 
 
+API_MODULE_CHOICES = (
+    ("academic_years", "Academic years"),
+    ("activities", "Activities"),
+    ("assessments", "Assessments"),
+    ("classes", "Classes"),
+    ("fee_types", "Fee types"),
+    ("guardians", "Guardians"),
+    ("locations", "Locations"),
+    ("payments", "Payments"),
+    ("schools", "Schools"),
+    ("staffs", "Staff"),
+    ("student_invoices", "Student invoices"),
+    ("students", "Students"),
+    ("uploads", "Media uploads"),
+    ("users", "Users"),
+)
+
+
 class User(AbstractBaseUser, PermissionsMixin):
 
     class Role(models.TextChoices):
@@ -62,6 +80,29 @@ class User(AbstractBaseUser, PermissionsMixin):
     @property
     def full_name(self):
         return f"{self.first_name} {self.last_name}".strip()
+
+
+class RoleModulePermission(models.Model):
+    role = models.CharField(max_length=20, choices=User.Role.choices)
+    module = models.CharField(max_length=40, choices=API_MODULE_CHOICES)
+    can_read = models.BooleanField(default=False)
+    can_create = models.BooleanField(default=False)
+    can_edit = models.BooleanField(default=False)
+    can_delete = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = "user_role_permissions"
+        constraints = [
+            models.UniqueConstraint(
+                fields=("role", "module"),
+                name="unique_role_module_permission",
+            )
+        ]
+        ordering = ("role", "module")
+
+    def __str__(self):
+        return f"{self.get_role_display()} - {self.get_module_display()}"
+
 
 class RevokedAccessToken(models.Model):
     jti = models.CharField(max_length=255, unique=True)

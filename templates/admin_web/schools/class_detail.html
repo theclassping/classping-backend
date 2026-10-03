@@ -1,0 +1,28 @@
+{% extends "admin_web/base.html" %}
+
+{% block title %}{{ class_obj.name }} - ClassPing Admin{% endblock %}
+{% block page_title %}<h1>Class Review</h1>{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div><h2>{{ class_obj.name }}</h2><p class="text-muted">{{ class_obj.branch.school.name }} / {{ class_obj.branch.name }}</p></div>
+    <div class="form-actions">
+        <a href="{% url 'admin_web:school_detail' class_obj.branch.school_id %}" class="btn">Back to School</a>
+        <a href="{% url 'admin_web:class_edit' class_obj.branch.school_id class_obj.pk %}" class="btn btn-primary">Edit Class</a>
+    </div>
+</div>
+<div class="card">
+    <div class="detail-row"><div class="detail-label">School</div><div>{{ class_obj.branch.school.name }}</div></div>
+    <div class="detail-row"><div class="detail-label">Branch</div><div>{{ class_obj.branch.name }}</div></div>
+    <div class="detail-row"><div class="detail-label">Academic year</div><div>{{ class_obj.academic_year.name }} · {{ class_obj.academic_year.start_date|date:"d M Y" }} to {{ class_obj.academic_year.end_date|date:"d M Y" }}</div></div>
+    <div class="detail-row"><div class="detail-label">Created / Updated</div><div>{{ class_obj.created_at|date:"d M Y H:i" }} / {{ class_obj.updated_at|date:"d M Y H:i" }}</div></div>
+    <div class="detail-section"><h3>Teachers</h3>
+        {% for assignment in class_obj.class_teachers.all %}<p>{{ assignment.staff.first_name }} {{ assignment.staff.last_name }} · {{ assignment.staff.email }}</p>
+        {% empty %}<p class="text-muted">No teachers assigned.</p>{% endfor %}
+    </div>
+    <div class="detail-section"><h3>Students</h3>
+        {% for assignment in class_obj.class_students.all %}<p><a href="{% url 'admin_web:student_detail' assignment.student_id %}">{{ assignment.student.full_name }}</a>{% if assignment.is_current %} · Current{% endif %}</p>
+        {% empty %}<p class="text-muted">No students enrolled.</p>{% endfor %}
+    </div>
+</div>
+{% endblock %}

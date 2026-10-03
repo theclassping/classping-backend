@@ -5,6 +5,7 @@ from apps.student_invoices.models import StudentInvoice
 from apps.uploads.services.media import MediaService
 from apps.mailer.services import Mailer
 from django.conf import settings
+from django.utils import timezone
 
 from .models import Payment, PaymentProof
 
@@ -221,20 +222,33 @@ class PaymentSerializer(serializers.ModelSerializer):
 
         template_id = settings.MAILJET_TEMPLATES[template_key]
         student = payment.student_invoice.class_student.student
-        guardian = student.student_guardians.filter(is_primary=True).first().guardian
+        guardian_assignment = student.student_guardians.filter(is_primary=True).select_related("guardian__user").first()
+        if not guardian_assignment:
+            return
+
+        guardian = guardian_assignment.guardian
+        recipient_name = guardian.name or guardian.user.full_name
 
         Mailer().send_template(
             to_email="raniaakhmalia@gmail.com",
-            to_name=guardian.user.full_name,
+            to_name=recipient_name,
             template_id=template_id,
             variables={
+                # Mail templates address the recipient as {{name}}.
+                "name": recipient_name,
                 "student_name": student.full_name(),
                 "amount": str(payment.amount),
                 "status": payment.status,
                 "rejection_reason": payment.rejection_reason or "",
                 "invoice_no": payment.student_invoice.invoice_no,
-                "updated_at": payment.updated_at,
-                "due_date": payment.student_invoice.due_date,
+                "updated_at": (
+                    timezone.localtime(payment.updated_at).strftime("%d %B %Y, %H:%M")
+                    if payment.updated_at else ""
+                ),
+                "due_date": (
+                    payment.student_invoice.due_date.strftime("%d %B %Y")
+                    if payment.student_invoice.due_date else ""
+                ),
             },
         )
 

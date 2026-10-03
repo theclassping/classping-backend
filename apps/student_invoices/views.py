@@ -2,6 +2,7 @@ from django.db.models import Q
 from django.utils import timezone
 from rest_framework import permissions
 from rest_framework import viewsets
+from apps.users.permissions import RoleBasedAccessPermission
 
 from .models import StudentInvoice
 from .serializers import StudentInvoiceDetailSerializer, StudentInvoiceSerializer
@@ -26,7 +27,7 @@ class StudentInvoiceViewSet(viewsets.ModelViewSet):
     serializer_class = StudentInvoiceSerializer
 
     permission_classes = [
-        permissions.IsAuthenticated
+        RoleBasedAccessPermission
     ]
 
     def get_serializer_class(self):

@@ -35,6 +35,13 @@
 
 </div>
 
+<form method="get" class="filter-bar">
+    <div class="form-group"><label for="user-search">Search</label><input id="user-search" type="search" name="q" value="{{ search }}" placeholder="Name or email"></div>
+    <div class="form-group"><label>Role</label><select name="role" data-searchable><option value="">All roles</option>{% for value,label in roles %}<option value="{{ value }}" {% if role == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+    <div class="form-group"><label>Status</label><select name="active" data-searchable><option value="">All statuses</option><option value="true" {% if active == 'true' %}selected{% endif %}>Active</option><option value="false" {% if active == 'false' %}selected{% endif %}>Inactive</option></select></div>
+    <button class="btn" type="submit">Filter</button>
+</form>
+
 
 <div class="card">
     {% if users %}
@@ -79,6 +86,7 @@
                         {{ user.created_at|date:"d M Y" }}
                     </td>
                     <td>
+                        <a href="{% url 'admin_web:user_detail' user.pk %}" class="btn btn-secondary btn-sm">Review</a>
                         <a
                             href="{% url 'admin_web:user_edit' user.pk %}"
                             class="btn btn-secondary btn-sm"

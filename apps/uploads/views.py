@@ -4,7 +4,7 @@ API views for media upload operations.
 import os
 from rest_framework import status
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from apps.users.permissions import RoleBasedAccessPermission
 from rest_framework.views import APIView
 from django.conf import settings
 
@@ -13,7 +13,7 @@ from apps.uploads.serializers import (
     PresignUrlSerializer,
     PresignUrlResponseSerializer,
 )
-from apps.uploads.storage import get_storage
+from apps.uploads.storage import get_storage, validate_file_key
 
 
 class PresignUrlView(APIView):
@@ -35,7 +35,7 @@ class PresignUrlView(APIView):
         "content_type": "image/png"
     }
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [RoleBasedAccessPermission]
     
     def post(self, request):
         serializer = PresignUrlSerializer(data=request.data)
@@ -72,33 +72,42 @@ class UploadView(APIView):
     Response:
     - 204 No Content (file saved successfully)
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [RoleBasedAccessPermission]
     
     def put(self, request, file_key):
         """Handle file upload via PUT request."""
         try:
-            # Ensure media directory exists
-            media_root = settings.MEDIA_ROOT
+            safe_file_key = validate_file_key(file_key)
+            media_root = os.path.abspath(settings.MEDIA_ROOT)
             os.makedirs(media_root, exist_ok=True)
-            
-            # Create subdirectories for file_key path
-            file_path = os.path.join(media_root, file_key)
+
+            file_path = os.path.abspath(os.path.join(media_root, safe_file_key))
+            if os.path.commonpath([media_root, file_path]) != media_root:
+                return Response(
+                    {'error': 'Invalid file path.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
-            
-            # Save the binary file
+
             with open(file_path, 'wb') as f:
                 f.write(request.body)
-            
+
             return Response(status=status.HTTP_204_NO_CONTENT)
-        
+
+        except ValueError as exc:
+            return Response(
+                {'error': str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         except Exception as e:
             return Response(
                 {'error': f'File upload failed: {str(e)}'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
 class MediaDownloadUrlView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [RoleBasedAccessPermission]
 
     def get(self, request):
         file_key = request.query_params.get("file_key")
@@ -110,16 +119,17 @@ class MediaDownloadUrlView(APIView):
             )
 
         try:
+            safe_file_key = validate_file_key(file_key)
             storage = get_storage()
 
-            if not storage.verify_object_exists(file_key):
+            if not storage.verify_object_exists(safe_file_key):
                 return Response(
                     {"error": "File not found"},
                     status=status.HTTP_404_NOT_FOUND,
                 )
 
             url = storage.generate_presigned_download_url(
-                file_key=file_key,
+                file_key=safe_file_key,
                 expires_in=3600,
             )
 

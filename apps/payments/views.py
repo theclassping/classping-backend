@@ -1,8 +1,10 @@
 from rest_framework import permissions, serializers, status
 from rest_framework import viewsets
+from rest_framework.exceptions import PermissionDenied
 from django.utils import timezone
 
 from apps.student_invoices.models import StudentInvoice
+from apps.users.permissions import RoleBasedAccessPermission
 
 from .models import Payment, PaymentProof
 from .serializers import PaymentDetailSerializer, PaymentProofSerializer, PaymentSerializer
@@ -22,7 +24,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
     serializer_class = PaymentSerializer
 
     permission_classes = [
-        permissions.IsAuthenticated
+        RoleBasedAccessPermission
     ]
 
     def get_queryset(self):
@@ -50,17 +52,20 @@ class PaymentViewSet(viewsets.ModelViewSet):
         invoice.save(update_fields=["status", "updated_at"])
 
     def perform_update(self, serializer):
-        payment = serializer.save()
-        invoice = payment.student_invoice
+        payment = serializer.instance
+        new_status = serializer.validated_data.get("status")
         staff = getattr(self.request.user, "staff", None)
 
-        if payment.status in [Payment.Status.COMPLETED, Payment.Status.REJECTED]:
-            if not staff:
-                raise permissions.PermissionDenied(
-                    "Only staff members can verify or reject payments."
-                )
+        if new_status in [Payment.Status.COMPLETED, Payment.Status.REJECTED] and not staff:
+            raise PermissionDenied(
+                "Only staff members can verify or reject payments."
+            )
 
-            payment.verified_by_id = staff.id
+        payment = serializer.save()
+        invoice = payment.student_invoice
+
+        if payment.status in [Payment.Status.COMPLETED, Payment.Status.REJECTED]:
+            payment.verified_by_id = staff.id if staff else payment.verified_by_id
             payment.verified_at = timezone.now()
 
             if payment.status == Payment.Status.COMPLETED:
@@ -70,7 +75,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
             else:
                 invoice.status = StudentInvoice.Status.UNPAID
 
-            payment.save()
+            payment.save(update_fields=["verified_by", "verified_at", "paid_at", "status", "updated_at"])
             invoice.save(update_fields=["status", "amount_paid", "updated_at"])
             return payment
 
@@ -93,7 +98,7 @@ class PaymentProofViewSet(viewsets.ModelViewSet):
         "payment__student_invoice",
     ).all()
     serializer_class = PaymentProofSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [RoleBasedAccessPermission]
 
     def perform_create(self, serializer):
         if not serializer.validated_data.get("payment"):

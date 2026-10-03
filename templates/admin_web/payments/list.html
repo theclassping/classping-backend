@@ -1,0 +1,51 @@
+{% extends "admin_web/base.html" %}
+
+{% block title %}Payments - ClassPing Admin{% endblock %}
+{% block page_title %}<h1>Payments</h1>{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div><h2>Payments</h2><p class="text-muted">Review submitted payments and their invoice status.</p></div>
+    <a href="{% url 'admin_web:payment_create' %}" class="btn btn-primary">Add Payment</a>
+</div>
+<form method="get" class="filter-bar">
+    <div class="form-group">
+        <label for="payment-search">Search</label>
+        <input id="payment-search" type="search" name="q" value="{{ search }}" placeholder="Invoice or student">
+    </div>
+    <div class="form-group">
+        <label for="payment-status">Status</label>
+        <select id="payment-status" name="status">
+            <option value="">All payments</option>
+            {% for value, label in statuses %}<option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+    </div>
+    <div class="form-group"><label>School</label><select name="school" data-searchable><option value="">All schools</option>{% for school in schools %}<option value="{{ school.pk }}" {% if school_id == school.pk|stringformat:'s' %}selected{% endif %}>{{ school.name }}</option>{% endfor %}</select></div>
+    <div class="form-group"><label>Branch</label><select name="branch" data-searchable><option value="">All branches</option>{% for branch in branches %}<option value="{{ branch.pk }}" {% if branch_id == branch.pk|stringformat:'s' %}selected{% endif %}>{{ branch.school.name }} - {{ branch.name }}</option>{% endfor %}</select></div>
+    <div class="form-group"><label>Class</label><select name="class_obj" data-searchable><option value="">All classes</option>{% for class_obj in classes %}<option value="{{ class_obj.pk }}" {% if class_id == class_obj.pk|stringformat:'s' %}selected{% endif %}>{{ class_obj.branch.school.name }} - {{ class_obj.branch.name }} - {{ class_obj.name }}</option>{% endfor %}</select></div>
+    <button class="btn" type="submit">Filter</button>
+</form>
+<div class="card">
+    {% if payments %}
+        <table class="data-table">
+            <thead><tr><th>Invoice</th><th>Student</th><th>Branch</th><th>Amount</th><th>Method</th><th>Submitted</th><th>Status</th><th>Action</th></tr></thead>
+            <tbody>
+                {% for payment in payments %}
+                    <tr>
+                        <td><strong>{{ payment.student_invoice.invoice_no }}</strong></td>
+                        <td>{{ payment.student_invoice.class_student.student.first_name }} {{ payment.student_invoice.class_student.student.last_name }}</td>
+                        <td>{{ payment.student_invoice.class_student.class_obj.branch.name }}</td>
+                        <td>{{ payment.amount }} {{ payment.student_invoice.currency }}</td>
+                        <td>{{ payment.get_payment_method_display }}</td>
+                        <td>{{ payment.submitted_at|date:"Y-m-d H:i" }}</td>
+                        <td><span class="status {% if payment.status == 'completed' %}status-active{% elif payment.status == 'rejected' %}status-inactive{% endif %}">{{ payment.get_status_display }}</span></td>
+                        <td><a class="btn btn-small" href="{% url 'admin_web:payment_detail' payment.pk %}">Review</a></td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <div class="empty-state"><h3>No payments found</h3><p>Submitted payments will appear here.</p></div>
+    {% endif %}
+</div>
+{% endblock %}

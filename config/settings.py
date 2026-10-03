@@ -173,7 +173,7 @@ REST_FRAMEWORK = {
         "apps.users.authentication.CustomJWTAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": (
-        "rest_framework.permissions.IsAuthenticated",
+        "apps.users.permissions.RoleBasedAccessPermission",
     ),
 }
 

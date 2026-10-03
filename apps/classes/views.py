@@ -1,6 +1,7 @@
 from rest_framework import permissions, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from apps.users.permissions import RoleBasedAccessPermission
 
 from .models import Class, ClassTeacher, ClassStudent
 from .serializers import ClassSerializer, ClassDetailSerializer, ClassTeacherSerializer, ClassStudentSerializer
@@ -18,7 +19,7 @@ class ClassViewSet(viewsets.ModelViewSet):
     serializer_class = ClassSerializer
 
     permission_classes = [
-        permissions.IsAuthenticated
+        RoleBasedAccessPermission
     ]
     
     def get_serializer_class(self):
@@ -78,7 +79,7 @@ class ClassTeacherViewSet(viewsets.ModelViewSet):
     serializer_class = ClassTeacherSerializer
 
     permission_classes = [
-        permissions.IsAuthenticated
+        RoleBasedAccessPermission
     ]
 
 class ClassStudentViewSet(viewsets.ModelViewSet):
@@ -90,5 +91,5 @@ class ClassStudentViewSet(viewsets.ModelViewSet):
     serializer_class = ClassStudentSerializer
 
     permission_classes = [
-        permissions.IsAuthenticated
+        RoleBasedAccessPermission
     ]

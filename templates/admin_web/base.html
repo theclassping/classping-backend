@@ -54,12 +54,29 @@
                 >
                     Users
                 </a>
+                {% if request.user.is_superuser %}
+                    <a href="{% url 'admin_web:role_permissions' %}">
+                        Role Permissions
+                    </a>
+                {% endif %}
                 <a
                     href="{% url 'admin_web:staff_list' %}"
                     class="sidebar-link"
                 >
                     Staff
                 </a>
+                <a href="{% url 'admin_web:student_list' %}">Students</a>
+                <a href="{% url 'admin_web:guardian_list' %}">Guardians</a>
+                <a href="{% url 'admin_web:activity_list' %}">Activities</a>
+                <a href="{% url 'admin_web:payment_list' %}">Payments</a>
+                <a href="{% url 'admin_web:student_invoice_list' %}">Student Invoices</a>
+                <details class="sidebar-group" {% if request.resolver_match.url_name == 'settings_list' or request.resolver_match.url_name == 'settings_create' or request.resolver_match.url_name == 'settings_edit' %}open{% endif %}>
+                    <summary>Settings</summary>
+                    <a href="{% url 'admin_web:settings_list' 'fee-types' %}">Fee Types</a>
+                    <a href="{% url 'admin_web:settings_list' 'locations' %}">Locations</a>
+                    <a href="{% url 'admin_web:settings_list' 'academic-years' %}">Academic Years</a>
+                    <a href="{% url 'admin_web:settings_list' 'score-settings' %}">Score Settings</a>
+                </details>
             </nav>
         </aside>
 
@@ -92,6 +109,14 @@
 
             <!-- Page content -->
             <section class="content">
+
+                {% if messages %}
+                    <div class="messages" aria-live="polite">
+                        {% for message in messages %}
+                            <p class="alert {% if message.tags == 'error' %}alert-error{% else %}alert-success{% endif %}">{{ message }}</p>
+                        {% endfor %}
+                    </div>
+                {% endif %}
 
                 {% block content %}
                 {% endblock %}

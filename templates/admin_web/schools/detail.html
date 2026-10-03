@@ -24,6 +24,9 @@
 
     <div>
       <a href="{% url 'admin_web:school_edit' school.pk %}" class="btn btn-primary">Edit School</a>
+      <form method="post" action="{% if school.is_active %}{% url 'admin_web:school_deactivate' school.pk %}{% else %}{% url 'admin_web:school_activate' school.pk %}{% endif %}" style="display:inline">
+        {% csrf_token %}<button class="btn" type="submit">{% if school.is_active %}Deactivate{% else %}Activate{% endif %}</button>
+      </form>
     </div>
   </div>
 
@@ -62,6 +65,11 @@
       </div>
 
       <div class="detail-item">
+        <span class="detail-label">School Image</span>
+        {% if school.image_url %}<a href="{{ school.image_url }}" target="_blank" rel="noopener">View image</a>{% else %}<span>-</span>{% endif %}
+      </div>
+
+      <div class="detail-item">
         <span class="detail-label">Created</span>
 
         <span>{{ school.created_at|date:'d M Y H:i' }}</span>
@@ -89,13 +97,15 @@
       <a href="{% url 'admin_web:branch_create' school.pk %}" class="btn btn-primary">+ Add Branch</a>
     </div>
 
-    {% if school.branches.all %}
+    {% if branch_rows %}
       <table class="data-table">
         <thead>
           <tr>
             <th>Name</th>
 
             <th>Code</th>
+
+            <th>Address / Location</th>
 
             <th>Phone</th>
 
@@ -107,13 +117,19 @@
         </thead>
 
         <tbody>
-          {% for branch in school.branches.all %}
+          {% for row in branch_rows %}
+            {% with branch=row.branch %}
             <tr>
               <td>
                 <strong>{{ branch.name }}</strong>
               </td>
 
               <td>{{ branch.code }}</td>
+
+              <td>
+                {{ branch.address|default:'-'|linebreaksbr }}
+                {% if row.location_path %}<br><small class="text-muted">{{ row.location_path }}</small>{% endif %}
+              </td>
 
               <td>{{ branch.phone|default:'-' }}</td>
 
@@ -127,6 +143,7 @@
                 {% endif %}
               </td>
               <td>
+                <a href="{% url 'admin_web:branch_detail' school.pk branch.pk %}" class="btn btn-small">Review</a>
                 <a href="{% url 'admin_web:branch_edit' school.pk branch.pk %}" class="btn btn-secondary btn-sm">Edit</a>
                 {% if branch.is_active %}
                 <form
@@ -144,12 +161,17 @@
                     Deactivate
                     </button>
                 </form>
+                {% else %}
+                <form method="post" action="{% url 'admin_web:branch_activate' school.pk branch.pk %}" style="display:inline">
+                  {% csrf_token %}<button type="submit" class="btn">Activate</button>
+                </form>
                 {% endif %}
               </td>
             </tr>
+            {% endwith %}
           {% empty %}
             <tr>
-              <td colspan="5">No branches found.</td>
+              <td colspan="7">No branches found.</td>
             </tr>
           {% endfor %}
         </tbody>
@@ -160,6 +182,45 @@
 
         <p>This school does not have any branches yet.</p>
       </div>
+    {% endif %}
+  </div>
+
+  <div class="card section-card">
+    <div class="section-header">
+      <div>
+        <h3>Classes</h3>
+        <p class="text-muted">Classes across this school's branches.</p>
+      </div>
+      <a href="{% url 'admin_web:class_create' school.pk %}" class="btn btn-primary">Add Class</a>
+    </div>
+    {% if classes %}
+      <table class="data-table">
+        <thead><tr><th>Class</th><th>Branch</th><th>Academic year</th><th>Students</th><th>Teachers</th><th>Action</th></tr></thead>
+        <tbody>
+          {% for class_obj in classes %}
+            <tr>
+              <td><strong>{{ class_obj.name }}</strong></td>
+              <td>{{ class_obj.branch.name }}</td>
+              <td>{{ class_obj.academic_year.name }}</td>
+              <td>{{ class_obj.student_count }}</td>
+              <td>
+                {% for assignment in class_obj.class_teachers.all %}
+                  {{ assignment.staff.first_name }} {{ assignment.staff.last_name }}{% if not forloop.last %}, {% endif %}
+                {% empty %}-{% endfor %}
+              </td>
+              <td class="inline-actions">
+                <a href="{% url 'admin_web:class_detail' class_obj.pk %}" class="btn btn-small">Review</a>
+                <a href="{% url 'admin_web:class_edit' school.pk class_obj.pk %}" class="btn btn-small">Edit</a>
+                {% if not class_obj.class_students.exists and not class_obj.activities.exists and not class_obj.assessments.exists and not class_obj.fee_type_classes.exists %}
+                  <form method="post" action="{% url 'admin_web:class_delete' school.pk class_obj.pk %}" onsubmit="return confirm('Delete this class?');">{% csrf_token %}<button class="btn btn-small danger-button" type="submit">Delete</button></form>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="empty-state"><h3>No classes yet</h3><p>Classes appear here after they are assigned to a branch and academic year.</p></div>
     {% endif %}
   </div>
 {% endblock %}

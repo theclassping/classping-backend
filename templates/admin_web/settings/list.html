@@ -1,0 +1,46 @@
+{% extends "admin_web/base.html" %}
+
+{% block title %}{{ module.title }} - ClassPing Admin{% endblock %}
+{% block page_title %}<h1>Settings / {{ module.title }}</h1>{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div><h2>{{ module.title }}</h2><p class="text-muted">Configure {{ module.title|lower }} for school branches.</p></div>
+    <a href="{% url 'admin_web:settings_create' section %}" class="btn btn-primary">Add {{ module.title|slice:':-1' }}</a>
+</div>
+<form method="get" class="filter-bar">
+    <div class="form-group"><label>Search</label><input type="search" name="q" value="{{ search }}" placeholder="Name, code, or description"></div>
+    {% if section == 'fee-types' or section == 'academic-years' or section == 'score-settings' %}<div class="form-group"><label>Branch</label><select name="branch" data-searchable><option value="">All branches</option>{% for branch in branches %}<option value="{{ branch.pk }}" {% if branch_id == branch.pk|stringformat:'s' %}selected{% endif %}>{{ branch.school.name }} - {{ branch.name }}</option>{% endfor %}</select></div>{% endif %}
+    {% if section == 'fee-types' %}<div class="form-group"><label>Status</label><select name="status" data-searchable><option value="">All statuses</option><option value="true" {% if status == 'true' %}selected{% endif %}>Active</option><option value="false" {% if status == 'false' %}selected{% endif %}>Inactive</option></select></div>{% endif %}
+    {% if section == 'academic-years' %}<div class="form-group"><label>Current</label><select name="status" data-searchable><option value="">All years</option><option value="true" {% if status == 'true' %}selected{% endif %}>Current</option><option value="false" {% if status == 'false' %}selected{% endif %}>Not current</option></select></div>{% endif %}
+    {% if section == 'score-settings' %}<div class="form-group"><label>Score type</label><select name="type" data-searchable><option value="">All types</option>{% for value,label in score_types %}<option value="{{ value }}" {% if option_type == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>{% endif %}
+    {% if section == 'locations' %}<div class="form-group"><label>Location type</label><select name="type" data-searchable><option value="">All types</option>{% for value,label in location_types %}<option value="{{ value }}" {% if option_type == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div><div class="form-group"><label>Parent</label><select name="parent" data-searchable><option value="">All parents</option>{% for location in locations %}<option value="{{ location.pk }}" {% if parent_id == location.pk|stringformat:'s' %}selected{% endif %}>{{ location.name }}</option>{% endfor %}</select></div>{% endif %}
+    <button class="btn" type="submit">Filter</button>
+</form>
+<div class="card">
+    {% if rows %}
+        <table class="data-table">
+            <thead><tr><th>Name</th><th>Details</th><th>Branch / Parent</th><th>Status / Values</th><th>Action</th></tr></thead>
+            <tbody>
+                {% for row in rows %}
+                    <tr>
+                        <td><strong>{{ row.primary }}</strong></td>
+                        <td>{{ row.secondary }}</td>
+                        <td>{{ row.tertiary }}</td>
+                        <td>{{ row.status_label }}</td>
+                        <td class="inline-actions">
+                            <a class="btn btn-small" href="{% url 'admin_web:settings_detail' section row.object.pk %}">Review</a>
+                            <a class="btn btn-small" href="{% url 'admin_web:settings_edit' section row.object.pk %}">Edit</a>
+                            <form method="post" action="{% url 'admin_web:settings_delete' section row.object.pk %}" onsubmit="return confirm('Delete or deactivate this setting?');">
+                                {% csrf_token %}<button class="btn btn-small danger-button" type="submit">{% if section == 'fee-types' %}Deactivate{% else %}Delete{% endif %}</button>
+                            </form>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <div class="empty-state"><h3>No {{ module.title|lower }} yet</h3><p>Add the first record for this settings module.</p></div>
+    {% endif %}
+</div>
+{% endblock %}

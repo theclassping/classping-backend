@@ -1,0 +1,55 @@
+{% extends "admin_web/base.html" %}
+
+{% block title %}Students - ClassPing Admin{% endblock %}
+{% block page_title %}<h1>Students</h1>{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div><h2>Students</h2><p class="text-muted">Student directory.</p></div>
+    <a href="{% url 'admin_web:student_create' %}" class="btn btn-primary">Add Student</a>
+</div>
+<form method="get" class="filter-bar">
+    <div class="form-group"><label for="student-search">Search</label><input id="student-search" type="search" name="q" value="{{ search }}" placeholder="Student name"></div>
+    <div class="form-group"><label>School</label><select name="school" data-searchable><option value="">All schools</option>{% for school in schools %}<option value="{{ school.pk }}" {% if school_id == school.pk|stringformat:'s' %}selected{% endif %}>{{ school.name }}</option>{% endfor %}</select></div>
+    <div class="form-group"><label>Branch</label><select name="branch" data-searchable><option value="">All branches</option>{% for branch in branches %}<option value="{{ branch.pk }}" {% if branch_id == branch.pk|stringformat:'s' %}selected{% endif %}>{{ branch.school.name }} - {{ branch.name }}</option>{% endfor %}</select></div>
+    <div class="form-group"><label>Class</label><select name="class_obj" data-searchable><option value="">All classes</option>{% for class_obj in classes %}<option value="{{ class_obj.pk }}" {% if class_id == class_obj.pk|stringformat:'s' %}selected{% endif %}>{{ class_obj.branch.school.name }} - {{ class_obj.branch.name }} - {{ class_obj.name }}</option>{% endfor %}</select></div>
+    <div class="form-group"><label>Status</label><select name="status" data-searchable><option value="">All statuses</option>{% for value,label in statuses %}<option value="{{ value }}" {% if status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+    <button class="btn" type="submit">Filter</button>
+</form>
+<div class="card">
+    {% if page_obj.object_list %}
+        <table class="data-table">
+            <thead><tr><th>Student</th><th>School / Branch</th><th>Class</th><th>Gender</th><th>Date of birth</th><th>Enrolled</th><th>Status</th><th>Guardians</th><th>Actions</th></tr></thead>
+            <tbody>
+                {% for student in page_obj %}
+                    <tr>
+                        <td><strong>{{ student.first_name }} {% if student.middle_name %}{{ student.middle_name }} {% endif %}{{ student.last_name }}</strong></td>
+                        {% with enrollment=student.current_enrollments.0 %}
+                        <td>{% if enrollment %}{{ enrollment.class_obj.branch.school.name }} / {{ enrollment.class_obj.branch.name }}{% else %}-{% endif %}</td>
+                        <td>{% if enrollment %}{{ enrollment.class_obj.name }}{% else %}-{% endif %}</td>
+                        {% endwith %}
+                        <td>{{ student.get_gender_display }}</td>
+                        <td>{{ student.date_of_birth|date:"d M Y" }}</td>
+                        <td>{{ student.enroll_date|date:"d M Y" }}</td>
+                        <td>{{ student.status|title }}</td>
+                        <td>{{ student.student_guardians.all|length }}</td>
+                        <td class="inline-actions">
+                            <a class="btn btn-small" href="{% url 'admin_web:student_detail' student.pk %}">Review</a>
+                            <a class="btn btn-small" href="{% url 'admin_web:student_edit' student.pk %}">Edit</a>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <div class="empty-state"><h3>No students found</h3><p>Try another search term.</p></div>
+    {% endif %}
+</div>
+{% if page_obj.has_other_pages %}
+    <nav class="pagination" aria-label="Student pages">
+        {% if page_obj.has_previous %}<a class="btn btn-small" href="?q={{ search|urlencode }}&page={{ page_obj.previous_page_number }}">Previous</a>{% endif %}
+        <span>Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+        {% if page_obj.has_next %}<a class="btn btn-small" href="?q={{ search|urlencode }}&page={{ page_obj.next_page_number }}">Next</a>{% endif %}
+    </nav>
+{% endif %}
+{% endblock %}
