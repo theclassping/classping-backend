@@ -87,11 +87,20 @@ class ClassTeacherViewSet(viewsets.ModelViewSet):
         queryset = super().get_queryset()
         class_id = self.request.query_params.get("class_id")
         staff_id = self.request.query_params.get("staff_id")
+        is_active = self.request.query_params.get("is_active")
         search = self.request.query_params.get("search") or self.request.query_params.get("q")
+
+        # ClassTeacher assignments are only valid for teaching staff.
+        queryset = queryset.filter(staff__staff_type="teacher")
+
         if class_id:
             queryset = queryset.filter(class_obj_id=class_id)
         if staff_id:
             queryset = queryset.filter(staff_id=staff_id)
+        if is_active is not None:
+            queryset = queryset.filter(
+                staff__is_active=is_active.lower() == "true"
+            )
         if search:
             queryset = queryset.filter(Q(class_obj__name__icontains=search) | Q(staff__first_name__icontains=search) | Q(staff__last_name__icontains=search))
         return queryset
