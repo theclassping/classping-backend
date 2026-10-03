@@ -10,6 +10,9 @@ from apps.users.permissions import RoleBasedAccessPermission
 from .models import Payment, PaymentProof
 from .serializers import PaymentDetailSerializer, PaymentProofSerializer, PaymentSerializer
 
+# Temporary switch: set to False when staff-only verification is re-enabled.
+SKIP_PAYMENT_VERIFICATION_PERMISSION = True
+
 
 class PaymentViewSet(viewsets.ModelViewSet):
 
@@ -57,13 +60,18 @@ class PaymentViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         payment = serializer.instance
-        # new_status = serializer.validated_data.get("status")
+        new_status = serializer.validated_data.get("status")
         staff = getattr(self.request.user, "staff", None)
 
-        # if new_status in [Payment.Status.COMPLETED, Payment.Status.REJECTED] and not staff:
-        #     raise PermissionDenied(
-        #         "Only staff members can verify or reject payments."
-        #     )
+        if not SKIP_PAYMENT_VERIFICATION_PERMISSION:
+            if (
+                new_status in [Payment.Status.COMPLETED, Payment.Status.REJECTED]
+                and not staff
+                and not self.request.user.is_superuser
+            ):
+                raise PermissionDenied(
+                    "Only staff members can verify or reject payments."
+                )
 
         payment = serializer.save()
         invoice = payment.student_invoice

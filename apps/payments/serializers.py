@@ -190,9 +190,12 @@ class PaymentSerializer(serializers.ModelSerializer):
             Payment.Status.COMPLETED,
             Payment.Status.REJECTED,
         ):
+            # Staff verification is temporarily bypassed by the view. Keep
+            # this safe for users (such as admins) without a Staff profile.
+            staff = getattr(self.context["request"].user, "staff", None)
             instance.status = new_status
             instance.verified_at = timezone.now()
-            instance.verified_by = self.context["request"].user.staff
+            instance.verified_by = staff
 
             if new_status == Payment.Status.REJECTED:
                 instance.rejection_reason = validated_data.get(
