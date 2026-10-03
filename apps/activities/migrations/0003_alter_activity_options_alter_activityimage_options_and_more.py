@@ -4,6 +4,16 @@ from django.db import migrations, models
 import django.utils.timezone
 
 
+def create_activity_join_tables(apps, schema_editor):
+    """Create tables moved from the removed activity apps on fresh databases."""
+    existing_tables = set(schema_editor.connection.introspection.table_names())
+
+    for model_name in ("ActivityImage", "ActivityStudent"):
+        model = apps.get_model("activities", model_name)
+        if model._meta.db_table not in existing_tables:
+            schema_editor.create_model(model)
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -12,6 +22,10 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        migrations.RunPython(
+            create_activity_join_tables,
+            migrations.RunPython.noop,
+        ),
         migrations.AlterModelOptions(
             name='activity',
             options={'ordering': ['-activity_date', '-created_at']},

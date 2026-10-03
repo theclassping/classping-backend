@@ -3,6 +3,27 @@
 from django.db import migrations, models
 
 
+def create_missing_legacy_tables(apps, schema_editor):
+    """Create legacy tables missing from databases upgraded from old app splits.
+
+    The original split apps owned score and assessment join tables. Their
+    replacement migrations initially recorded only Django state, so a database
+    without the legacy tables must be repaired before adding foreign keys or
+    altering ``AssessmentImage.image_data``.
+    """
+    existing_tables = set(schema_editor.connection.introspection.table_names())
+
+    for app_label, model_name in (
+        ("score_settings", "NumericScore"),
+        ("score_settings", "LevelScore"),
+        ("assessments", "StudentAssessment"),
+        ("assessments", "AssessmentImage"),
+    ):
+        model = apps.get_model(app_label, model_name)
+        if model._meta.db_table not in existing_tables:
+            schema_editor.create_model(model)
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -10,6 +31,10 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        migrations.RunPython(
+            create_missing_legacy_tables,
+            migrations.RunPython.noop,
+        ),
         migrations.RemoveField(
             model_name='assessmentimage',
             name='image_data',
