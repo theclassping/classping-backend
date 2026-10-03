@@ -1,4 +1,5 @@
 from rest_framework import permissions, viewsets
+from django.db.models import Q
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from apps.users.permissions import RoleBasedAccessPermission
@@ -82,6 +83,19 @@ class ClassTeacherViewSet(viewsets.ModelViewSet):
         RoleBasedAccessPermission
     ]
 
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        class_id = self.request.query_params.get("class_id")
+        staff_id = self.request.query_params.get("staff_id")
+        search = self.request.query_params.get("search") or self.request.query_params.get("q")
+        if class_id:
+            queryset = queryset.filter(class_obj_id=class_id)
+        if staff_id:
+            queryset = queryset.filter(staff_id=staff_id)
+        if search:
+            queryset = queryset.filter(Q(class_obj__name__icontains=search) | Q(staff__first_name__icontains=search) | Q(staff__last_name__icontains=search))
+        return queryset
+
 class ClassStudentViewSet(viewsets.ModelViewSet):
     queryset = ClassStudent.objects.select_related(
         "class_obj",
@@ -93,3 +107,13 @@ class ClassStudentViewSet(viewsets.ModelViewSet):
     permission_classes = [
         RoleBasedAccessPermission
     ]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        class_id = self.request.query_params.get("class_id")
+        student_id = self.request.query_params.get("student_id")
+        if class_id:
+            queryset = queryset.filter(class_obj_id=class_id)
+        if student_id:
+            queryset = queryset.filter(student_id=student_id)
+        return queryset

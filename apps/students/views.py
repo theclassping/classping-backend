@@ -1,4 +1,5 @@
 from rest_framework import viewsets
+from django.db.models import Q
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -22,7 +23,14 @@ class StudentViewSet(viewsets.ModelViewSet):
                 "class_students__class_obj",
             ).order_by("-id")
 
-        return Student.objects.order_by("-id")
+        queryset = Student.objects.order_by("-id")
+        search = self.request.query_params.get("search") or self.request.query_params.get("q")
+        status = self.request.query_params.get("status")
+        if search:
+            queryset = queryset.filter(Q(first_name__icontains=search) | Q(middle_name__icontains=search) | Q(last_name__icontains=search) | Q(nickname__icontains=search))
+        if status:
+            queryset = queryset.filter(status=status)
+        return queryset
 
     def get_serializer_class(self):
         if self.action == "retrieve":

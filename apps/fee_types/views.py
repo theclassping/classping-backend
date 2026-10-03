@@ -2,6 +2,7 @@ from rest_framework import permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework import viewsets
+from django.db.models import Q
 from apps.users.permissions import RoleBasedAccessPermission
 
 from apps.student_invoices.services import generate_manual_invoices
@@ -27,6 +28,7 @@ class FeeTypeViewSet(viewsets.ModelViewSet):
 
         branch_id = self.request.query_params.get("branch_id")
         is_active = self.request.query_params.get("is_active")
+        search = self.request.query_params.get("search") or self.request.query_params.get("q")
 
         if branch_id:
             queryset = queryset.filter(
@@ -37,6 +39,8 @@ class FeeTypeViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(
                 is_active=is_active.lower() == "true"
             )
+        if search:
+            queryset = queryset.filter(Q(name__icontains=search) | Q(description__icontains=search))
 
         return queryset
 

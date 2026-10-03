@@ -2,6 +2,7 @@ from rest_framework import permissions, serializers, status
 from rest_framework import viewsets
 from rest_framework.exceptions import PermissionDenied
 from django.utils import timezone
+from django.db.models import Q
 
 from apps.student_invoices.models import StudentInvoice
 from apps.users.permissions import RoleBasedAccessPermission
@@ -32,6 +33,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
 
         invoice_id = self.request.query_params.get("invoice_id")
         status_param = self.request.query_params.get("status")
+        search = self.request.query_params.get("search") or self.request.query_params.get("q")
 
         if invoice_id:
             queryset = queryset.filter(
@@ -42,6 +44,8 @@ class PaymentViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(
                 status=status_param
             )
+        if search:
+            queryset = queryset.filter(Q(student_invoice__invoice_no__icontains=search) | Q(student_invoice__class_student__student__first_name__icontains=search) | Q(student_invoice__class_student__student__last_name__icontains=search))
 
         return queryset
 
@@ -99,6 +103,13 @@ class PaymentProofViewSet(viewsets.ModelViewSet):
     ).all()
     serializer_class = PaymentProofSerializer
     permission_classes = [RoleBasedAccessPermission]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        payment_id = self.request.query_params.get("payment_id")
+        if payment_id:
+            queryset = queryset.filter(payment_id=payment_id)
+        return queryset
 
     def perform_create(self, serializer):
         if not serializer.validated_data.get("payment"):

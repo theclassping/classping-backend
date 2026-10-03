@@ -81,6 +81,17 @@ class ClassRelationshipApiTests(TestCase):
         self.assertEqual(listing.status_code, 200)
         self.assertEqual(len(listing.data), 1)
 
+    def test_class_teacher_index_filters_by_class_id(self):
+        self.client.post(
+            "/api/class-teachers/",
+            {"class_id": self.class_obj.id, "staff_id": self.staff.id},
+            format="json",
+        )
+        response = self.client.get(f"/api/class-teachers/?class_id={self.class_obj.id}")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["class_id"], self.class_obj.id)
+
     def test_assign_student_and_list_class_students(self):
         response = self.client.post(
             "/api/class-students/",
