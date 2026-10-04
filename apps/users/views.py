@@ -22,12 +22,14 @@ from .serializers import (
     ResetPasswordSerializer,
     ChangePasswordSerializer,
 )
+from .permissions import RoleBasedAccessPermission
 
 User = get_user_model()
 
 
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all().order_by("-created_at")
+    permission_classes = [RoleBasedAccessPermission]
 
     def get_queryset(self):
         queryset = super().get_queryset()

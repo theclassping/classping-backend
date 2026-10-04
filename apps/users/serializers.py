@@ -2,9 +2,50 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
 from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 
 User = get_user_model()
+
+
+class LoginTokenSerializer(TokenObtainPairSerializer):
+    """JWT response serializer with the authenticated user's details."""
+
+    user = serializers.SerializerMethodField()
+
+    def get_user(self, obj):
+        user = self.user
+        data = UserSerializer(user).data
+
+        if user.role == User.Role.PARENT:
+            guardian_students = []
+            guardian = getattr(user, "guardian", None)
+            if guardian:
+                relations = guardian.student_guardians.select_related("student").all()
+                for relation in relations:
+                    student = relation.student
+                    guardian_students.append({
+                        "id": relation.id,
+                        "student_id": student.id,
+                        "first_name": student.first_name,
+                        "middle_name": student.middle_name,
+                        "last_name": student.last_name,
+                        "nickname": student.nickname,
+                        "date_of_birth": student.date_of_birth,
+                        "image_data": student.image_data,
+                        "image_url": student.image_url,
+                        "gender": student.gender,
+                        "address": student.address,
+                        "location_id": student.location_id,
+                        "enroll_date": student.enroll_date,
+                        "status": student.status,
+                        "relationship": relation.relationship,
+                        "is_primary": relation.is_primary,
+                    })
+
+            data["guardian_students"] = guardian_students
+
+        return data
 
 
 class UserSerializer(serializers.ModelSerializer):

@@ -8,9 +8,14 @@ from drf_spectacular.views import (
     SpectacularRedocView,
 )
 from rest_framework_simplejwt.views import (
-    TokenObtainPairView,
     TokenRefreshView,
 )
+from rest_framework_simplejwt.views import TokenObtainPairView
+from apps.users.serializers import LoginTokenSerializer
+
+
+class LoginTokenView(TokenObtainPairView):
+    serializer_class = LoginTokenSerializer
 from apps.users.views import (
     LogoutView,
     ForgotPasswordView,
@@ -39,7 +44,7 @@ urlpatterns = [
 
     path(
         "api/auth/login/",
-        TokenObtainPairView.as_view(),
+        LoginTokenView.as_view(),
         name="token_obtain_pair",
     ),
 
