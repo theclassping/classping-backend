@@ -33,4 +33,40 @@ class StaffCrudApiTests(TestCase):
         response = self.client.post("/api/staffs/", payload, format="json")
         self.assertEqual(response.status_code, 400)
 
+    def test_staff_creation_generates_linked_user(self):
+        payload = {
+            "branch": self.branch.id,
+            "first_name": "New",
+            "last_name": "Teacher",
+            "email": "new-teacher@example.com",
+            "staff_type": "teacher",
+            "hire_date": "2026-07-01",
+            "qualification": "Education",
+        }
+
+        response = self.client.post("/api/staffs/", payload, format="json")
+
+        self.assertEqual(response.status_code, 201)
+        staff = Staff.objects.get(pk=response.data["id"])
+        self.assertIsNotNone(staff.user)
+        self.assertEqual(staff.user.email, payload["email"])
+        self.assertEqual(staff.user.role, User.Role.TEACHER)
+        self.assertTrue(staff.user.has_usable_password())
+
+    def test_staff_creation_rejects_existing_user_email_without_user_id(self):
+        payload = {
+            "branch": self.branch.id,
+            "first_name": "Existing",
+            "last_name": "Account",
+            "email": self.staff_user.email,
+            "staff_type": "officer",
+            "hire_date": "2026-07-01",
+            "qualification": "Operations",
+        }
+
+        response = self.client.post("/api/staffs/", payload, format="json")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("email", response.data)
+
 # Create your tests here.

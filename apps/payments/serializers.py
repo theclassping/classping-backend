@@ -3,6 +3,7 @@ from django.utils import timezone
 
 from apps.student_invoices.models import StudentInvoice
 from apps.uploads.services.media import MediaService
+from apps.uploads.storage import get_storage
 from apps.mailer.services import Mailer
 from django.conf import settings
 from django.utils import timezone
@@ -11,6 +12,8 @@ from .models import Payment, PaymentProof
 
 
 class PaymentProofSerializer(serializers.ModelSerializer):
+
+    image_url = serializers.SerializerMethodField()
 
     payment_id = serializers.PrimaryKeyRelatedField(
         source="payment",
@@ -24,12 +27,30 @@ class PaymentProofSerializer(serializers.ModelSerializer):
             "id",
             "payment_id",
             "image_data",
+            "image_url",
             "uploaded_at",
         ]
         read_only_fields = [
             "id",
             "uploaded_at",
+            "image_url",
         ]
+
+    def get_image_url(self, obj):
+        if not obj.image_data:
+            return None
+
+        object_key = obj.image_data.get("object_key")
+        if not object_key:
+            return None
+
+        try:
+            return get_storage().generate_presigned_download_url(
+                file_key=object_key,
+                expires_in=3600,
+            )
+        except Exception:
+            return None
 
     def validate_image_data(self, value):
         if isinstance(value, str):
@@ -164,7 +185,7 @@ class PaymentSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         proofs_data = validated_data.pop("proofs", [])
-        payment = Payment.objects.create(**{**validated_data, "paid_at": timezone.now()})
+        payment = Payment.objects.create(**validated_data)
         PaymentProof.objects.bulk_create(
             [
                 PaymentProof(

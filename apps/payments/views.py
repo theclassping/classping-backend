@@ -3,6 +3,7 @@ from rest_framework import viewsets
 from rest_framework.exceptions import PermissionDenied
 from django.utils import timezone
 from django.db.models import Q
+from django.db import transaction
 
 from apps.student_invoices.models import StudentInvoice
 from apps.users.permissions import RoleBasedAccessPermission
@@ -53,10 +54,18 @@ class PaymentViewSet(viewsets.ModelViewSet):
         return queryset
 
     def perform_create(self, serializer):
-        payment = serializer.save()
-        invoice = payment.student_invoice
-        invoice.status = StudentInvoice.Status.PAYMENT_SUBMITTED
-        invoice.save(update_fields=["status", "updated_at"])
+        requested_status = serializer.validated_data.get(
+            "status", Payment.Status.SUBMITTED
+        )
+        staff = getattr(self.request.user, "staff", None)
+        if requested_status in [Payment.Status.COMPLETED, Payment.Status.REJECTED] and not staff:
+            raise PermissionDenied(
+                "Only staff members can verify or reject payments."
+            )
+
+        with transaction.atomic():
+            payment = serializer.save()
+            self._sync_payment_invoice(payment, staff)
 
     def perform_update(self, serializer):
         payment = serializer.instance
@@ -73,29 +82,50 @@ class PaymentViewSet(viewsets.ModelViewSet):
                     "Only staff members can verify or reject payments."
                 )
 
-        payment = serializer.save()
-        invoice = payment.student_invoice
-
-        if payment.status in [Payment.Status.COMPLETED, Payment.Status.REJECTED]:
-            payment.verified_by_id = staff.id if staff else payment.verified_by_id
-            payment.verified_at = timezone.now()
-
-            if payment.status == Payment.Status.COMPLETED:
-                payment.paid_at = timezone.now()
-                invoice.status = StudentInvoice.Status.PAID
-                invoice.amount_paid = payment.amount
-            else:
-                invoice.status = StudentInvoice.Status.UNPAID
-
-            payment.save(update_fields=["verified_by", "verified_at", "paid_at", "status", "updated_at"])
-            invoice.save(update_fields=["status", "amount_paid", "updated_at"])
-            return payment
-
-        if payment.status == Payment.Status.SUBMITTED and invoice.status != StudentInvoice.Status.PAYMENT_SUBMITTED:
-            invoice.status = StudentInvoice.Status.PAYMENT_SUBMITTED
-            invoice.save(update_fields=["status", "updated_at"])
-
+        with transaction.atomic():
+            payment = serializer.save()
+            self._sync_payment_invoice(payment, staff)
         return payment
+
+    def _sync_payment_invoice(self, payment, staff):
+        """Keep payment verification fields and invoice billing fields aligned."""
+        invoice = payment.student_invoice
+        payment_update_fields = ["updated_at"]
+        invoice_update_fields = ["status", "amount_paid", "updated_at"]
+
+        if payment.status == Payment.Status.COMPLETED:
+            now = timezone.now()
+            payment.paid_at = payment.paid_at or now
+            payment.verified_at = payment.verified_at or now
+            payment.verified_by = staff or payment.verified_by
+            payment.rejection_reason = None
+            invoice.status = StudentInvoice.Status.PAID
+            invoice.amount_paid = payment.amount
+            payment_update_fields.extend([
+                "paid_at", "verified_at", "verified_by", "rejection_reason"
+            ])
+        elif payment.status == Payment.Status.REJECTED:
+            payment.paid_at = None
+            payment.verified_at = payment.verified_at or timezone.now()
+            payment.verified_by = staff or payment.verified_by
+            invoice.status = StudentInvoice.Status.UNPAID
+            invoice.amount_paid = 0
+            payment_update_fields.extend([
+                "paid_at", "verified_at", "verified_by"
+            ])
+        else:
+            payment.paid_at = None
+            payment.verified_at = None
+            payment.verified_by = None
+            payment.rejection_reason = None
+            invoice.status = StudentInvoice.Status.PAYMENT_SUBMITTED
+            invoice.amount_paid = 0
+            payment_update_fields.extend([
+                "paid_at", "verified_at", "verified_by", "rejection_reason"
+            ])
+
+        payment.save(update_fields=payment_update_fields)
+        invoice.save(update_fields=invoice_update_fields)
 
     def get_serializer_class(self):
         if self.action == "retrieve":

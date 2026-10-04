@@ -2,10 +2,24 @@ from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
 from apps.uploads.services.media import MediaService
+from apps.students.models import Student, StudentGuardian
 from apps.users.managers import generate_temporary_password
 from .models import Guardian
 
 User = get_user_model()
+
+
+class GuardianStudentRelationSerializer(serializers.ModelSerializer):
+    id = serializers.IntegerField(required=False)
+
+    student_id = serializers.PrimaryKeyRelatedField(
+        source="student",
+        queryset=Student.objects.all(),
+    )
+
+    class Meta:
+        model = StudentGuardian
+        fields = ["id", "student_id", "relationship", "is_primary"]
 
 
 class GuardianSerializer(serializers.ModelSerializer):
@@ -15,6 +29,7 @@ class GuardianSerializer(serializers.ModelSerializer):
     )
     
     image_url = serializers.SerializerMethodField()
+    student_guardians = GuardianStudentRelationSerializer(many=True, required=False)
 
     class Meta:
         model = Guardian
@@ -27,6 +42,7 @@ class GuardianSerializer(serializers.ModelSerializer):
             "email",
             "image_data",
             "image_url",
+            "student_guardians",
             "created_at",
             "updated_at",
         ]
@@ -66,6 +82,41 @@ class GuardianSerializer(serializers.ModelSerializer):
                     })
         
         return attrs
+
+    def create(self, validated_data):
+        relations = validated_data.pop("student_guardians", [])
+        guardian = super().create(validated_data)
+        self._sync_student_guardians(guardian, relations)
+        return guardian
+
+    def update(self, instance, validated_data):
+        relations = validated_data.pop("student_guardians", None)
+        guardian = super().update(instance, validated_data)
+        if relations is not None:
+            self._sync_student_guardians(guardian, relations)
+        return guardian
+
+    def _sync_student_guardians(self, guardian, relations):
+        for relation_data in relations:
+            relation_id = relation_data.pop("id", None)
+            student = relation_data.pop("student")
+            relation = guardian.student_guardians.filter(
+                pk=relation_id
+            ).first() if relation_id else guardian.student_guardians.filter(
+                student=student
+            ).first()
+
+            if relation:
+                relation.student = student
+                for field, value in relation_data.items():
+                    setattr(relation, field, value)
+                relation.save()
+            else:
+                StudentGuardian.objects.create(
+                    guardian=guardian,
+                    student=student,
+                    **relation_data,
+                )
 
 
 class GuardianInlineSerializer(serializers.ModelSerializer):
