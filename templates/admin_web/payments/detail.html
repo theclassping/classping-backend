@@ -27,7 +27,17 @@
     <div class="detail-section">
         <h3>Payment proofs</h3>
         {% for proof in payment.proofs.all %}
-            <p>{{ proof.image_data.filename|default:"Uploaded proof" }} · {{ proof.image_data.object_key|default:proof.image_data.id|default:"Metadata stored" }} <span class="text-muted">{{ proof.uploaded_at|date:"Y-m-d H:i" }}</span></p>
+            <p>
+                {{ proof.image_data.filename|default:proof.image_data.original_name|default:"Uploaded proof" }} ·
+                {% if proof.image_data.object_key %}
+                    {{ proof.image_data.object_key }}
+                {% elif proof.image_data.file_key %}
+                    {{ proof.image_data.file_key }}
+                {% else %}
+                    Metadata stored
+                {% endif %}
+                <span class="text-muted">{{ proof.uploaded_at|date:"Y-m-d H:i" }}</span>
+            </p>
         {% empty %}
             <p class="text-muted">No proof uploaded.</p>
         {% endfor %}

@@ -3,6 +3,7 @@ API views for media upload operations.
 """
 import os
 from rest_framework import status
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from apps.users.permissions import RoleBasedAccessPermission
 from rest_framework.views import APIView
@@ -72,7 +73,11 @@ class UploadView(APIView):
     Response:
     - 204 No Content (file saved successfully)
     """
-    permission_classes = [RoleBasedAccessPermission]
+    # LocalStorage returns a presigned-style URL that is uploaded directly by
+    # the browser and therefore does not include the user's JWT header. The
+    # random file key acts as the upload capability; presign itself remains
+    # protected by RoleBasedAccessPermission.
+    permission_classes = [AllowAny]
     
     def put(self, request, file_key):
         """Handle file upload via PUT request."""
