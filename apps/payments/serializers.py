@@ -90,7 +90,6 @@ class PaymentSerializer(serializers.ModelSerializer):
     proofs = PaymentProofSerializer(
         many=True,
         required=False,
-        write_only=True,
     )
 
     invoice_no = serializers.CharField(
@@ -300,4 +299,4 @@ class PaymentDetailSerializer(PaymentSerializer):
     )
 
     class Meta(PaymentSerializer.Meta):
-        fields = PaymentSerializer.Meta.fields + ["proofs"]
+        fields = PaymentSerializer.Meta.fields

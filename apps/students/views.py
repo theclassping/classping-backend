@@ -26,11 +26,22 @@ class StudentViewSet(viewsets.ModelViewSet):
         queryset = Student.objects.order_by("-id")
         search = self.request.query_params.get("search") or self.request.query_params.get("q")
         status = self.request.query_params.get("status")
+        guardian_id = self.request.query_params.get("guardian_id")
+        class_id = self.request.query_params.get("class_id")
         if search:
             queryset = queryset.filter(Q(first_name__icontains=search) | Q(middle_name__icontains=search) | Q(last_name__icontains=search) | Q(nickname__icontains=search))
         if status:
             queryset = queryset.filter(status=status)
-        return queryset
+        if guardian_id:
+            queryset = queryset.filter(
+                student_guardians__guardian_id=guardian_id
+            )
+        if class_id:
+            queryset = queryset.filter(
+                class_students__class_obj_id=class_id
+            )
+
+        return queryset.distinct()
 
     def get_serializer_class(self):
         if self.action == "retrieve":
