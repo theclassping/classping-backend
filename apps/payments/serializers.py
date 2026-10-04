@@ -254,7 +254,7 @@ class PaymentSerializer(serializers.ModelSerializer):
         recipient_name = guardian.name or guardian.user.full_name
 
         Mailer().send_template(
-            to_email="raniaakhmalia@gmail.com",
+            to_email=guardian.user.email,
             to_name=recipient_name,
             template_id=template_id,
             variables={
