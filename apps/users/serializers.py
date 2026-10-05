@@ -13,11 +13,15 @@ class LoginTokenSerializer(TokenObtainPairSerializer):
     """JWT response serializer with the authenticated user's details."""
 
     user = serializers.SerializerMethodField()
+    
+    def validate(self, attrs):
+        data = super().validate(attrs)
+        data["user"] = self.get_user(self.user)
+        return data
 
     def get_user(self, obj):
         user = self.user
         data = UserSerializer(user).data
-
         if str(user.role).lower() == User.Role.PARENT.lower():
             guardian_students = []
             guardian = Guardian.objects.filter(user_id=user.id).first()
