@@ -7,13 +7,10 @@ from django.db import transaction
 
 from apps.student_invoices.models import StudentInvoice
 from apps.users.permissions import RoleBasedAccessPermission
+from apps.users.models import User
 
 from .models import Payment, PaymentProof
 from .serializers import PaymentDetailSerializer, PaymentProofSerializer, PaymentSerializer
-
-# Temporary switch: set to False when staff-only verification is re-enabled.
-SKIP_PAYMENT_VERIFICATION_PERMISSION = True
-
 
 class PaymentViewSet(viewsets.ModelViewSet):
 
@@ -58,7 +55,10 @@ class PaymentViewSet(viewsets.ModelViewSet):
             "status", Payment.Status.SUBMITTED
         )
         staff = getattr(self.request.user, "staff", None)
-        if requested_status in [Payment.Status.COMPLETED, Payment.Status.REJECTED] and not staff:
+        if (
+            requested_status in [Payment.Status.COMPLETED, Payment.Status.REJECTED]
+            and not self._can_verify_payment(staff)
+        ):
             raise PermissionDenied(
                 "Only staff members can verify or reject payments."
             )
@@ -72,20 +72,25 @@ class PaymentViewSet(viewsets.ModelViewSet):
         new_status = serializer.validated_data.get("status")
         staff = getattr(self.request.user, "staff", None)
 
-        if not SKIP_PAYMENT_VERIFICATION_PERMISSION:
-            if (
-                new_status in [Payment.Status.COMPLETED, Payment.Status.REJECTED]
-                and not staff
-                and not self.request.user.is_superuser
-            ):
-                raise PermissionDenied(
-                    "Only staff members can verify or reject payments."
-                )
+        if (
+            new_status in [Payment.Status.COMPLETED, Payment.Status.REJECTED]
+            and not self._can_verify_payment(staff)
+        ):
+            raise PermissionDenied(
+                "Only staff members can verify or reject payments."
+            )
 
         with transaction.atomic():
             payment = serializer.save()
             self._sync_payment_invoice(payment, staff)
         return payment
+
+    def _can_verify_payment(self, staff):
+        return (
+            self.request.user.is_superuser
+            or self.request.user.role == User.Role.ADMIN
+            or staff is not None
+        )
 
     def _sync_payment_invoice(self, payment, staff):
         """Keep payment verification fields and invoice billing fields aligned."""
