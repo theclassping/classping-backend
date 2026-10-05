@@ -17,7 +17,7 @@ class LoginTokenSerializer(TokenObtainPairSerializer):
         user = self.user
         data = UserSerializer(user).data
 
-        if user.role == User.Role.PARENT:
+        if str(user.role).lower() == User.Role.PARENT.lower():
             guardian_students = []
             guardian = getattr(user, "guardian", None)
             if guardian:

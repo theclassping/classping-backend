@@ -55,7 +55,7 @@ class StaffSerializer(serializers.ModelSerializer):
             if staff_type == Staff.StaffType.TEACHER
             else User.Role.STAFF
         )
-        if user and user.role != expected_role:
+        if user and str(user.role).lower() != expected_role.lower():
             raise serializers.ValidationError({
                 "user": f"This staff type requires a user with the {expected_role} role."
             })

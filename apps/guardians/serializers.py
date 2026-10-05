@@ -61,7 +61,7 @@ class GuardianSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         """Process image_data if provided."""
         user = attrs.get("user", getattr(self.instance, "user", None))
-        if user and user.role != User.Role.PARENT:
+        if user and str(user.role).lower() != User.Role.PARENT.lower():
             raise serializers.ValidationError({
                 "user_id": "A guardian must be linked to a user with the PARENT role."
             })

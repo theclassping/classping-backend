@@ -26,7 +26,7 @@ class RoleBasedAccessPermission(IsAuthenticated):
 			return False
 
 		return RoleModulePermission.objects.filter(
-			role=request.user.role,
+			role__iexact=str(request.user.role),
 			module=module,
 			**{permission_field: True},
 		).exists()

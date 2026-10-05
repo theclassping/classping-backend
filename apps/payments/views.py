@@ -88,7 +88,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
     def _can_verify_payment(self, staff):
         return (
             self.request.user.is_superuser
-            or self.request.user.role == User.Role.ADMIN
+            or str(self.request.user.role).lower() == User.Role.ADMIN.lower()
             or staff is not None
         )
 
