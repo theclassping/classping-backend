@@ -32,7 +32,10 @@ class PaymentViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = super().get_queryset()
 
-        invoice_id = self.request.query_params.get("invoice_id")
+        invoice_id = (
+            self.request.query_params.get("student_invoice_id")
+            or self.request.query_params.get("invoice_id")
+        )
         status_param = self.request.query_params.get("status")
         search = self.request.query_params.get("search") or self.request.query_params.get("q")
 
