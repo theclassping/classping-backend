@@ -4,6 +4,7 @@ from rest_framework import serializers
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
+from apps.guardians.models import Guardian
 
 User = get_user_model()
 
@@ -19,7 +20,7 @@ class LoginTokenSerializer(TokenObtainPairSerializer):
 
         if str(user.role).lower() == User.Role.PARENT.lower():
             guardian_students = []
-            guardian = getattr(user, "guardian", None)
+            guardian = Guardian.objects.filter(user_id=user.id).first()
             if guardian:
                 relations = guardian.student_guardians.select_related("student").all()
                 for relation in relations:
