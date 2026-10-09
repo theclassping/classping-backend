@@ -43,7 +43,7 @@ from apps.students.models import Student
 from apps.users.managers import generate_temporary_password
 from apps.users.models import API_MODULE_CHOICES, RoleModulePermission, User
 
-ADMIN_PAGE_SIZE = 5
+ADMIN_PAGE_SIZE = 25
 
 def paginate_admin(queryset, request, page_size=ADMIN_PAGE_SIZE):
     return Paginator(queryset, page_size).get_page(request.GET.get("page"))
