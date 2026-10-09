@@ -357,7 +357,11 @@
             type="submit"
             class="btn btn-primary"
         >
-            Create Branch
+            {% if is_edit %}
+                Save Changes
+            {% else %}
+                Create Branch
+            {% endif %}
         </button>
 
     </div>
