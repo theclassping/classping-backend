@@ -35,7 +35,7 @@
 
 <div class="card">
 
-    {% if schools %}
+    {% if page_obj.object_list %}
 
         <table class="data-table">
 
@@ -54,7 +54,7 @@
 
             <tbody>
 
-                {% for school in schools %}
+                {% for school in page_obj %}
 
                     <tr>
 
@@ -139,5 +139,6 @@
     {% endif %}
 
 </div>
+{% include "admin_web/includes/pagination.html" %}
 
 {% endblock %}

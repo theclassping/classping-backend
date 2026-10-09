@@ -51,7 +51,7 @@
 
             <tbody>
 
-                {% for staff in staffs %}
+                {% for staff in page_obj %}
 
                 <tr>
 
@@ -184,5 +184,6 @@
     </div>
 
 </div>
+{% include "admin_web/includes/pagination.html" %}
 
 {% endblock %}

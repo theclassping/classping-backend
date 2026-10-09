@@ -105,7 +105,7 @@ def student_list(request):
     if status in dict(Student.STATUS_CHOICES):
         students = students.filter(status=status)
     students = students.distinct()
-    page_obj = Paginator(students, 25).get_page(request.GET.get("page"))
+    page_obj = paginate_admin(students, request)
     return render(
         request,
         "admin_web/students/list.html",

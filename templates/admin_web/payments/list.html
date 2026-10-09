@@ -26,11 +26,11 @@
     <button class="btn" type="submit">Filter</button>
 </form>
 <div class="card">
-    {% if payments %}
+    {% if page_obj.object_list %}
         <table class="data-table">
             <thead><tr><th>Invoice</th><th>Student</th><th>Branch</th><th>Amount</th><th>Method</th><th>Submitted</th><th>Status</th><th>Action</th></tr></thead>
             <tbody>
-                {% for payment in payments %}
+                {% for payment in page_obj %}
                     <tr>
                         <td><strong>{{ payment.student_invoice.invoice_no }}</strong></td>
                         <td>{{ payment.student_invoice.class_student.student.first_name }} {{ payment.student_invoice.class_student.student.last_name }}</td>
@@ -48,4 +48,5 @@
         <div class="empty-state"><h3>No payments found</h3><p>Submitted payments will appear here.</p></div>
     {% endif %}
 </div>
+{% include "admin_web/includes/pagination.html" %}
 {% endblock %}

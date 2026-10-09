@@ -121,10 +121,11 @@ def settings_list(request, section):
             "tertiary": tertiary,
             "status_label": status_label,
         })
+    page_obj = paginate_admin(rows, request)
     return render(
         request,
         "admin_web/settings/list.html",
-        {"section": section, "module": module, "rows": rows, "search": search,
+        {"section": section, "module": module, "page_obj": page_obj, "search": search,
          "branch_id": branch_id, "option_type": option_type, "status": status, "parent_id": parent_id,
          "branches": Branch.objects.select_related("school").order_by("school__name", "name"),
          "location_types": Location.TYPE_CHOICES,

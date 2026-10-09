@@ -32,11 +32,11 @@
 </form>
 
 <div class="card">
-    {% if activities %}
+    {% if page_obj.object_list %}
         <table class="data-table">
             <thead><tr><th>Activity</th><th>Class</th><th>Teacher</th><th>Date</th><th>Students</th><th>Status</th><th>Action</th></tr></thead>
             <tbody>
-                {% for activity in activities %}
+                {% for activity in page_obj %}
                     <tr>
                         <td><strong>{{ activity.name }}</strong></td>
                         <td>{{ activity.class_obj.name }} <span class="text-muted">/ {{ activity.class_obj.branch.name }}</span></td>
@@ -56,4 +56,5 @@
         <div class="empty-state"><h3>No activities found</h3><p>Create an activity or adjust your filters.</p></div>
     {% endif %}
 </div>
+{% include "admin_web/includes/pagination.html" %}
 {% endblock %}

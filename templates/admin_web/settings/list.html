@@ -18,11 +18,11 @@
     <button class="btn" type="submit">Filter</button>
 </form>
 <div class="card">
-    {% if rows %}
+    {% if page_obj.object_list %}
         <table class="data-table">
             <thead><tr><th>Name</th><th>Details</th><th>Branch / Parent</th><th>Status / Values</th><th>Action</th></tr></thead>
             <tbody>
-                {% for row in rows %}
+                {% for row in page_obj %}
                     <tr>
                         <td><strong>{{ row.primary }}</strong></td>
                         <td>{{ row.secondary }}</td>
@@ -43,4 +43,5 @@
         <div class="empty-state"><h3>No {{ module.title|lower }} yet</h3><p>Add the first record for this settings module.</p></div>
     {% endif %}
 </div>
+{% include "admin_web/includes/pagination.html" %}
 {% endblock %}

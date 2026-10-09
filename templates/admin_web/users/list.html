@@ -44,7 +44,7 @@
 
 
 <div class="card">
-    {% if users %}
+    {% if page_obj.object_list %}
     <table class="data-table">
         <thead>
             <tr>
@@ -58,7 +58,7 @@
         </thead>
         <tbody>
 
-            {% for user in users %}
+            {% for user in page_obj %}
                 <tr>
                     <td>
                         {{ user.full_name }}
@@ -172,5 +172,6 @@
     {% endif %}
 
 </div>
+{% include "admin_web/includes/pagination.html" %}
 
 {% endblock %}

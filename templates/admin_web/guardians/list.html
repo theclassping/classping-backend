@@ -35,11 +35,5 @@
         <div class="empty-state"><h3>No guardians found</h3><p>Try another search term.</p></div>
     {% endif %}
 </div>
-{% if page_obj.has_other_pages %}
-    <nav class="pagination" aria-label="Guardian pages">
-        {% if page_obj.has_previous %}<a class="btn btn-small" href="?q={{ search|urlencode }}&page={{ page_obj.previous_page_number }}">Previous</a>{% endif %}
-        <span>Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
-        {% if page_obj.has_next %}<a class="btn btn-small" href="?q={{ search|urlencode }}&page={{ page_obj.next_page_number }}">Next</a>{% endif %}
-    </nav>
-{% endif %}
+{% include "admin_web/includes/pagination.html" %}
 {% endblock %}

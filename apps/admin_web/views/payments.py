@@ -26,11 +26,12 @@ def payment_list(request):
             | Q(student_invoice__class_student__student__first_name__icontains=search)
             | Q(student_invoice__class_student__student__last_name__icontains=search)
         )
+    page_obj = paginate_admin(payments, request)
     return render(
         request,
         "admin_web/payments/list.html",
         {
-            "payments": payments,
+            "page_obj": page_obj,
             "status_filter": status_filter,
             "search": search,
             "statuses": Payment.Status.choices,
@@ -184,7 +185,7 @@ def student_invoice_list(request):
         invoices = invoices.filter(class_student__class_obj__branch_id=branch_id)
     if class_id:
         invoices = invoices.filter(class_student__class_obj_id=class_id)
-    page_obj = Paginator(invoices, 25).get_page(request.GET.get("page"))
+    page_obj = paginate_admin(invoices, request)
     return render(request, "admin_web/student_invoices/list.html", {
         "page_obj": page_obj, "search": search, "status": status,
         "school_id": school_id, "branch_id": branch_id, "class_id": class_id,

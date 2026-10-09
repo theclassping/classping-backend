@@ -14,12 +14,13 @@ def school_list(request):
         .prefetch_related("branches")
         .order_by("name")
     )
+    page_obj = paginate_admin(schools, request)
 
     return render(
         request,
         "admin_web/schools/list.html",
         {
-            "schools": schools,
+            "page_obj": page_obj,
         },
     )
 

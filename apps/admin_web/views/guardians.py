@@ -10,7 +10,7 @@ def guardian_list(request):
             | Q(email__icontains=search)
             | Q(phone_number__icontains=search)
         )
-    page_obj = Paginator(guardians, 25).get_page(request.GET.get("page"))
+    page_obj = paginate_admin(guardians, request)
     return render(
         request,
         "admin_web/guardians/list.html",

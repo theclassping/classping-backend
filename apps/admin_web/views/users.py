@@ -38,12 +38,13 @@ def user_list(request):
         users = users.filter(role=role)
     if active in ("true", "false"):
         users = users.filter(is_active=active == "true")
+    page_obj = paginate_admin(users, request)
 
     return render(
         request,
         "admin_web/users/list.html",
         {
-            "users": users, "search": search, "role": role, "active": active,
+            "page_obj": page_obj, "search": search, "role": role, "active": active,
             "roles": User.Role.choices,
         },
     )

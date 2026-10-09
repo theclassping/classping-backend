@@ -25,10 +25,11 @@ def activity_list(request):
         activities = activities.filter(class_obj__branch_id=branch_id)
     if class_id:
         activities = activities.filter(class_obj_id=class_id)
+    page_obj = paginate_admin(activities, request)
     return render(
         request,
         "admin_web/activities/list.html",
-        {"activities": activities, "search": search, "publish_status": publish_status,
+        {"page_obj": page_obj, "search": search, "publish_status": publish_status,
          "school_id": school_id, "branch_id": branch_id, "class_id": class_id,
          "schools": School.objects.order_by("name"),
          "branches": Branch.objects.select_related("school").order_by("school__name", "name"),

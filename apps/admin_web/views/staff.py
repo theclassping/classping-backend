@@ -25,12 +25,13 @@ def staff_list(request):
         )
         .order_by("first_name", "last_name")
     )
+    page_obj = paginate_admin(staffs, request)
 
     return render(
         request,
         "admin_web/staff/list.html",
         {
-            "staffs": staffs,
+            "page_obj": page_obj,
         },
     )
 
