@@ -152,8 +152,6 @@ USE_I18N = True
 
 USE_TZ = True
 
-DEBUG = True
-
 # Local frontend development runs on ports 3000/3001 while the API runs on 8000.
 CORS_ALLOWED_ORIGINS = [
     origin.strip()

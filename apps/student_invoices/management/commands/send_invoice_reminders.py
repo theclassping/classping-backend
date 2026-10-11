@@ -2,7 +2,9 @@ from datetime import timedelta
 
 from django.core.management.base import BaseCommand
 from django.utils import timezone
+from django.conf import settings
 
+from apps.mailer.services import Mailer
 from apps.student_invoices.models import StudentInvoice
 
 
@@ -26,8 +28,8 @@ class Command(BaseCommand):
 
         count = 0
         for invoice in invoices:
-            self._send_reminder(invoice)
-            count += 1
+            if self._send_reminder(invoice):
+                count += 1
 
         self.stdout.write(
             self.style.SUCCESS(
@@ -36,13 +38,55 @@ class Command(BaseCommand):
         )
 
     def _send_reminder(self, invoice: StudentInvoice):
-        """
-        MVP placeholder: log reminder to stdout.
-        Replace with email/push notification integration when ready.
-        """
         student = invoice.class_student.student
-        self.stdout.write(
-            f"REMINDER: Invoice {invoice.invoice_no} "
-            f"for {student.first_name} {student.last_name} "
-            f"due on {invoice.due_date} - amount {invoice.total_amount} {invoice.currency}"
+        relation = (
+            student.student_guardians
+            .filter(is_primary=True)
+            .select_related("guardian__user")
+            .first()
         )
+        guardian = relation.guardian if relation else None
+        to_email = (guardian.email if guardian else None) or (
+            guardian.user.email if guardian and guardian.user else None
+        )
+
+        if not to_email:
+            message = (
+                f"REMINDER SKIPPED: Invoice {invoice.invoice_no} "
+                "has no primary guardian email."
+            )
+            self.stdout.write(message)
+            self.stderr.write(
+                self.style.WARNING(
+                    message
+                )
+            )
+            return False
+
+        try:
+            Mailer().send_template(
+                to_email=to_email,
+                to_name=guardian.name,
+                template_id=settings.MAILJET_TEMPLATES["invoice_reminder"],
+                variables={
+                    "student_name": student.full_name(),
+                    "invoice_no": invoice.invoice_no,
+                    "due_date": invoice.due_date.strftime("%A, %d %B %Y"),
+                    "amount": str(invoice.total_amount),
+                    "currency": invoice.currency,
+                },
+                subject=f"Invoice reminder for {student.full_name()}",
+            )
+        except Exception as exc:
+            self.stderr.write(
+                self.style.ERROR(
+                    f"Failed reminder for {invoice.invoice_no} to {to_email}: {exc}"
+                )
+            )
+            return False
+
+        self.stdout.write(
+            f"REMINDER SENT: Invoice {invoice.invoice_no} "
+            f"for {student.full_name()} to {to_email}"
+        )
+        return True
