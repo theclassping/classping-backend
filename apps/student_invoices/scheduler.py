@@ -34,6 +34,10 @@ def run_send_invoice_reminders():
     _call_command("send_invoice_reminders")
 
 
+def run_cleanup_orphaned_uploads():
+    _call_command("cleanup_orphaned_uploads")
+
+
 SCHEDULED_JOBS = [
     {
         "id": "generate_recurring_invoices",
@@ -54,6 +58,13 @@ SCHEDULED_JOBS = [
         "func": run_send_invoice_reminders,
         "trigger": "cron",
         "hour": 8,
+        "minute": 0,
+    },
+    {
+        "id": "cleanup_orphaned_uploads",
+        "func": run_cleanup_orphaned_uploads,
+        "trigger": "cron",
+        "hour": 3,
         "minute": 0,
     },
 ]

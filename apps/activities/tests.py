@@ -1,7 +1,7 @@
 from django.test import TestCase
 from rest_framework.test import APITestCase
 
-from apps.users.models import User
+from apps.users.models import User, RoleModulePermission
 
 
 class ActivityRolePermissionTests(APITestCase):
@@ -15,6 +15,9 @@ class ActivityRolePermissionTests(APITestCase):
 			email="activity-teacher@example.com",
 			password="StrongPassword123!",
 			role=User.Role.TEACHER,
+		)
+		RoleModulePermission.objects.filter(role="PARENT", module="users").update(
+			can_read=False, can_create=False, can_edit=False, can_delete=False,
 		)
 
 	def test_parent_can_read_but_cannot_write_activities(self):

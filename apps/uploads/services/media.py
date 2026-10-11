@@ -43,6 +43,10 @@ class MediaService:
     @classmethod
     def _upload_cache_key(cls, file_key: str) -> str:
         return f"classping:upload:{file_key}"
+
+    @classmethod
+    def _pending_uploads_key(cls) -> str:
+        return "classping:uploads:pending"
     
     @classmethod
     def generate_presign_url(
@@ -89,6 +93,10 @@ class MediaService:
                 cls._upload_cache_key(file_key),
                 settings.UPLOAD_METADATA_TTL,
                 json.dumps(upload_info),
+            )
+            redis_client.zadd(
+                cls._pending_uploads_key(),
+                {file_key: datetime.now().timestamp() + settings.UPLOAD_METADATA_TTL},
             )
         else:
             cls._pending_uploads[file_key] = upload_info
@@ -148,6 +156,7 @@ class MediaService:
         if redis_client:
             import json
             raw_info = redis_client.getdel(cls._upload_cache_key(file_key))
+            redis_client.zrem(cls._pending_uploads_key(), file_key)
             upload_info = json.loads(raw_info) if raw_info else {}
         else:
             upload_info = cls._pending_uploads.pop(file_key, {})

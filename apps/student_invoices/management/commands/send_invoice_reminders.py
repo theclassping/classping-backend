@@ -63,6 +63,11 @@ class Command(BaseCommand):
             )
             return False
 
+        redis_client = self._redis()
+        reminder_key = f"classping:invoice-reminder:{invoice.pk}:{invoice.due_date.isoformat()}"
+        if redis_client and not redis_client.set(reminder_key, "sent", ex=90 * 86400, nx=True):
+            return False
+
         try:
             Mailer().send_template(
                 to_email=to_email,
@@ -78,6 +83,8 @@ class Command(BaseCommand):
                 subject=f"Invoice reminder for {student.full_name()}",
             )
         except Exception as exc:
+            if redis_client:
+                redis_client.delete(reminder_key)
             self.stderr.write(
                 self.style.ERROR(
                     f"Failed reminder for {invoice.invoice_no} to {to_email}: {exc}"
@@ -90,3 +97,16 @@ class Command(BaseCommand):
             f"for {student.full_name()} to {to_email}"
         )
         return True
+
+    @staticmethod
+    def _redis():
+        redis_url = getattr(settings, "REDIS_URL", "")
+        if not redis_url:
+            return None
+        try:
+            import redis
+            client = redis.Redis.from_url(redis_url, decode_responses=True)
+            client.ping()
+            return client
+        except Exception:
+            return None
