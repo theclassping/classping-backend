@@ -186,6 +186,7 @@ REST_FRAMEWORK = {
         "apps.users.permissions.RoleBasedAccessPermission",
     ),
     "DEFAULT_PAGINATION_CLASS": "apps.core.pagination.StandardResultsSetPagination",
+    "DEFAULT_PAGINATION_CLASS": "apps.core.pagination.StandardResultsSetPagination",
     "PAGE_SIZE": 20,
     "DEFAULT_FILTER_BACKENDS": (
         "apps.core.pagination.SafeOrderingFilter",
