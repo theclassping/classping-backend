@@ -195,6 +195,11 @@ class MediaService:
             del cls._pending_uploads[file_key]
             return True
         return False
+
+    @classmethod
+    def delete_object(cls, file_key: str) -> None:
+        """Delete a completed object from the configured storage backend."""
+        get_storage().delete_object(file_key)
     
     @classmethod
     def process_image_data(cls, image_data_input: str) -> Dict[str, Any]:

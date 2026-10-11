@@ -49,6 +49,11 @@ class StorageBackend(ABC):
     def verify_object_exists(self, file_key: str) -> bool:
         """Verify if an object exists in storage."""
         pass
+
+    @abstractmethod
+    def delete_object(self, file_key: str) -> None:
+        """Delete an object from storage."""
+        pass
     
     @abstractmethod
     def generate_presigned_download_url(
@@ -101,6 +106,9 @@ class R2Storage(StorageBackend):
             return False
         except Exception:
             return False
+
+    def delete_object(self, file_key: str) -> None:
+        self.client.delete_object(Bucket=self.bucket_name, Key=validate_file_key(file_key))
 
     def generate_presigned_download_url(
         self,
@@ -157,6 +165,15 @@ class LocalStorage(StorageBackend):
             return False
 
         return os.path.exists(file_path)
+
+    def delete_object(self, file_key: str) -> None:
+        safe_key = validate_file_key(file_key)
+        file_path = os.path.abspath(os.path.join(self.media_root, safe_key))
+        media_root = os.path.abspath(self.media_root)
+        if os.path.commonpath([media_root, file_path]) != media_root:
+            raise ValueError("Invalid file_key path")
+        if os.path.isfile(file_path):
+            os.remove(file_path)
     
     def generate_presigned_download_url(
         self,
