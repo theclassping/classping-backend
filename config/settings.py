@@ -249,6 +249,11 @@ R2_REGION = os.environ.get("R2_REGION", "auto")
 # Site URL for generating full URLs
 SITE_URL = os.environ.get("SITE_URL", "http://localhost:8000")
 
+# Upload metadata cache. Redis is used when configured; local development can
+# fall back to the in-process cache in MediaService.
+REDIS_URL = os.environ.get("REDIS_URL", "")
+UPLOAD_METADATA_TTL = int(os.environ.get("UPLOAD_METADATA_TTL", "3600"))
+
 # Mailjet Configuration
 MAILJET_API_KEY = os.environ.get("MAILJET_API_KEY")
 MAILJET_API_SECRET = os.environ.get("MAILJET_API_SECRET")

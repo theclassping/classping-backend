@@ -9,6 +9,7 @@ from typing import Dict, Any, Optional
 from datetime import datetime
 from PIL import Image
 import io
+import logging
 
 import boto3
 from django.conf import settings
@@ -16,13 +17,32 @@ from django.contrib.messages import storage
 
 from apps.uploads.storage import get_storage, generate_file_key
 
+logger = logging.getLogger(__name__)
+
 
 class MediaService:
     """Service for managing media uploads and metadata."""
     
-    # Map to store pending uploads (in-memory cache)
-    # In production, use Redis or database
+    # Development fallback when REDIS_URL is not configured.
     _pending_uploads: Dict[str, Dict[str, Any]] = {}
+
+    @classmethod
+    def _redis(cls):
+        redis_url = getattr(settings, "REDIS_URL", "")
+        if not redis_url:
+            return None
+        try:
+            import redis
+            client = redis.Redis.from_url(redis_url, decode_responses=True)
+            client.ping()
+            return client
+        except Exception:
+            logger.warning("Redis unavailable; using in-process upload cache", exc_info=True)
+            return None
+
+    @classmethod
+    def _upload_cache_key(cls, file_key: str) -> str:
+        return f"classping:upload:{file_key}"
     
     @classmethod
     def generate_presign_url(
@@ -55,14 +75,23 @@ class MediaService:
         # Generate presigned URL
         presigned_url = storage.generate_presigned_url(file_key, expires_in)
         
-        # Store upload metadata for later completion
-        cls._pending_uploads[file_key] = {
+        upload_info = {
             'filename': filename,
             'content_type': content_type,
             'file_key': file_key,
             'created_at': datetime.now().isoformat(),
             'status': 'pending'
         }
+        redis_client = cls._redis()
+        if redis_client:
+            import json
+            redis_client.setex(
+                cls._upload_cache_key(file_key),
+                settings.UPLOAD_METADATA_TTL,
+                json.dumps(upload_info),
+            )
+        else:
+            cls._pending_uploads[file_key] = upload_info
         
         return {
             'file_key': file_key,
@@ -114,8 +143,14 @@ class MediaService:
         if not storage.verify_object_exists(file_key):
             raise FileNotFoundError(f"File not found in storage: {file_key}")
         
-        # Get pending upload info
-        upload_info = cls._pending_uploads.pop(file_key, {})
+        # Get pending upload info from Redis, with a local fallback.
+        redis_client = cls._redis()
+        if redis_client:
+            import json
+            raw_info = redis_client.getdel(cls._upload_cache_key(file_key))
+            upload_info = json.loads(raw_info) if raw_info else {}
+        else:
+            upload_info = cls._pending_uploads.pop(file_key, {})
         
         filename = upload_info.get('filename', 'unknown')
         content_type = upload_info.get('content_type', 'application/octet-stream')
