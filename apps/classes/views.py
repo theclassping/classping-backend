@@ -43,11 +43,11 @@ class ClassViewSet(viewsets.ModelViewSet):
             .select_related("student")
         )
 
-        serializer = ClassStudentSerializer(
-            assignments,
-            many=True,
-        )
-
+        assignments = self.filter_queryset(assignments)
+        page = self.paginate_queryset(assignments)
+        serializer = ClassStudentSerializer(page if page is not None else assignments, many=True)
+        if page is not None:
+            return self.get_paginated_response(serializer.data)
         return Response(serializer.data)
 
     @action(
@@ -64,11 +64,11 @@ class ClassViewSet(viewsets.ModelViewSet):
             .select_related("staff")
         )
 
-        serializer = ClassTeacherSerializer(
-            assignments,
-            many=True,
-        )
-
+        assignments = self.filter_queryset(assignments)
+        page = self.paginate_queryset(assignments)
+        serializer = ClassTeacherSerializer(page if page is not None else assignments, many=True)
+        if page is not None:
+            return self.get_paginated_response(serializer.data)
         return Response(serializer.data)
 
 class ClassTeacherViewSet(viewsets.ModelViewSet):

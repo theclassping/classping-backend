@@ -581,9 +581,6 @@ class StudentSerializer(serializers.ModelSerializer):
             for cs in student.class_students.all()
         }
 
-        new_assignments = []
-        is_current_count = 0
-
         for index, item in enumerate(class_students_data):
 
             # Get existing assignment ID.
@@ -616,16 +613,12 @@ class StudentSerializer(serializers.ModelSerializer):
                 if index == 0 and not self.instance:
                     is_current = True
 
-                new_assignments.append(
-                    ClassStudent(
-                        student=student,
-                        class_obj=class_obj,
-                        is_current=is_current,
-                    )
+                assignment = ClassStudent(
+                    student=student,
+                    class_obj=class_obj,
+                    is_current=is_current,
                 )
-
-                if is_current:
-                    is_current_count += 1
+                assignment.save()
 
                 continue
 
@@ -653,24 +646,8 @@ class StudentSerializer(serializers.ModelSerializer):
             assignment.is_current = is_current
             assignment.save()
 
-            if is_current:
-                is_current_count += 1
+        ClassStudent.ensure_current_for_student(student)
 
-        # ------------------------------------------------
-        # Create new assignments in bulk
-        # ------------------------------------------------
-
-        if new_assignments:
-            ClassStudent.objects.bulk_create(new_assignments)
-
-        # Optional: Validate only one is_current per student
-        # Uncomment if strict validation is needed
-        # if is_current_count > 1:
-        #     raise serializers.ValidationError({
-        #         "class_students": (
-        #             "Only one class can be marked as current per student."
-        #         )
-        #     })
 
 
 class StudentGuardianDetailSerializer(serializers.ModelSerializer):

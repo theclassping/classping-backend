@@ -1,4 +1,4 @@
-from django.db import models
+from django.db import models, transaction
 from django.core.exceptions import ValidationError
 
 from apps.schools.models import Branch
@@ -109,8 +109,37 @@ class ClassStudent(models.Model):
             models.UniqueConstraint(
                 fields=["class_obj", "student"],
                 name="unique_class_student",
-            )
+            ),
+            models.UniqueConstraint(
+                fields=["student"],
+                condition=models.Q(is_current=True),
+                name="unique_current_class_per_student",
+            ),
         ]
+
+    def save(self, *args, **kwargs):
+        if self.is_current:
+            with transaction.atomic():
+                type(self).objects.filter(
+                    student_id=self.student_id,
+                    is_current=True,
+                ).exclude(pk=self.pk).update(is_current=False)
+                return super().save(*args, **kwargs)
+        return super().save(*args, **kwargs)
+
+    @classmethod
+    def ensure_current_for_student(cls, student):
+        """Keep active students assigned to exactly one current class."""
+        if student.status != "active":
+            return None
+        current = cls.objects.filter(student=student, is_current=True).first()
+        if current:
+            return current
+        latest = cls.objects.filter(student=student).order_by("-created_at", "-pk").first()
+        if latest:
+            latest.is_current = True
+            latest.save(update_fields=["is_current"])
+        return latest
 
     def __str__(self):
         return f"{self.class_obj.name} - {self.student}"

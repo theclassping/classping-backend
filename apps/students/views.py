@@ -75,12 +75,12 @@ class StudentViewSet(viewsets.ModelViewSet):
                 status=status
             )
 
-        serializer = StudentInvoiceSerializer(
-            invoices,
-            many=True,
-        )
-
-        return Response(serializer.data)   
+        invoices = self.filter_queryset(invoices)
+        page = self.paginate_queryset(invoices)
+        serializer = StudentInvoiceSerializer(page if page is not None else invoices, many=True)
+        if page is not None:
+            return self.get_paginated_response(serializer.data)
+        return Response(serializer.data)
 
 class StudentGuardianViewSet(viewsets.ModelViewSet):
     queryset = StudentGuardian.objects.select_related(

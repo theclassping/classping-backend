@@ -54,6 +54,7 @@ def student_form(request, pk=None):
                 if not assignment.is_current:
                     assignment.is_current = True
                     assignment.save(update_fields=["is_current"])
+            ClassStudent.ensure_current_for_student(student)
         messages.success(request, "Student saved.")
         return redirect("admin_web:student_detail", pk=student.pk)
     return render(

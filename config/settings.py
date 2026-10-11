@@ -187,8 +187,11 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": (
         "apps.users.permissions.RoleBasedAccessPermission",
     ),
-    "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
+    "DEFAULT_PAGINATION_CLASS": "apps.core.pagination.StandardResultsSetPagination",
     "PAGE_SIZE": 20,
+    "DEFAULT_FILTER_BACKENDS": (
+        "apps.core.pagination.SafeOrderingFilter",
+    ),
 }
 
 # Extended for easier local/manual testing (default is 5 minutes).

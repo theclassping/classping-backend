@@ -224,6 +224,7 @@ def class_form(request, school_pk, pk=None):
                     if assignment.is_current != (student.pk in current_ids):
                         assignment.is_current = student.pk in current_ids
                         assignment.save(update_fields=["is_current"])
+                    ClassStudent.ensure_current_for_student(student)
             messages.success(request, "Class saved.")
             return redirect("admin_web:school_detail", pk=school.pk)
     return render(
