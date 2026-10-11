@@ -79,4 +79,39 @@ class GuardianCrudApiTests(TestCase):
         self.assertEqual(relation.relationship, "mother")
         self.assertTrue(relation.is_primary)
 
+    def test_guardian_email_update_syncs_user_email(self):
+        guardian = Guardian.objects.create(
+            user=self.parent,
+            name="Guardian One",
+            email="old@example.com",
+        )
+
+        response = self.client.patch(
+            f"/api/guardians/{guardian.id}/",
+            {"email": "new@example.com"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.parent.refresh_from_db()
+        self.assertEqual(self.parent.email, "new@example.com")
+
+    def test_user_email_update_syncs_guardian_email(self):
+        guardian = Guardian.objects.create(
+            user=self.parent,
+            name="Guardian One",
+            email="old@example.com",
+        )
+
+        response = self.client.patch(
+            f"/api/users/{self.parent.id}/",
+            {"email": "new@example.com"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        guardian.refresh_from_db()
+        self.assertEqual(guardian.email, "new@example.com")
+
+
 # Create your tests here.

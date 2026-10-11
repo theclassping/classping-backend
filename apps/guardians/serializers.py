@@ -91,6 +91,9 @@ class GuardianSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         relations = validated_data.pop("student_guardians", None)
+        if "email" in validated_data:
+            instance.user.email = validated_data["email"]
+            instance.user.save(update_fields=["email", "updated_at"])
         guardian = super().update(instance, validated_data)
         if relations is not None:
             self._sync_student_guardians(guardian, relations)

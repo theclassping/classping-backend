@@ -108,11 +108,21 @@ class UserUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = [
+            "email",
             "first_name",
             "last_name",
             "role",
             "is_active",
         ]
+
+    def update(self, instance, validated_data):
+        user = super().update(instance, validated_data)
+        if "email" in validated_data:
+            guardian = getattr(user, "guardian", None)
+            if guardian:
+                guardian.email = user.email
+                guardian.save(update_fields=["email", "updated_at"])
+        return user
 
 class LogoutSerializer(serializers.Serializer):
     refresh = serializers.CharField()
