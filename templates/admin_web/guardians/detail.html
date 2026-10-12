@@ -1,4 +1,5 @@
 {% extends "admin_web/base.html" %}
+{% load admin_media %}
 
 {% block title %}{{ guardian.name }} - ClassPing Admin{% endblock %}
 {% block page_title %}<h1>Guardian Review</h1>{% endblock %}
@@ -12,7 +13,7 @@
     <div class="detail-row"><div class="detail-label">Name</div><div>{{ guardian.name }}</div></div>
     <div class="detail-row"><div class="detail-label">Email</div><div>{{ guardian.email|default:guardian.user.email|default:"-" }}</div></div>
     <div class="detail-row"><div class="detail-label">Phone</div><div>{{ guardian.phone_number|default:"-" }}</div></div>
-    <div class="detail-row"><div class="detail-label">Image</div><div>{% if guardian.image_url %}<a href="{{ guardian.image_url }}" target="_blank" rel="noopener">View image</a>{% else %}-{% endif %}</div></div>
+    {% with url=guardian|admin_image_url %}<div class="detail-row"><div class="detail-label">Image</div><div>{% if url %}<a href="{{ url }}" target="_blank" rel="noopener">View image</a>{% else %}-{% endif %}</div></div>{% endwith %}
     <div class="detail-row"><div class="detail-label">Account status</div><div>{% if guardian.user.is_active %}Active{% else %}Inactive{% endif %}</div></div>
     <div class="detail-row"><div class="detail-label">Created / Updated</div><div>{{ guardian.created_at|date:"d M Y H:i" }} / {{ guardian.updated_at|date:"d M Y H:i" }}</div></div>
     <div class="detail-section">

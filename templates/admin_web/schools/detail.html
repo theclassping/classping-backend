@@ -1,4 +1,5 @@
 {% extends 'admin_web/base.html' %}
+{% load admin_media %}
 
 {% block title %}
   {{ school.name }} - ClassPing Admin
@@ -66,7 +67,7 @@
 
       <div class="detail-item">
         <span class="detail-label">School Image</span>
-        {% if school.image_url %}<a href="{{ school.image_url }}" target="_blank" rel="noopener">View image</a>{% else %}<span>-</span>{% endif %}
+        {% with url=school|admin_image_url %}{% if url %}<a href="{{ url }}" target="_blank" rel="noopener">View image</a>{% else %}<span>-</span>{% endif %}{% endwith %}
       </div>
 
       <div class="detail-item">

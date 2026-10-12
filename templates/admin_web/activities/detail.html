@@ -1,4 +1,5 @@
 {% extends "admin_web/base.html" %}
+{% load admin_media %}
 
 {% block title %}{{ activity.name }} - ClassPing Admin{% endblock %}
 {% block page_title %}<h1>Activity Review</h1>{% endblock %}
@@ -22,7 +23,7 @@
         {% empty %}<p class="text-muted">No students assigned.</p>{% endfor %}
     </div>
     <div class="detail-section"><h3>Images</h3>
-        {% for image in activity.images.all %}<p>{{ image.caption|default:"Activity image" }}{% if image.image_url %} · <a href="{{ image.image_url }}" target="_blank" rel="noopener">View image</a>{% endif %}</p>
+        {% for image in activity.images.all %}{% with url=image|admin_image_url %}<p>{{ image.caption|default:"Activity image" }}{% if url %} · <a href="{{ url }}" target="_blank" rel="noopener">View image</a>{% endif %}</p>{% endwith %}
         {% empty %}<p class="text-muted">No images attached.</p>{% endfor %}
     </div>
 </div>
