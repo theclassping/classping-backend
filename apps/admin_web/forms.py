@@ -16,6 +16,7 @@ from apps.student_invoices.models import StudentInvoice
 from apps.students.models import Student, StudentGuardian
 from apps.staffs.models import Staff
 from apps.users.models import User
+from apps.admin_web.media import process_uploaded_image
 
 
 class HierarchicalClassChoiceField(forms.ModelChoiceField):
@@ -41,6 +42,16 @@ class SearchableImageUploadMixin:
             help_text="Upload an image; it will be stored using the API media metadata format.",
         )
         self.fields["image_file"].widget.attrs["accept"] = "image/*"
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        uploaded_file = self.cleaned_data.get("image_file")
+        if uploaded_file:
+            instance.image_data = process_uploaded_image(uploaded_file)
+        if commit:
+            instance.save()
+            self.save_m2m()
+        return instance
 
 
 class ActivityForm(forms.ModelForm):
