@@ -18,8 +18,11 @@ def email_new_user_account(sender, instance, created, **kwargs):
         def send_welcome_email():
             uid = urlsafe_base64_encode(force_bytes(instance.pk))
             token = default_token_generator.make_token(instance)
+            # Keep the CTA compatible with the frontend route regardless of
+            # whether the configured base URL ends with a slash.
             reset_url = (
-                f"{settings.PASSWORD_RESET_URL}?uid={uid}&token={token}"
+                f"{settings.PASSWORD_RESET_URL.rstrip('/')}"
+                f"?uid={uid}&token={token}"
             )
 
             Mailer().send_template(

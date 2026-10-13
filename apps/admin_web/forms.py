@@ -16,6 +16,7 @@ from apps.student_invoices.models import StudentInvoice
 from apps.students.models import Student, StudentGuardian
 from apps.staffs.models import Staff
 from apps.users.models import User
+from apps.users.managers import generate_temporary_password
 from apps.admin_web.media import process_uploaded_image
 
 
@@ -34,8 +35,9 @@ class SearchableImageUploadMixin:
 
     def _add_image_upload(self):
         if "image_data" in self.fields:
-            # Media JSON is an internal storage field. Users must use the upload control.
-            self.fields["image_data"].widget = forms.HiddenInput()
+            # Media JSON is an internal storage field. It must never be submitted
+            # or displayed as an admin input; the upload control populates it.
+            self.fields.pop("image_data")
         self.fields["image_file"] = forms.ImageField(
             required=False,
             label="Image upload",
@@ -329,6 +331,64 @@ class PaymentForm(forms.ModelForm):
         return cleaned_data
 
 
+class StudentGuardianForm(forms.ModelForm):
+    create_guardian = forms.BooleanField(
+        required=False,
+        label="Create new guardian",
+        help_text="Creates a Parent login account with a temporary password.",
+    )
+    first_name = forms.CharField(required=False, label="First name")
+    last_name = forms.CharField(required=False, label="Last name")
+    email = forms.EmailField(required=False, label="Email")
+    phone_number = forms.CharField(required=False, label="Phone number")
+
+    class Meta:
+        model = StudentGuardian
+        fields = ["guardian", "relationship", "is_primary"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["guardian"].required = False
+        self.fields["guardian"].queryset = Guardian.objects.order_by("name")
+
+    def clean(self):
+        cleaned = super().clean()
+        create = cleaned.get("create_guardian")
+        guardian = cleaned.get("guardian")
+        # Leave unused extra formset rows empty.
+        if not create and not guardian and not cleaned.get("relationship") and not cleaned.get("is_primary"):
+            return cleaned
+        if create:
+            for field in ("first_name", "last_name", "email"):
+                if not cleaned.get(field):
+                    self.add_error(field, "This field is required for a new guardian.")
+            if cleaned.get("email") and User.objects.filter(email__iexact=cleaned["email"]).exists():
+                self.add_error("email", "A user with this email already exists. Select the existing guardian instead.")
+        elif not guardian:
+            self.add_error("guardian", "Select an existing guardian or create a new one.")
+        return cleaned
+
+    def save(self, commit=True):
+        if self.cleaned_data.get("create_guardian"):
+            temporary_password = generate_temporary_password()
+            user = User.objects.create_user(
+                email=self.cleaned_data["email"],
+                password=None,
+                temporary_password=temporary_password,
+                first_name=self.cleaned_data["first_name"],
+                last_name=self.cleaned_data["last_name"],
+                role=User.Role.PARENT,
+            )
+            guardian = Guardian.objects.create(
+                user=user,
+                name=f"{user.first_name} {user.last_name}".strip(),
+                phone_number=self.cleaned_data.get("phone_number") or None,
+                email=user.email,
+            )
+            self.instance.guardian = guardian
+        return super().save(commit=commit)
+
+
 class StudentGuardianInlineFormSet(BaseInlineFormSet):
     def clean(self):
         super().clean()
@@ -337,7 +397,10 @@ class StudentGuardianInlineFormSet(BaseInlineFormSet):
         active_forms = [
             form for form in self.forms
             if form.cleaned_data and not form.cleaned_data.get("DELETE")
-            and form.cleaned_data.get("guardian")
+            and (
+                form.cleaned_data.get("guardian")
+                or form.cleaned_data.get("create_guardian")
+            )
         ]
         if not active_forms:
             raise ValidationError("At least one guardian must remain linked to the student.")
@@ -348,7 +411,7 @@ class StudentGuardianInlineFormSet(BaseInlineFormSet):
 StudentGuardianFormSet = inlineformset_factory(
     Student,
     StudentGuardian,
-    fields=["guardian", "relationship", "is_primary"],
+    form=StudentGuardianForm,
     formset=StudentGuardianInlineFormSet,
     extra=1,
     can_delete=True,
@@ -419,7 +482,7 @@ class StudentForm(SearchableImageUploadMixin, forms.ModelForm):
         model = Student
         fields = [
             "first_name", "middle_name", "last_name", "nickname",
-            "date_of_birth", "image_data", "gender", "address", "enroll_date", "status",
+            "date_of_birth", "image_data", "gender", "address", "branch", "enroll_date", "status",
         ]
         widgets = {
             "date_of_birth": forms.DateInput(attrs={"type": "date"}),
@@ -429,6 +492,7 @@ class StudentForm(SearchableImageUploadMixin, forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._add_image_upload()
+        self.fields["branch"].queryset = Branch.objects.select_related("school").order_by("school__name", "name")
         self.fields["current_class"].queryset = Class.objects.select_related(
             "branch__school", "academic_year"
         ).order_by("branch__school__name", "branch__name", "name")
@@ -453,6 +517,14 @@ class StudentForm(SearchableImageUploadMixin, forms.ModelForm):
             student.save()
             self.save_m2m()
         return student
+
+    def clean(self):
+        cleaned = super().clean()
+        branch = cleaned.get("branch")
+        current_class = cleaned.get("current_class")
+        if branch and current_class and current_class.branch_id != branch.pk:
+            self.add_error("current_class", "The current class must belong to the selected branch.")
+        return cleaned
 
 
 class GuardianForm(SearchableImageUploadMixin, forms.ModelForm):

@@ -20,14 +20,38 @@
         {% endfor %}
         <section class="detail-section">
             <h3>Guardian relationships</h3>
-            <p class="text-muted">Set relationship type and exactly one primary guardian.</p>
+            <p class="text-muted">Choose an existing guardian or create a new guardian. Then set the relationship and primary status.</p>
             {{ guardian_formset.management_form }}
             {% for guardian_form in guardian_formset %}
-                <div class="card form-inline-record">
+                <div class="card guardian-record" data-guardian-row>
                     {% for hidden in guardian_form.hidden_fields %}{{ hidden }}{% endfor %}
-                    {% for field in guardian_form.visible_fields %}
-                        <div class="form-group">{{ field.label_tag }}{{ field }}{% if field.errors %}<ul class="field-errors">{% for error in field.errors %}<li>{{ error }}</li>{% endfor %}</ul>{% endif %}</div>
-                    {% endfor %}
+                    <div class="guardian-choice">
+                        <div class="form-group guardian-existing">
+                            {{ guardian_form.guardian.label_tag }}{{ guardian_form.guardian }}
+                            {% if guardian_form.guardian.errors %}<ul class="field-errors">{% for error in guardian_form.guardian.errors %}<li>{{ error }}</li>{% endfor %}</ul>{% endif %}
+                        </div>
+                        <div class="guardian-new-toggle form-group">
+                            {{ guardian_form.create_guardian }}{{ guardian_form.create_guardian.label_tag }}
+                            <small class="help-text">Create a new Parent account and guardian profile</small>
+                        </div>
+                    </div>
+                    <div class="guardian-details" data-new-guardian>
+                        <h4>New guardian details</h4>
+                        <div class="guardian-fields">
+                            {% for field in guardian_form.visible_fields %}
+                                {% if field.name == 'first_name' or field.name == 'last_name' or field.name == 'email' or field.name == 'phone_number' %}
+                                    <div class="form-group">{{ field.label_tag }}{{ field }}{% if field.errors %}<ul class="field-errors">{% for error in field.errors %}<li>{{ error }}</li>{% endfor %}</ul>{% endif %}</div>
+                                {% endif %}
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <div class="guardian-settings">
+                        {% for field in guardian_form.visible_fields %}
+                            {% if field.name == 'relationship' or field.name == 'is_primary' %}
+                                <div class="form-group">{{ field.label_tag }}{{ field }}{% if field.errors %}<ul class="field-errors">{% for error in field.errors %}<li>{{ error }}</li>{% endfor %}</ul>{% endif %}</div>
+                            {% endif %}
+                        {% endfor %}
+                    </div>
                 </div>
             {% endfor %}
             {% if guardian_formset.non_form_errors %}<ul class="field-errors">{% for error in guardian_formset.non_form_errors %}<li>{{ error }}</li>{% endfor %}</ul>{% endif %}
@@ -35,6 +59,24 @@
         <div class="form-actions"><button class="btn btn-primary" type="submit">Save Student</button><a class="btn" href="{% if student %}{% url 'admin_web:student_detail' student.pk %}{% else %}{% url 'admin_web:student_list' %}{% endif %}">Cancel</a></div>
     </form>
 </div>
+<script>
+document.querySelectorAll('[data-guardian-row]').forEach(function (row) {
+    const toggle = row.querySelector('input[name$="-create_guardian"]');
+    const existing = row.querySelector('select[name$="-guardian"]');
+    const existingGroup = row.querySelector('.guardian-existing');
+    const details = row.querySelector('[data-new-guardian]');
+    if (!toggle || !existing || !existingGroup || !details) return;
+    function updateGuardianMode() {
+        const creating = toggle.checked;
+        details.hidden = !creating;
+        existingGroup.hidden = creating;
+        existing.disabled = creating;
+        if (creating) existing.value = '';
+    }
+    toggle.addEventListener('change', updateGuardianMode);
+    updateGuardianMode();
+});
+</script>
 {% if student %}
     <form method="post" action="{% url 'admin_web:student_delete' student.pk %}" class="detail-actions" onsubmit="return confirm('Delete this student and their linked records?');">
         {% csrf_token %}<button class="btn danger-button" type="submit">Delete Student</button>

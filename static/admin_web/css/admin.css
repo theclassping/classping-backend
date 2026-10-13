@@ -623,6 +623,42 @@ body {
     margin: 12px 0;
     padding: 16px;
 }
+
+.guardian-record {
+    display: grid;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    padding: 1rem;
+}
+
+.guardian-choice,
+.guardian-fields,
+.guardian-settings {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    align-items: end;
+}
+
+.guardian-new-toggle {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: .45rem;
+    align-items: center;
+}
+
+.guardian-new-toggle .help-text {
+    grid-column: 2;
+}
+
+.guardian-details {
+    border-top: 1px solid var(--border-color, #e5e7eb);
+    padding-top: 1rem;
+}
+
+.guardian-details h4 {
+    margin: 0 0 .75rem;
+}
 .select-search {
   width: 100%;
   margin-bottom: 4px;

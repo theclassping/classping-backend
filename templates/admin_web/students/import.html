@@ -1,0 +1,11 @@
+{% extends "admin_web/base.html" %}
+{% block title %}Import Students - ClassPing Admin{% endblock %}
+{% block page_title %}<h1>Import Students</h1>{% endblock %}
+{% block content %}
+<div class="page-header"><div><h2>Import Students</h2><p class="text-muted">Upload CSV or XLSX. Branch is required; class assignment is optional.</p></div></div>
+<div class="card">
+<p><a class="btn" href="data:text/csv;charset=utf-8,first_name,last_name,date_of_birth,gender,enroll_date,status,branch_id,class_id%0AAhmad,Pratama,2015-08-21,male,2026-07-01,active,1,">Download CSV template</a></p>
+<form method="post" enctype="multipart/form-data">{% csrf_token %}<div class="form-group"><label for="file">CSV or XLSX file</label><input id="file" type="file" name="file" accept=".csv,.xlsx" required></div><button class="btn btn-primary" type="submit">Validate file</button></form>
+{% if result %}<hr><h3>Validation result</h3><p>Total: {{ result.total }} | Valid: {{ result.valid|length }} | Errors: {{ result.errors|length }}</p>{% if result.errors %}<table class="data-table"><tr><th>Row</th><th>Error</th></tr>{% for error in result.errors %}<tr><td>{{ error.row }}</td><td>{{ error.error }}</td></tr>{% endfor %}</table>{% else %}<p class="alert alert-success">All rows are valid. The uploaded file is ready to import.</p><form method="post">{% csrf_token %}<input type="hidden" name="confirm" value="1"><button class="btn btn-primary" type="submit">Import validated students</button></form>{% endif %}{% endif %}
+</div>
+{% endblock %}
