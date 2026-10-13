@@ -12,13 +12,31 @@
     <form method="post">
         {% csrf_token %}
         {% for field in form %}
+            {% if field.name != 'teachers' and field.name != 'students' and field.name != 'current_students' %}
             <div class="form-group">
                 {{ field.label_tag }}{{ field }}
                 {% if field.help_text %}<small class="help-text">{{ field.help_text }}</small>{% endif %}
                 {% if field.errors %}<ul class="field-errors">{% for error in field.errors %}<li>{{ error }}</li>{% endfor %}</ul>{% endif %}
             </div>
+            {% endif %}
         {% endfor %}
         {% if form.non_field_errors %}<ul class="field-errors">{% for error in form.non_field_errors %}<li>{{ error }}</li>{% endfor %}</ul>{% endif %}
+        <section class="detail-section">
+            <h3>Teachers</h3>
+            {{ teacher_formset.management_form }}
+            {% for row in teacher_formset %}<div class="card form-inline-record">{% for field in row %}<div class="form-group">{{ field.label_tag }}{{ field }}{% for error in field.errors %}<div class="field-errors">{{ error }}</div>{% endfor %}</div>{% endfor %}</div>{% endfor %}
+            <div id="teacher-cards"></div>
+            <template id="teacher-template"><div class="card form-inline-record">{% for field in teacher_formset.empty_form %}<div class="form-group">{{ field.label_tag }}{{ field }}{% for error in field.errors %}<div class="field-errors">{{ error }}</div>{% endfor %}</div>{% endfor %}</div></template>
+            <button type="button" class="btn" data-add-card="teacher">Add teacher</button>
+        </section>
+        <section class="detail-section">
+            <h3>Students</h3>
+            {{ student_formset.management_form }}
+            {% for row in student_formset %}<div class="card form-inline-record">{% for field in row %}<div class="form-group">{{ field.label_tag }}{{ field }}{% for error in field.errors %}<div class="field-errors">{{ error }}</div>{% endfor %}</div>{% endfor %}</div>{% endfor %}
+            <div id="student-cards"></div>
+            <template id="student-template"><div class="card form-inline-record">{% for field in student_formset.empty_form %}<div class="form-group">{{ field.label_tag }}{{ field }}{% for error in field.errors %}<div class="field-errors">{% for error in field.errors %}{{ error }}{% endfor %}</div>{% endfor %}</div>{% endfor %}</div></template>
+            <button type="button" class="btn" data-add-card="student">Add student</button>
+        </section>
         <div class="form-actions"><button type="submit" class="btn btn-primary">Save Class</button><a href="{% if class_obj %}{% url 'admin_web:class_detail' class_obj.pk %}{% else %}{% url 'admin_web:school_detail' school.pk %}{% endif %}" class="btn">Cancel</a></div>
     </form>
 </div>
@@ -27,4 +45,34 @@
         {% csrf_token %}<button type="submit" class="btn danger-button">Delete Class</button>
     </form>
 {% endif %}
+<script>
+document.querySelectorAll('input[name$="-create_teacher"], input[name$="-create_student"]').forEach(function (toggle) {
+    const row = toggle.closest('.form-inline-record');
+    const prefix = toggle.name.replace(/-create_(teacher|student)$/, '');
+    const select = row && row.querySelector('select[name="' + prefix + '-staff"], select[name="' + prefix + '-student"]');
+    if (!row || !select) return;
+    const selectGroup = select.closest('.form-group');
+    function updateMode() {
+        const creating = toggle.checked;
+        selectGroup.hidden = creating;
+        select.disabled = creating;
+        if (creating) select.value = '';
+    }
+    toggle.addEventListener('change', updateMode);
+    updateMode();
+});
+function addCard(kind) {
+    const total = document.querySelector('#id_' + kind + 's-TOTAL_FORMS');
+    const template = document.querySelector('#' + kind + '-template').innerHTML;
+    const html = template.replaceAll('__prefix__', total.value);
+    document.querySelector('#' + kind + '-cards').insertAdjacentHTML('beforeend', html);
+    total.value = Number(total.value) + 1;
+    const card = document.querySelector('#' + kind + '-cards .form-inline-record:last-child');
+    const toggle = card.querySelector('input[name$="-create_' + kind + '"]');
+    const select = card.querySelector('select[name$="-' + (kind === 'teacher' ? 'staff' : 'student') + '"]');
+    const group = select.closest('.form-group');
+    toggle.addEventListener('change', function () { group.hidden = toggle.checked; select.disabled = toggle.checked; if (toggle.checked) select.value = ''; });
+}
+document.querySelectorAll('[data-add-card]').forEach(function (button) { button.addEventListener('click', function () { addCard(button.dataset.addCard); }); });
+</script>
 {% endblock %}

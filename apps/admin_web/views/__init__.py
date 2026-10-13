@@ -7,7 +7,7 @@ so endpoint names and behavior remain unchanged during the migration.
 
 from .auth import dashboard, login_view, logout_view, platform_admin_required
 from .activities import activity_delete, activity_detail, activity_form, activity_list
-from .students import student_delete, student_detail, student_form, student_list
+from .students import student_delete, student_detail, student_form, student_list, student_import, student_export
 from .guardians import guardian_delete, guardian_detail, guardian_form, guardian_list
 from .payments import (
     payment_delete, payment_detail, payment_form, payment_list, payment_review,

@@ -1,4 +1,6 @@
 from ..views_common import *
+from django.conf import settings
+from apps.uploads.services.media import MediaService
 
 @login_required(login_url="admin_web:login")
 def payment_list(request):
@@ -102,6 +104,14 @@ def payment_detail(request, pk):
         ).prefetch_related("proofs"),
         pk=pk,
     )
+    if getattr(settings, "STORAGE_TYPE", "local") != "local":
+        for proof in payment.proofs.all():
+            metadata = proof.image_data or {}
+            file_key = metadata.get("object_key") or metadata.get("id")
+            proof.image_url = (
+                MediaService.generate_download_url(file_key, expires_in=3600)
+                if file_key else None
+            )
     return render(
         request,
         "admin_web/payments/detail.html",

@@ -1,6 +1,7 @@
 from django.db import models
 
 from apps.guardians.models import Guardian
+from apps.schools.models import Branch
 from apps.uploads.utils import MediaFieldMixin
 
 
@@ -38,6 +39,14 @@ class Student(models.Model, MediaFieldMixin):
     )
 
     address = models.TextField(blank=True, null=True)
+
+    branch = models.ForeignKey(
+        Branch,
+        on_delete=models.PROTECT,
+        related_name="students",
+        null=True,
+        blank=True,
+    )
 
     location_id = models.IntegerField(
         blank=True,
