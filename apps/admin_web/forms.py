@@ -1,7 +1,7 @@
 from django import forms
 from django.core.exceptions import ValidationError
 from django.db.models import Q
-from django.forms import BaseInlineFormSet, inlineformset_factory
+from django.forms import BaseInlineFormSet, inlineformset_factory, formset_factory
 
 from apps.academic_years.models import AcademicYear
 from apps.activities.models import Activity, ActivityImage, ActivityStudent
@@ -304,6 +304,68 @@ class ClassForm(forms.ModelForm):
             if not set(current_students).issubset(set(students)):
                 self.add_error("current_students", "Current students must be assigned to this class.")
         return cleaned_data
+
+
+class ClassTeacherRowForm(forms.Form):
+    staff = forms.ModelChoiceField(queryset=Staff.objects.none(), required=False, label="Existing teacher")
+    create_teacher = forms.BooleanField(required=False, label="Create new teacher")
+    first_name = forms.CharField(required=False, label="First name")
+    last_name = forms.CharField(required=False, label="Last name")
+    email = forms.EmailField(required=False, label="Email")
+    hire_date = forms.DateField(required=False, widget=forms.DateInput(attrs={"type": "date"}), label="Hire date")
+    qualification = forms.CharField(required=False, label="Qualification")
+
+    def __init__(self, *args, branch=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["staff"].queryset = Staff.objects.filter(
+            staff_type=Staff.StaffType.TEACHER, branch=branch
+        ).order_by("first_name", "last_name") if branch else Staff.objects.none()
+
+    def clean(self):
+        data = super().clean()
+        if not any(data.get(name) for name in ("staff", "create_teacher", "first_name", "last_name", "email")):
+            return data
+        if data.get("create_teacher"):
+            for name in ("first_name", "last_name", "email", "hire_date", "qualification"):
+                if not data.get(name): self.add_error(name, "This field is required for a new teacher.")
+            if data.get("email") and User.objects.filter(email__iexact=data["email"]).exists():
+                self.add_error("email", "A user with this email already exists.")
+        elif not data.get("staff"):
+            self.add_error("staff", "Select an existing teacher or create a new one.")
+        return data
+
+
+class ClassStudentRowForm(forms.Form):
+    student = forms.ModelChoiceField(queryset=Student.objects.none(), required=False, label="Existing student")
+    create_student = forms.BooleanField(required=False, label="Create new student")
+    first_name = forms.CharField(required=False, label="First name")
+    last_name = forms.CharField(required=False, label="Last name")
+    date_of_birth = forms.DateField(required=False, widget=forms.DateInput(attrs={"type": "date"}), label="Date of birth")
+    gender = forms.ChoiceField(required=False, choices=Student.GENDER_CHOICES, label="Gender")
+    enroll_date = forms.DateField(required=False, widget=forms.DateInput(attrs={"type": "date"}), label="Enrollment date")
+    status = forms.ChoiceField(required=False, choices=Student.STATUS_CHOICES, initial="active", label="Status")
+    is_current = forms.BooleanField(required=False, label="Current student")
+
+    def __init__(self, *args, branch=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["student"].queryset = Student.objects.filter(
+            branch=branch
+        ).order_by("last_name", "first_name") if branch else Student.objects.none()
+
+    def clean(self):
+        data = super().clean()
+        if not any(data.get(name) for name in ("student", "create_student", "first_name", "last_name")):
+            return data
+        if data.get("create_student"):
+            for name in ("first_name", "last_name", "date_of_birth", "gender", "enroll_date"):
+                if not data.get(name): self.add_error(name, "This field is required for a new student.")
+        elif not data.get("student"):
+            self.add_error("student", "Select an existing student or create a new one.")
+        return data
+
+
+ClassTeacherFormSet = formset_factory(ClassTeacherRowForm, extra=0)
+ClassStudentFormSet = formset_factory(ClassStudentRowForm, extra=0)
 
 
 class PaymentForm(forms.ModelForm):

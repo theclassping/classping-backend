@@ -20,8 +20,13 @@ def email_new_user_account(sender, instance, created, **kwargs):
             token = default_token_generator.make_token(instance)
             # Keep the CTA compatible with the frontend route regardless of
             # whether the configured base URL ends with a slash.
+            reset_base_url = (
+                settings.SCHOOL_PASSWORD_RESET_URL
+                if str(instance.role).upper() in {"STAFF", "TEACHER"}
+                else settings.PASSWORD_RESET_URL
+            )
             reset_url = (
-                f"{settings.PASSWORD_RESET_URL.rstrip('/')}"
+                f"{reset_base_url.rstrip('/')}"
                 f"?uid={uid}&token={token}"
             )
 

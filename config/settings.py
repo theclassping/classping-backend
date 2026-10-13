@@ -204,6 +204,10 @@ PASSWORD_RESET_URL = os.environ.get(
     "PASSWORD_RESET_URL",
     "http://localhost:3000/reset-password/",
 )
+SCHOOL_PASSWORD_RESET_URL = os.environ.get(
+    "SCHOOL_PASSWORD_RESET_URL",
+    PASSWORD_RESET_URL,
+)
 
 SPECTACULAR_SETTINGS = {
     "TITLE": "ClassPing API",

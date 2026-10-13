@@ -27,6 +27,8 @@ from .forms import (
     SchoolForm,
     StudentForm,
     StudentGuardianFormSet,
+    ClassTeacherFormSet,
+    ClassStudentFormSet,
 )
 from apps.academic_years.models import AcademicYear
 from apps.activities.models import Activity
