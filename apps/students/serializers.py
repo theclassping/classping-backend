@@ -489,6 +489,9 @@ class StudentSerializer(serializers.ModelSerializer):
                 if guardian:
                     link.guardian = guardian
 
+                if new_guardian_data is not None:
+                    self._update_guardian(link.guardian, new_guardian_data)
+
                 for attr, value in item.items():
                     setattr(link, attr, value)
 
@@ -535,6 +538,36 @@ class StudentSerializer(serializers.ModelSerializer):
                 guardian=guardian,
                 **item,
             )
+
+    def _update_guardian(self, guardian, data):
+        user = guardian.user
+        if "email" in data:
+            if not data["email"]:
+                raise serializers.ValidationError({
+                    "student_guardians": {
+                        "user": {"email": "Email cannot be empty."}
+                    }
+                })
+            email = User.objects.normalize_email(data["email"])
+            if User.objects.filter(email__iexact=email).exclude(pk=user.pk).exists():
+                raise serializers.ValidationError({
+                    "student_guardians": {
+                        "user": {"email": "A user with this email already exists."}
+                    }
+                })
+            user.email = email
+            guardian.email = email
+
+        for field in ("first_name", "last_name"):
+            if field in data:
+                setattr(user, field, data[field])
+        if "first_name" in data or "last_name" in data:
+            guardian.name = f"{user.first_name} {user.last_name}".strip()
+        for field in ("phone_number", "image_data"):
+            if field in data:
+                setattr(guardian, field, data[field])
+        user.save()
+        guardian.save()
 
     # ========================================================
     # SYNC CLASS STUDENTS

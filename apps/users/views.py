@@ -37,7 +37,13 @@ class UserViewSet(viewsets.ModelViewSet):
         if search:
             queryset = queryset.filter(Q(email__icontains=search) | Q(first_name__icontains=search) | Q(last_name__icontains=search))
         role = self.request.query_params.get("role")
+        branch_id = self.request.query_params.get("branch_id")
         is_active = self.request.query_params.get("is_active")
+        if branch_id:
+            queryset = queryset.filter(
+                Q(staff__branch_id=branch_id)
+                | Q(guardian__student_guardians__student__class_students__class_obj__branch_id=branch_id)
+            ).distinct()
         if role:
             queryset = queryset.filter(role=role)
         if is_active is not None:
