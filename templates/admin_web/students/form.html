@@ -11,13 +11,41 @@
 <div class="card form-card">
     <form method="post" enctype="multipart/form-data">
         {% csrf_token %}
-        {% for field in form %}
+        {{ form.location_id }}
+        {% for field in form.visible_fields %}
             <div class="form-group">
                 {{ field.label_tag }}{{ field }}
                 {% if field.help_text %}<small class="help-text">{{ field.help_text }}</small>{% endif %}
                 {% if field.errors %}<ul class="field-errors">{% for error in field.errors %}<li>{{ error }}</li>{% endfor %}</ul>{% endif %}
             </div>
         {% endfor %}
+        <div class="form-group">
+            <label for="province_id">Province</label>
+            <select id="province_id" name="province_id">
+                <option value="">Select Province</option>
+                {% for province in provinces %}
+                    <option value="{{ province.pk }}">{{ province.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="city_id">City / Regency</label>
+            <select id="city_id" name="city_id" disabled>
+                <option value="">Select City / Regency</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="district_id">District</label>
+            <select id="district_id" name="district_id" disabled>
+                <option value="">Select District</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="village_id">Village</label>
+            <select id="village_id" name="village_id" disabled>
+                <option value="">Select Village</option>
+            </select>
+        </div>
         <section class="detail-section">
             <h3>Guardian relationships</h3>
             <p class="text-muted">Choose an existing guardian or create a new guardian. Then set the relationship and primary status.</p>
@@ -38,19 +66,15 @@
                     <div class="guardian-details" data-new-guardian>
                         <h4>New guardian details</h4>
                         <div class="guardian-fields">
-                            {% for field in guardian_form.visible_fields %}
-                                {% if field.name == 'first_name' or field.name == 'last_name' or field.name == 'email' or field.name == 'phone_number' %}
-                                    <div class="form-group">{{ field.label_tag }}{{ field }}{% if field.errors %}<ul class="field-errors">{% for error in field.errors %}<li>{{ error }}</li>{% endfor %}</ul>{% endif %}</div>
-                                {% endif %}
-                            {% endfor %}
+                            <div class="form-group">{{ guardian_form.first_name.label_tag }}{{ guardian_form.first_name }}{% if guardian_form.first_name.errors %}<ul class="field-errors">{% for error in guardian_form.first_name.errors %}<li>{{ error }}</li>{% endfor %}</ul>{% endif %}</div>
+                            <div class="form-group">{{ guardian_form.last_name.label_tag }}{{ guardian_form.last_name }}{% if guardian_form.last_name.errors %}<ul class="field-errors">{% for error in guardian_form.last_name.errors %}<li>{{ error }}</li>{% endfor %}</ul>{% endif %}</div>
+                            <div class="form-group">{{ guardian_form.email.label_tag }}{{ guardian_form.email }}{% if guardian_form.email.errors %}<ul class="field-errors">{% for error in guardian_form.email.errors %}<li>{{ error }}</li>{% endfor %}</ul>{% endif %}</div>
+                            <div class="form-group">{{ guardian_form.phone_number.label_tag }}{{ guardian_form.phone_number }}{% if guardian_form.phone_number.errors %}<ul class="field-errors">{% for error in guardian_form.phone_number.errors %}<li>{{ error }}</li>{% endfor %}</ul>{% endif %}</div>
                         </div>
                     </div>
                     <div class="guardian-settings">
-                        {% for field in guardian_form.visible_fields %}
-                            {% if field.name == 'relationship' or field.name == 'is_primary' %}
-                                <div class="form-group">{{ field.label_tag }}{{ field }}{% if field.errors %}<ul class="field-errors">{% for error in field.errors %}<li>{{ error }}</li>{% endfor %}</ul>{% endif %}</div>
-                            {% endif %}
-                        {% endfor %}
+                        <div class="form-group">{{ guardian_form.relationship.label_tag }}{{ guardian_form.relationship }}{% if guardian_form.relationship.errors %}<ul class="field-errors">{% for error in guardian_form.relationship.errors %}<li>{{ error }}</li>{% endfor %}</ul>{% endif %}</div>
+                        <div class="form-group">{{ guardian_form.is_primary }}{{ guardian_form.is_primary.label_tag }}{% if guardian_form.is_primary.errors %}<ul class="field-errors">{% for error in guardian_form.is_primary.errors %}<li>{{ error }}</li>{% endfor %}</ul>{% endif %}</div>
                     </div>
                 </div>
             {% endfor %}
@@ -76,6 +100,80 @@ document.querySelectorAll('[data-guardian-row]').forEach(function (row) {
     toggle.addEventListener('change', updateGuardianMode);
     updateGuardianMode();
 });
+
+(function () {
+    const province = document.getElementById('province_id');
+    const city = document.getElementById('city_id');
+    const district = document.getElementById('district_id');
+    const village = document.getElementById('village_id');
+    const locationId = document.getElementById('id_location_id');
+    const selectedProvince = '{{ selected_province_id|default:"" }}';
+    const selectedCity = '{{ selected_city_id|default:"" }}';
+    const selectedDistrict = '{{ selected_district_id|default:"" }}';
+    const selectedVillage = '{{ selected_village_id|default:"" }}';
+
+    function reset(select, label) {
+        select.innerHTML = '';
+        const option = document.createElement('option');
+        option.value = '';
+        option.textContent = label;
+        select.appendChild(option);
+        select.disabled = true;
+    }
+
+    async function loadChildren(select, parentId, label, selectedId) {
+        reset(select, label);
+        if (!parentId) return;
+        const response = await fetch('/admin-web/locations/children/?parent_id=' + encodeURIComponent(parentId));
+        if (!response.ok) throw new Error('Unable to load locations.');
+        const data = await response.json();
+        (data.results || []).forEach(function (item) {
+            const option = document.createElement('option');
+            option.value = item.id;
+            option.textContent = item.name;
+            option.selected = String(item.id) === String(selectedId || '');
+            select.appendChild(option);
+        });
+        select.disabled = !(data.results || []).length;
+    }
+
+    province.addEventListener('change', async function () {
+        locationId.value = '';
+        reset(city, 'Select City / Regency');
+        reset(district, 'Select District');
+        reset(village, 'Select Village');
+        try { await loadChildren(city, province.value, 'Select City / Regency'); } catch (error) { console.error(error); }
+    });
+    city.addEventListener('change', async function () {
+        locationId.value = '';
+        reset(district, 'Select District');
+        reset(village, 'Select Village');
+        try { await loadChildren(district, city.value, 'Select District'); } catch (error) { console.error(error); }
+    });
+    district.addEventListener('change', async function () {
+        locationId.value = '';
+        reset(village, 'Select Village');
+        try { await loadChildren(village, district.value, 'Select Village'); } catch (error) { console.error(error); }
+    });
+    village.addEventListener('change', function () {
+        locationId.value = village.value;
+    });
+
+    async function restoreSelection() {
+        if (!selectedProvince) return;
+        province.value = selectedProvince;
+        await loadChildren(city, selectedProvince, 'Select City / Regency', selectedCity);
+        if (!selectedCity) return;
+        await loadChildren(district, selectedCity, 'Select District', selectedDistrict);
+        if (!selectedDistrict) return;
+        await loadChildren(village, selectedDistrict, 'Select Village', selectedVillage);
+        if (selectedVillage) {
+            village.value = selectedVillage;
+            locationId.value = selectedVillage;
+        }
+    }
+    restoreSelection().catch(function (error) { console.error(error); });
+})();
 </script>
 {% if student %}
     <form method="post" action="{% url 'admin_web:student_delete' student.pk %}" class="detail-actions" onsubmit="return confirm('Delete this student and their linked records?');">

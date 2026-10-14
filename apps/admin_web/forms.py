@@ -534,9 +534,10 @@ class StudentForm(SearchableImageUploadMixin, forms.ModelForm):
         required=False,
         label="Current class",
     )
-    location = forms.ModelChoiceField(
-        queryset=Location.objects.none(),
+    location_id = forms.IntegerField(
         required=False,
+        widget=forms.HiddenInput(),
+        label="Village",
     )
     status = forms.ChoiceField(choices=Student.STATUS_CHOICES)
 
@@ -558,7 +559,6 @@ class StudentForm(SearchableImageUploadMixin, forms.ModelForm):
         self.fields["current_class"].queryset = Class.objects.select_related(
             "branch__school", "academic_year"
         ).order_by("branch__school__name", "branch__name", "name")
-        self.fields["location"].queryset = Location.objects.order_by("tree_id", "lft")
         if self.instance.pk:
             current_assignment = self.instance.class_students.filter(
                 is_current=True
@@ -566,15 +566,17 @@ class StudentForm(SearchableImageUploadMixin, forms.ModelForm):
             if current_assignment:
                 self.fields["current_class"].initial = current_assignment.class_obj_id
             if self.instance.location_id:
-                self.fields["location"].initial = self.instance.location_id
+                saved_location = Location.objects.filter(
+                    pk=self.instance.location_id,
+                    location_type="VILLAGE",
+                ).first()
+                self.fields["location_id"].initial = (
+                    saved_location.pk if saved_location else ""
+                )
 
     def save(self, commit=True):
         student = super().save(commit=False)
-        student.location_id = (
-            self.cleaned_data["location"].pk
-            if self.cleaned_data.get("location")
-            else None
-        )
+        student.location_id = self.cleaned_data.get("location_id") or None
         if commit:
             student.save()
             self.save_m2m()
@@ -582,6 +584,15 @@ class StudentForm(SearchableImageUploadMixin, forms.ModelForm):
 
     def clean(self):
         cleaned = super().clean()
+        location_id = cleaned.get("location_id")
+        if location_id:
+            try:
+                location = Location.objects.get(pk=location_id)
+            except Location.DoesNotExist:
+                self.add_error("location_id", "Select a valid village.")
+            else:
+                if location.location_type != "VILLAGE":
+                    self.add_error("location_id", "Select a village, not a higher location level.")
         branch = cleaned.get("branch")
         current_class = cleaned.get("current_class")
         if branch and current_class and current_class.branch_id != branch.pk:
