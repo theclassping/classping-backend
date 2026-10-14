@@ -5,6 +5,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from apps.fee_types.models import FeeType
@@ -71,16 +72,17 @@ def generate_recurring_invoices(reference_date: date = None):
 
         fee_classes = fee_type.fee_type_classes.all()
 
-        # If no classes are explicitly linked, skip for safety.
+        # Without explicit classes, apply this fee to the branch's students.
         if not fee_classes:
-            continue
+            class_students = _branch_wide_class_students(fee_type)
+        else:
+            class_ids = [fc.class_obj_id for fc in fee_classes]
+            class_students = ClassStudent.objects.filter(
+                class_obj_id__in=class_ids,
+                is_current=True,
+            )
 
-        class_ids = [fc.class_obj_id for fc in fee_classes]
-
-        class_students = ClassStudent.objects.filter(
-            class_obj_id__in=class_ids,
-            is_current=True,
-        ).select_related(
+        class_students = class_students.select_related(
             "student",
             "class_obj",
         )
@@ -133,9 +135,7 @@ def generate_manual_invoices(
             is_current=True,
         )
     else:
-        class_students = ClassStudent.objects.filter(
-            is_current=True,
-        )
+        class_students = _branch_wide_class_students(fee_type)
 
     class_students = class_students.select_related(
         "student",
@@ -188,3 +188,20 @@ def _resolve_fee_type_class(fee_type: FeeType, class_student: ClassStudent):
     ).first()
 
     return fee_class
+
+
+def _branch_wide_class_students(fee_type: FeeType):
+    """Current enrollments for students assigned to this branch.
+
+    Students with no branch assignment are included only when their current
+    class belongs to the fee type's branch.
+    """
+    return ClassStudent.objects.filter(
+        is_current=True,
+    ).filter(
+        Q(student__branch_id=fee_type.branch_id)
+        | (
+            Q(student__branch__isnull=True)
+            & Q(class_obj__branch_id=fee_type.branch_id)
+        )
+    )
