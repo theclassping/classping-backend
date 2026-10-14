@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from ..views_common import *
 
 def staff_create(request):
@@ -20,7 +22,6 @@ def staff_create(request):
         - first_name
         - last_name
         - role
-        - password
         - is_active
     """
 
@@ -43,9 +44,6 @@ def staff_create(request):
         staff_type = request.POST.get("staff_type", "").strip()
         hire_date = request.POST.get("hire_date", "").strip()
         qualification = request.POST.get("qualification", "").strip()
-
-        password = request.POST.get("password", "")
-        confirm_password = request.POST.get("confirm_password", "")
 
         is_active = request.POST.get("is_active") == "on"
 
@@ -70,9 +68,6 @@ def staff_create(request):
 
         if not qualification:
             errors.append("Qualification is required.")
-
-        if password and password != confirm_password:
-            errors.append("Password and confirmation password do not match.")
 
         # ---------------------------------------------------------
         # Validate staff type
@@ -153,12 +148,10 @@ def staff_create(request):
             with transaction.atomic():
 
                 # Create login account
-                temporary_password = (
-                    generate_temporary_password() if not password else None
-                )
+                temporary_password = generate_temporary_password()
                 user = User.objects.create_user(
                     email=email,
-                    password=password,
+                    password=None,
                     temporary_password=temporary_password,
                     first_name=first_name,
                     last_name=last_name,
@@ -203,7 +196,7 @@ def staff_edit(request, pk):
     """
     Edit Staff and its associated User account.
 
-    Password is optional when editing.
+    Password changes are handled through the password-reset flow.
     """
 
     staff = get_object_or_404(
@@ -231,9 +224,6 @@ def staff_edit(request, pk):
         hire_date = request.POST.get("hire_date", "").strip()
         qualification = request.POST.get("qualification", "").strip()
 
-        password = request.POST.get("password", "")
-        confirm_password = request.POST.get("confirm_password", "")
-
         is_active = request.POST.get("is_active") == "on"
 
         # ---------------------------------------------------------
@@ -257,13 +247,6 @@ def staff_edit(request, pk):
 
         if not qualification:
             errors.append("Qualification is required.")
-
-        # Password is optional during edit
-        if password or confirm_password:
-            if password != confirm_password:
-                errors.append(
-                    "Password and confirmation password do not match."
-                )
 
         # ---------------------------------------------------------
         # Validate staff type
@@ -382,10 +365,6 @@ def staff_edit(request, pk):
                     user.role = user_role
                     user.is_active = is_active
 
-                    # Only change password if entered.
-                    if password:
-                        user.set_password(password)
-
                     user.save()
 
                 else:
@@ -399,12 +378,10 @@ def staff_edit(request, pk):
                     # password when one was not entered.
                     # -------------------------------------------------
 
-                    temporary_password = (
-                        generate_temporary_password() if not password else None
-                    )
+                    temporary_password = generate_temporary_password()
                     user = User.objects.create_user(
                         email=email,
-                        password=password,
+                        password=None,
                         temporary_password=temporary_password,
                         first_name=first_name,
                         last_name=last_name,
