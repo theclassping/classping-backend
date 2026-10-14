@@ -289,58 +289,8 @@
 
         <p class="text-muted">
             A User login account is created automatically for this staff member.
-            Leave the password blank to generate one automatically.
+            Login instructions are sent by email.
         </p>
-
-
-        <div class="form-grid">
-
-            <!-- Password -->
-
-            <div class="form-group">
-
-                <label for="password">
-
-                    Password
-
-                    {% if is_edit %}
-                        <span class="text-muted">
-                            (leave blank to keep current password)
-                        </span>
-                    {% else %}
-                        <span class="text-muted">
-                            (leave blank to generate automatically)
-                        </span>
-                    {% endif %}
-
-                </label>
-
-                <input
-                    type="password"
-                    id="password"
-                    name="password"
-                >
-
-            </div>
-
-
-            <!-- Confirm Password -->
-
-            <div class="form-group">
-
-                <label for="confirm_password">
-                    Confirm Password
-                </label>
-
-                <input
-                    type="password"
-                    id="confirm_password"
-                    name="confirm_password"
-                >
-
-            </div>
-
-        </div>
 
 
         <!-- =====================================================
