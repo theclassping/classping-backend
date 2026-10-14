@@ -138,7 +138,7 @@ def school_detail(request, pk):
 @login_required(login_url="admin_web:login")
 def school_form(request, pk=None):
     school = get_object_or_404(School, pk=pk) if pk else None
-    form = SchoolForm(request.POST or None, instance=school)
+    form = SchoolForm(request.POST or None, request.FILES or None, instance=school)
     if request.method == "POST" and form.is_valid():
         school = form.save()
         messages.success(request, "School saved.")

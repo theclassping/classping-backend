@@ -36,7 +36,7 @@ def guardian_detail(request, pk):
 @login_required(login_url="admin_web:login")
 def guardian_form(request, pk=None):
     guardian = get_object_or_404(Guardian, pk=pk) if pk else None
-    form = GuardianForm(request.POST or None, instance=guardian)
+    form = GuardianForm(request.POST or None, request.FILES or None, instance=guardian)
     if request.method == "POST" and form.is_valid():
         guardian = form.save()
         messages.success(request, "Guardian saved.")
