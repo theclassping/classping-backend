@@ -265,7 +265,6 @@ MAILJET_API_SECRET = os.environ.get("MAILJET_API_SECRET")
 MAIL_FROM_EMAIL = os.environ.get("MAIL_FROM_EMAIL", "the.class.ping@gmail.com")
 MAIL_FROM_NAME = os.environ.get("MAIL_FROM_NAME", "ClassPing")
 MAILJET_TEMPLATES = {
-    "forgot_password": 8345502,
     "invoice_reminder": 8345505,
     "payment_submitted": 8345507,
     "payment_completed": 8345508,
