@@ -16,6 +16,63 @@ from apps.academic_years.models import AcademicYear
 
 
 class StudentGuardianRequirementTests(TestCase):
+    def _existing_guardian_student(self):
+        student = Student.objects.create(
+            first_name="Original", last_name="Student", date_of_birth="2022-01-08",
+            gender="male", enroll_date="2026-10-14", status="active",
+        )
+        link = StudentGuardian.objects.create(
+            student=student, guardian=self.guardian, relationship="father", is_primary=True,
+        )
+        return student, link
+
+    def test_patch_updates_existing_guardian_and_user(self):
+        student, link = self._existing_guardian_student()
+        response = self.client.patch(f"/api/students/{student.pk}/", {
+            "student_guardians": [{
+                "id": link.pk, "guardian_id": self.guardian.pk,
+                "relationship": "mother", "is_primary": True,
+                "user": {
+                    "first_name": "Guardian", "last_name": "Updated",
+                    "email": "updated-guardian@example.com", "phone_number": "032654",
+                },
+            }],
+        }, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.guardian.refresh_from_db()
+        user = User.objects.get(pk=self.guardian.user_id)
+        self.assertEqual(user.first_name, "Guardian")
+        self.assertEqual(user.last_name, "Updated")
+        self.assertEqual(user.email, "updated-guardian@example.com")
+        self.assertEqual(self.guardian.email, user.email)
+        self.assertEqual(self.guardian.name, "Guardian Updated")
+        self.assertEqual(self.guardian.phone_number, "032654")
+        link.refresh_from_db()
+        self.assertEqual(link.relationship, "mother")
+        # PATCH may change one nested field without overwriting the rest.
+        response = self.client.patch(f"/api/students/{student.pk}/", {
+            "student_guardians": [{"id": link.pk, "user": {"phone_number": "999"}}],
+        }, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.guardian.refresh_from_db()
+        self.assertEqual(self.guardian.phone_number, "999")
+        self.assertEqual(self.guardian.name, "Guardian Updated")
+
+    def test_patch_duplicate_guardian_email_rolls_back_student(self):
+        student, link = self._existing_guardian_student()
+        original_email = self.guardian.user.email
+        response = self.client.patch(f"/api/students/{student.pk}/", {
+            "first_name": "Changed",
+            "student_guardians": [{
+                "id": link.pk, "user": {"email": self.user.email.upper()},
+            }],
+        }, format="json")
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertIn("email", response.data["student_guardians"]["user"])
+        student.refresh_from_db()
+        self.assertEqual(student.first_name, "Original")
+        self.assertEqual(User.objects.get(pk=self.guardian.user_id).email, original_email)
+
     def setUp(self):
         self.user = User.objects.create_user(
             email="student-api@example.com",

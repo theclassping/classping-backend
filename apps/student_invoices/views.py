@@ -39,12 +39,15 @@ class StudentInvoiceViewSet(viewsets.ModelViewSet):
         queryset = super().get_queryset()
 
         student_id = self.request.query_params.get("student_id")
+        branch_id = self.request.query_params.get("branch_id")
         status = self.request.query_params.get("status")
         fee_type_id = self.request.query_params.get("fee_type_id")
         payment_status = self.request.query_params.get("payment_status")
         is_overdue = self.request.query_params.get("is_overdue")
         search = self.request.query_params.get("search") or self.request.query_params.get("q")
 
+        if branch_id:
+            queryset = queryset.filter(class_student__class_obj__branch_id=branch_id)
         if student_id:
             queryset = queryset.filter(
                 class_student__student_id=student_id
