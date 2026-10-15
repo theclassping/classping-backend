@@ -87,6 +87,7 @@ class ClassTeacherViewSet(viewsets.ModelViewSet):
         queryset = super().get_queryset()
         class_id = self.request.query_params.get("class_id")
         staff_id = self.request.query_params.get("staff_id")
+        branch_id = self.request.query_params.get("branch_id")
         is_active = self.request.query_params.get("is_active")
         search = self.request.query_params.get("search") or self.request.query_params.get("q")
 
@@ -97,6 +98,8 @@ class ClassTeacherViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(class_obj_id=class_id)
         if staff_id:
             queryset = queryset.filter(staff_id=staff_id)
+        if branch_id:
+            queryset = queryset.filter(class_obj__branch_id=branch_id)
         if is_active is not None:
             queryset = queryset.filter(
                 staff__is_active=is_active.lower() == "true"

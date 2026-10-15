@@ -166,6 +166,16 @@ body {
     border-radius: 12px;
 
     padding: 24px;
+
+    /* Keep wide tables and other overflow inside the card boundary. */
+    min-width: 0;
+}
+
+.table-wrapper {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: auto;
 }
 
 
@@ -416,7 +426,7 @@ body {
     overflow-y: auto;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 1000px) {
     .sidebar {
         position: static;
         width: 100%;
@@ -451,11 +461,39 @@ body {
 
     .content {
         padding: 20px 16px;
+        overflow-x: hidden;
+    }
+
+    .card {
+        overflow: hidden;
+    }
+
+    .card:has(> .data-table) {
         overflow-x: auto;
     }
 
     .data-table {
-        min-width: 680px;
+        width: 100%;
+        min-width: 0;
+        table-layout: fixed;
+    }
+
+    .data-table th,
+    .data-table td {
+        padding: 10px 6px;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+    }
+
+    .data-table td:last-child .btn,
+    .data-table td:last-child form {
+        display: block;
+        width: 100%;
+        margin: 0 0 6px;
+    }
+
+    .data-table td:last-child form button {
+        width: 100%;
     }
 
     .page-header {

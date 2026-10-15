@@ -97,6 +97,101 @@ class StudentInvoiceApiTests(TestCase):
         self.assertEqual(generate_recurring_invoices(date(2026, 10, 15)), 1)
         self.assertEqual(generate_recurring_invoices(date(2026, 10, 15)), 0)
 
+    def test_recurring_fee_without_classes_is_scoped_to_branch(self):
+        branch = self.overdue.fee_type.branch
+        other_branch = Branch.objects.create(
+            school=branch.school,
+            name="Other",
+            code="OTHER",
+            location=branch.location,
+        )
+        other_year = AcademicYear.objects.create(
+            branch=other_branch,
+            name="2026/2027",
+            start_date=date(2026, 7, 1),
+            end_date=date(2027, 6, 30),
+        )
+        other_class = Class.objects.create(
+            name="Grade 1",
+            branch=other_branch,
+            academic_year=other_year,
+        )
+
+        # A student explicitly assigned to this branch qualifies even if their
+        # current class record belongs to another branch.
+        assigned_student = Student.objects.create(
+            first_name="Assigned",
+            last_name="Branch",
+            date_of_birth=date(2018, 1, 1),
+            gender="female",
+            enroll_date=date(2026, 7, 1),
+            status="active",
+            branch=branch,
+        )
+        assigned_enrollment = ClassStudent.objects.create(
+            class_obj=other_class,
+            student=assigned_student,
+            is_current=True,
+        )
+
+        # A null-branch student qualifies only through a current class in the
+        # fee type's branch.
+        unassigned_student = Student.objects.create(
+            first_name="Unassigned",
+            last_name="Branch",
+            date_of_birth=date(2018, 1, 1),
+            gender="female",
+            enroll_date=date(2026, 7, 1),
+            status="active",
+        )
+        unassigned_enrollment = ClassStudent.objects.create(
+            class_obj=self.overdue.class_student.class_obj,
+            student=unassigned_student,
+            is_current=True,
+        )
+
+        other_student = Student.objects.create(
+            first_name="Other",
+            last_name="Branch",
+            date_of_birth=date(2018, 1, 1),
+            gender="female",
+            enroll_date=date(2026, 7, 1),
+            status="active",
+            branch=other_branch,
+        )
+        ClassStudent.objects.create(
+            class_obj=other_class,
+            student=other_student,
+            is_current=True,
+        )
+
+        recurring = FeeType.objects.create(
+            branch=branch,
+            name="Branch-wide recurring fee",
+            amount=Decimal("50000"),
+            is_recurring=True,
+            recurring_frequency=FeeType.RecurringFrequency.MONTHLY,
+        )
+
+        # Only the fee under test should be processed by the global recurring
+        # invoice service.
+        FeeType.objects.filter(is_recurring=True).exclude(pk=recurring.pk).update(
+            is_active=False
+        )
+
+        count = generate_recurring_invoices(date(2026, 10, 15))
+
+        self.assertEqual(count, 3)  # Existing branch student + both qualifying students.
+        invoice_enrollments = set(
+            StudentInvoice.objects.filter(fee_type=recurring).values_list(
+                "class_student_id", flat=True
+            )
+        )
+        self.assertEqual(
+            invoice_enrollments,
+            {self.overdue.class_student_id, assigned_enrollment.id, unassigned_enrollment.id},
+        )
+
     def test_mark_overdue_command_updates_only_unpaid_past_due_invoices(self):
         output = StringIO()
         call_command("mark_overdue_invoices", stdout=output)

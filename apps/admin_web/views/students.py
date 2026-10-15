@@ -132,13 +132,16 @@ def student_detail(request, pk):
         None,
     )
     location = Location.objects.filter(pk=student.location_id).first()
+    location_path = " / ".join(
+        item.name for item in location.get_ancestors(include_self=True)
+    ) if location else "-"
     return render(
         request,
         "admin_web/students/detail.html",
         {
             "student": student,
             "current_assignment": current_assignment,
-            "location": location,
+            "location_path": location_path,
         },
     )
 
@@ -146,7 +149,20 @@ def student_detail(request, pk):
 @login_required(login_url="admin_web:login")
 def student_form(request, pk=None):
     student = get_object_or_404(Student, pk=pk) if pk else None
-    form = StudentForm(request.POST or None, instance=student)
+    form = StudentForm(request.POST or None, request.FILES or None, instance=student)
+    provinces = Location.objects.filter(location_type="PROVINCE").order_by("name")
+    selected_location_id = (
+        request.POST.get("location_id")
+        if request.method == "POST"
+        else student.location_id if student else None
+    )
+    selected_locations = {}
+    selected_location = Location.objects.filter(pk=selected_location_id).first()
+    if selected_location and selected_location.location_type == "VILLAGE":
+        selected_locations = {
+            location.location_type: location.pk
+            for location in selected_location.get_ancestors(include_self=True)
+        }
     guardian_formset = StudentGuardianFormSet(
         request.POST or None,
         instance=student,
@@ -177,7 +193,16 @@ def student_form(request, pk=None):
     return render(
         request,
         "admin_web/students/form.html",
-        {"form": form, "guardian_formset": guardian_formset, "student": student},
+        {
+            "form": form,
+            "guardian_formset": guardian_formset,
+            "student": student,
+            "provinces": provinces,
+            "selected_province_id": selected_locations.get("PROVINCE", ""),
+            "selected_city_id": selected_locations.get("CITY", ""),
+            "selected_district_id": selected_locations.get("DISTRICT", ""),
+            "selected_village_id": selected_locations.get("VILLAGE", ""),
+        },
     )
 
 

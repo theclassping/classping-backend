@@ -24,8 +24,11 @@ class StaffViewSet(viewsets.ModelViewSet):
         if search:
             queryset = queryset.filter(Q(first_name__icontains=search) | Q(last_name__icontains=search) | Q(email__icontains=search))
         branch_id = self.request.query_params.get("branch_id")
+        user_id = self.request.query_params.get("user_id") or self.request.query_params.get("user")
         staff_type = self.request.query_params.get("staff_type")
         is_active = self.request.query_params.get("is_active")
+        if user_id:
+            queryset = queryset.filter(user_id=user_id)
         if branch_id:
             queryset = queryset.filter(branch_id=branch_id)
         if staff_type:
