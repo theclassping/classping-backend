@@ -4,6 +4,19 @@ Backend API for **ClassPing**, a school management system (CMS) built with Djang
 
 ClassPing is designed to support school staff, teachers, students, and parents with authentication and school management functionality.
 
+## Timezone and production secret
+
+`DJANGO_TIME_ZONE` controls the application and scheduler timezone and defaults
+to `Asia/Jakarta`. Use an IANA timezone name, for example `UTC` or `Asia/Makassar`.
+With `USE_TZ=True`, database timestamps continue to be stored in UTC. Scheduler
+cron hours follow the configured timezone; restart the scheduler after changing it.
+
+When `DJANGO_DEBUG=False` (the default), `DJANGO_SECRET_KEY` is required and must
+contain at least 50 characters and 5 distinct characters. Development keys with
+the `django-insecure-` prefix are rejected. Generate a random secret, keep it
+outside version control, and provide the same secret to web and scheduler.
+The development fallback is available only with `DJANGO_DEBUG=True`.
+
 ## Tech Stack
 
 * Python 3.9+

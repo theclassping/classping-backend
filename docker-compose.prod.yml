@@ -1,0 +1,89 @@
+name: classping-backend-production
+
+x-app: &app
+  image: classping-backend-production:local
+  build:
+    context: .
+    dockerfile: Dockerfile.production
+  env_file:
+    - .env.production
+  environment:
+    DJANGO_SETTINGS_MODULE: config.settings_production
+    DJANGO_DEBUG: "False"
+    DATABASE_URL: postgres://${POSTGRES_USER:?Set POSTGRES_USER}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:?Set POSTGRES_DB}
+    REDIS_URL: redis://redis:6379/0
+  init: true
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  release:
+    <<: *app
+    restart: "no"
+    command: ["python", "manage.py", "migrate", "--noinput"]
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  web:
+    <<: *app
+    restart: unless-stopped
+    command: >-
+      sh -c "python manage.py collectstatic --noinput &&
+      exec gunicorn config.wsgi:application --bind 0.0.0.0:8000
+      --workers 2 --access-logfile - --error-logfile -"
+    ports:
+      - "127.0.0.1:${PRODUCTION_PORT:-8001}:8000"
+    depends_on:
+      release:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; s=socket.create_connection(('127.0.0.1',8000),5); s.close()"]
+      interval: 15s
+      timeout: 6s
+      start_period: 30s
+      retries: 5
+
+  scheduler:
+    <<: *app
+    restart: unless-stopped
+    command: ["python", "manage.py", "run_scheduler"]
+    depends_on:
+      release:
+        condition: service_completed_successfully
+
+volumes:
+  postgres_data:
+  redis_data:
