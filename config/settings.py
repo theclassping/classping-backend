@@ -1,6 +1,7 @@
 from pathlib import Path
 from datetime import timedelta
 import os
+from django.core.exceptions import ImproperlyConfigured
 
 try:
     from dotenv import load_dotenv
@@ -20,10 +21,24 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # SECURITY WARNING: keep the secret key used in production secret!
 DEFAULT_SECRET_KEY = 'django-insecure-()x#erm&sib*1ms&tj4zn85&uz-vp0&%bz!7xl!^!b-s*(2zvy'
 
-# SECURITY WARNING: don't run with debug turned on in production!
-SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", DEFAULT_SECRET_KEY)
-
 DEBUG = os.environ.get("DJANGO_DEBUG", "False") == "True"
+
+# A development key is allowed only when debug is explicitly enabled.
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "")
+if DEBUG and not SECRET_KEY.strip():
+    SECRET_KEY = DEFAULT_SECRET_KEY
+
+if not DEBUG and (
+    not SECRET_KEY.strip()
+    or SECRET_KEY == DEFAULT_SECRET_KEY
+    or SECRET_KEY.startswith("django-insecure-")
+    or len(SECRET_KEY) < 50
+    or len(set(SECRET_KEY)) < 5
+):
+    raise ImproperlyConfigured(
+        "DJANGO_SECRET_KEY must be a non-development secret with at least "
+        "50 characters and 5 distinct characters when DJANGO_DEBUG is False."
+    )
 
 ALLOWED_HOSTS = os.environ.get(
     "DJANGO_ALLOWED_HOSTS",
@@ -85,6 +100,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'apps.admin_web.middleware.AdminWebRoleMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -146,7 +162,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'en-us'
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = os.environ.get("DJANGO_TIME_ZONE", "Asia/Jakarta")
 
 USE_I18N = True
 
@@ -186,11 +202,50 @@ REST_FRAMEWORK = {
         "apps.users.permissions.RoleBasedAccessPermission",
     ),
     "DEFAULT_PAGINATION_CLASS": "apps.core.pagination.StandardResultsSetPagination",
-    "DEFAULT_PAGINATION_CLASS": "apps.core.pagination.StandardResultsSetPagination",
     "PAGE_SIZE": 20,
     "DEFAULT_FILTER_BACKENDS": (
         "apps.core.pagination.SafeOrderingFilter",
     ),
+}
+
+# Log to stdout so container platforms can collect application logs.
+LOG_LEVEL = os.environ.get("DJANGO_LOG_LEVEL", "INFO").upper()
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "standard": {
+            "format": "%(asctime)s %(levelname)s %(name)s: %(message)s",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "standard",
+        },
+    },
+    "root": {
+        "handlers": ["console"],
+        "level": LOG_LEVEL,
+    },
+    "loggers": {
+        "django": {
+            "handlers": ["console"],
+            "level": LOG_LEVEL,
+            "propagate": False,
+        },
+        "django.request": {
+            "handlers": ["console"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+        "apps": {
+            "handlers": ["console"],
+            "level": LOG_LEVEL,
+            "propagate": False,
+        },
+    },
 }
 
 # Extended for easier local/manual testing (default is 5 minutes).
@@ -208,6 +263,12 @@ SCHOOL_PASSWORD_RESET_URL = os.environ.get(
     "SCHOOL_PASSWORD_RESET_URL",
     PASSWORD_RESET_URL,
 )
+
+# Swagger/ReDoc/schema are exposed only in debug unless explicitly enabled.
+API_DOCS_ENABLED = os.environ.get(
+    "API_DOCS_ENABLED",
+    "True" if DEBUG else "False",
+) == "True"
 
 SPECTACULAR_SETTINGS = {
     "TITLE": "ClassPing API",

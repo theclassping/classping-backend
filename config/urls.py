@@ -25,22 +25,6 @@ from apps.users.views import (
 
 urlpatterns = [
     path("admin/", admin.site.urls),
-    # OpenAPI schema
-    path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
-
-    # Swagger UI
-    path(
-        "api/docs/",
-        SpectacularSwaggerView.as_view(url_name="schema"),
-        name="swagger-ui",
-    ),
-
-    # ReDoc
-    path(
-        "api/redoc/",
-        SpectacularRedocView.as_view(url_name="schema"),
-        name="redoc",
-    ),
 
     path(
         "api/auth/login/",
@@ -97,6 +81,26 @@ urlpatterns = [
         include("apps.admin_web.urls"),
     ),
 ]
+
+if settings.API_DOCS_ENABLED:
+    urlpatterns += [
+        # OpenAPI schema
+        path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
+
+        # Swagger UI
+        path(
+            "api/docs/",
+            SpectacularSwaggerView.as_view(url_name="schema"),
+            name="swagger-ui",
+        ),
+
+        # ReDoc
+        path(
+            "api/redoc/",
+            SpectacularRedocView.as_view(url_name="schema"),
+            name="redoc",
+        ),
+    ]
 
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
