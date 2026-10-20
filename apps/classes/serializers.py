@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from django.db import transaction
 
 from .models import Class, ClassTeacher, ClassStudent
 from apps.staffs.models import Staff
@@ -90,6 +91,32 @@ class ClassSerializer(serializers.ModelSerializer):
 
 class ClassDetailSerializer(serializers.ModelSerializer):
     """Enhanced serializer for Class detail, create, and update with full nested relations"""
+
+    teacher_ids = serializers.PrimaryKeyRelatedField(
+        queryset=Staff.objects.filter(staff_type=Staff.StaffType.TEACHER),
+        many=True,
+        required=False,
+        write_only=True,
+    )
+
+    @transaction.atomic
+    def create(self, validated_data):
+        teachers = validated_data.pop("teacher_ids", [])
+        instance = super().create(validated_data)
+        for teacher in {teacher.pk: teacher for teacher in teachers}.values():
+            ClassTeacher.objects.create(class_obj=instance, staff=teacher)
+        return instance
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        teachers = validated_data.pop("teacher_ids", None)
+        instance = super().update(instance, validated_data)
+        if teachers is not None:
+            teacher_ids = {teacher.pk for teacher in teachers}
+            instance.class_teachers.exclude(staff_id__in=teacher_ids).delete()
+            for teacher_id in teacher_ids:
+                ClassTeacher.objects.get_or_create(class_obj=instance, staff_id=teacher_id)
+        return instance
     
     branch_name = serializers.CharField(
         source="branch.name",
@@ -120,6 +147,7 @@ class ClassDetailSerializer(serializers.ModelSerializer):
             "branch_name",
             "academic_year",
             "class_teachers",
+            "teacher_ids",
             "class_students",
             "created_at",
             "updated_at",

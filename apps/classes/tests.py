@@ -19,6 +19,39 @@ from apps.classes.models import ClassTeacher, ClassStudent
 
 
 class ClassRelationshipApiTests(TestCase):
+    def test_create_class_with_existing_teacher(self):
+        response = self.client.post('/api/classes/', {
+            'name': 'New Class', 'branch': self.class_obj.branch_id,
+            'academic_year': self.class_obj.academic_year_id,
+            'teacher_ids': [self.staff.pk, self.staff.pk],
+        }, format='json')
+        self.assertEqual(response.status_code, 201, response.data)
+        assignments = ClassTeacher.objects.filter(class_obj_id=response.data['id'])
+        self.assertEqual(list(assignments.values_list('staff_id', flat=True)), [self.staff.pk])
+        self.assertEqual(len(response.data['class_teachers']), 1)
+
+    def test_create_class_rejects_non_teacher(self):
+        self.staff.staff_type = 'officer'
+        self.staff.save()
+        response = self.client.post('/api/classes/', {
+            'name': 'Invalid Class', 'branch': self.class_obj.branch_id,
+            'academic_year': self.class_obj.academic_year_id,
+            'teacher_ids': [self.staff.pk],
+        }, format='json')
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertIn('teacher_ids', response.data)
+        self.assertFalse(type(self.class_obj).objects.filter(name='Invalid Class').exists())
+
+    def test_patch_teacher_ids_replaces_assignments_only_when_provided(self):
+        ClassTeacher.objects.create(class_obj=self.class_obj, staff=self.staff)
+        url = f'/api/classes/{self.class_obj.pk}/'
+        response = self.client.patch(url, {'name': 'Renamed'}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(self.class_obj.class_teachers.count(), 1)
+        response = self.client.patch(url, {'teacher_ids': []}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(self.class_obj.class_teachers.count(), 0)
+
     def setUp(self):
         self.user = User.objects.create_user(
             email="class-api@example.com",
