@@ -1,9 +1,10 @@
 """
 API views for media upload operations.
 """
+import logging
 import os
 from rest_framework import status
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import BasePermission
 from rest_framework.response import Response
 from apps.users.permissions import RoleBasedAccessPermission
 from rest_framework.views import APIView
@@ -14,7 +15,20 @@ from apps.uploads.serializers import (
     PresignUrlSerializer,
     PresignUrlResponseSerializer,
 )
-from apps.uploads.storage import get_storage, validate_file_key
+from apps.uploads.storage import get_storage, is_valid_upload_token, validate_file_key
+from apps.core.access import user_can_access_media
+
+logger = logging.getLogger(__name__)
+
+
+class HasValidUploadToken(BasePermission):
+    """Allow a PUT carrying the signed token issued by LocalStorage presign."""
+
+    def has_permission(self, request, view):
+        return is_valid_upload_token(
+            request.query_params.get("token"),
+            view.kwargs.get("file_key", ""),
+        )
 
 
 class PresignUrlView(APIView):
@@ -52,9 +66,10 @@ class PresignUrlView(APIView):
             
             response_serializer = PresignUrlResponseSerializer(result)
             return Response(response_serializer.data, status=status.HTTP_200_OK)
-        except Exception as e:
+        except Exception:
+            logger.exception("Failed to generate presigned upload URL")
             return Response(
-                {'error': str(e)},
+                {'error': 'Failed to generate upload URL.'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
@@ -75,9 +90,9 @@ class UploadView(APIView):
     """
     # LocalStorage returns a presigned-style URL that is uploaded directly by
     # the browser and therefore does not include the user's JWT header. The
-    # random file key acts as the upload capability; presign itself remains
-    # protected by RoleBasedAccessPermission.
-    permission_classes = [AllowAny]
+    # signed, expiring token in that URL is the upload capability; callers
+    # without one must be authenticated with upload permission.
+    permission_classes = [HasValidUploadToken | RoleBasedAccessPermission]
     
     def put(self, request, file_key):
         """Handle file upload via PUT request."""
@@ -105,9 +120,10 @@ class UploadView(APIView):
                 {'error': str(exc)},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        except Exception as e:
+        except Exception:
+            logger.exception("Failed to save uploaded file")
             return Response(
-                {'error': f'File upload failed: {str(e)}'},
+                {'error': 'File upload failed.'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -133,6 +149,12 @@ class MediaDownloadUrlView(APIView):
                     status=status.HTTP_404_NOT_FOUND,
                 )
 
+            if not user_can_access_media(request.user, safe_file_key):
+                return Response(
+                    {"error": "File not found"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
             url = storage.generate_presigned_download_url(
                 file_key=safe_file_key,
                 expires_in=3600,
@@ -146,8 +168,9 @@ class MediaDownloadUrlView(APIView):
                 status=status.HTTP_200_OK,
             )
 
-        except Exception as e:
+        except Exception:
+            logger.exception("Failed to generate presigned download URL")
             return Response(
-                {"error": str(e)},
+                {"error": "Failed to generate download URL."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )

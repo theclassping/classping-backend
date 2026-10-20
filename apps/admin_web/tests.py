@@ -1,5 +1,11 @@
-from django.test import TestCase
+import io
+import shutil
+import tempfile
+
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import TestCase, override_settings
 from django.urls import reverse
+from PIL import Image
 
 from apps.academic_years.models import AcademicYear
 from apps.classes.models import Class, ClassStudent
@@ -12,6 +18,21 @@ from apps.score_settings.models import NumericScore, ScoreSetting
 from apps.student_invoices.models import StudentInvoice
 from apps.students.models import Student, StudentGuardian
 from apps.users.models import RoleModulePermission, User
+
+
+# The class form always renders the teacher and student row formsets.
+EMPTY_CLASS_ROW_FORMSETS = {
+	"teachers-TOTAL_FORMS": "0",
+	"teachers-INITIAL_FORMS": "0",
+	"students-TOTAL_FORMS": "0",
+	"students-INITIAL_FORMS": "0",
+}
+
+
+def make_png_upload(name):
+	buffer = io.BytesIO()
+	Image.new("RGB", (2, 2)).save(buffer, format="PNG")
+	return SimpleUploadedFile(name, buffer.getvalue(), content_type="image/png")
 
 
 class RolePermissionAdminTests(TestCase):
@@ -129,6 +150,7 @@ class AdminModulePageTests(TestCase):
 				"name": "Primary A",
 				"branch": branch.pk,
 				"academic_year": academic_year.pk,
+				**EMPTY_CLASS_ROW_FORMSETS,
 			},
 		)
 		self.assertEqual(class_response.status_code, 302)
@@ -141,6 +163,7 @@ class AdminModulePageTests(TestCase):
 				"name": "Primary B",
 				"branch": branch.pk,
 				"academic_year": academic_year.pk,
+				**EMPTY_CLASS_ROW_FORMSETS,
 			},
 		)
 		self.assertEqual(class_response.status_code, 302)
@@ -184,7 +207,13 @@ class AdminModulePageTests(TestCase):
 		self.assertFalse(Class.objects.filter(pk=class_obj.pk).exists())
 
 	def test_unverified_payment_and_proof_crud(self):
-		location = Location.objects.create(name="Payment Province", location_type="PROVINCE")
+		media_root = tempfile.mkdtemp()
+		self.addCleanup(shutil.rmtree, media_root, ignore_errors=True)
+		with override_settings(MEDIA_ROOT=media_root, STORAGE_TYPE="local"):
+			self._run_unverified_payment_and_proof_crud()
+
+	def _run_unverified_payment_and_proof_crud(self):
+		location =Location.objects.create(name="Payment Province", location_type="PROVINCE")
 		school = School.objects.create(name="Payment School", register_number="PAY-001")
 		branch = Branch.objects.create(
 			school=school,
@@ -234,7 +263,7 @@ class AdminModulePageTests(TestCase):
 			"proofs-INITIAL_FORMS": "0",
 			"proofs-MIN_NUM_FORMS": "0",
 			"proofs-MAX_NUM_FORMS": "1000",
-			"proofs-0-image_data": '{"object_key":"proofs/payment.png"}',
+			"proofs-0-image_file": make_png_upload("payment.png"),
 		}
 		payment_data = {
 			"student_invoice": invoice.pk,
@@ -246,20 +275,21 @@ class AdminModulePageTests(TestCase):
 		self.assertEqual(response.status_code, 302)
 		payment = Payment.objects.get(student_invoice=invoice)
 		proof = PaymentProof.objects.get(payment=payment)
-		self.assertEqual(proof.image_data["object_key"], "proofs/payment.png")
+		self.assertEqual(proof.image_data["filename"], "payment.png")
+		self.assertEqual(proof.image_data["storage"], "local")
 		invoice.refresh_from_db()
 		self.assertEqual(invoice.status, StudentInvoice.Status.PAYMENT_SUBMITTED)
 
 		payment_data["amount"] = "95.00"
 		payment_data["proofs-INITIAL_FORMS"] = "1"
 		payment_data["proofs-0-id"] = str(proof.pk)
-		payment_data["proofs-0-image_data"] = '{"object_key":"proofs/payment-updated.png"}'
+		payment_data["proofs-0-image_file"] = make_png_upload("payment-updated.png")
 		response = self.client.post(reverse("admin_web:payment_edit", args=[payment.pk]), payment_data)
 		self.assertEqual(response.status_code, 302)
 		payment.refresh_from_db()
 		proof.refresh_from_db()
 		self.assertEqual(str(payment.amount), "95.00")
-		self.assertEqual(proof.image_data["object_key"], "proofs/payment-updated.png")
+		self.assertEqual(proof.image_data["filename"], "payment-updated.png")
 
 		self.client.post(reverse("admin_web:payment_delete", args=[payment.pk]))
 		self.assertFalse(Payment.objects.filter(pk=payment.pk).exists())

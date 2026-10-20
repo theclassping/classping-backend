@@ -1,3 +1,4 @@
+from apps.core.access import ScopedQuerysetMixin
 from rest_framework import permissions, serializers, status
 from rest_framework import viewsets
 from rest_framework.exceptions import PermissionDenied
@@ -12,7 +13,7 @@ from apps.users.models import User
 from .models import Payment, PaymentProof
 from .serializers import PaymentDetailSerializer, PaymentProofSerializer, PaymentSerializer
 
-class PaymentViewSet(viewsets.ModelViewSet):
+class PaymentViewSet(ScopedQuerysetMixin, viewsets.ModelViewSet):
 
     queryset = Payment.objects.select_related(
         "student_invoice",
@@ -141,7 +142,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
         return PaymentSerializer
 
 
-class PaymentProofViewSet(viewsets.ModelViewSet):
+class PaymentProofViewSet(ScopedQuerysetMixin, viewsets.ModelViewSet):
 
     queryset = PaymentProof.objects.select_related(
         "payment",

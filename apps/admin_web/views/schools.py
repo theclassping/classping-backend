@@ -224,7 +224,14 @@ def class_form(request, school_pk, pk=None):
                 for row in teacher_formset.cleaned_data:
                     if not row: continue
                     if row.get("create_teacher"):
-                        user = User.objects.create_user(email=row["email"], password=None, temporary_password=generate_temporary_password(), first_name=row["first_name"], last_name=row["last_name"], role=User.Role.STAFF)
+                        user = User.objects.create_user(
+                            email=row["email"],
+                            password=None,
+                            temporary_password=generate_temporary_password(),
+                            first_name=row["first_name"],
+                            last_name=row["last_name"],
+                            role=User.Role.TEACHER,
+                        )
                         staff = Staff.objects.create(user=user, branch=class_obj.branch, first_name=row["first_name"], last_name=row["last_name"], email=row["email"], staff_type=Staff.StaffType.TEACHER, hire_date=row["hire_date"], qualification=row["qualification"])
                     else:
                         staff = row.get("staff")

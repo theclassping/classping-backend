@@ -55,7 +55,17 @@ class StaffSerializer(serializers.ModelSerializer):
             if staff_type == Staff.StaffType.TEACHER
             else User.Role.STAFF
         )
-        if user and str(user.role).lower() != expected_role.lower():
+        if (
+            user
+            and (
+                self.instance is None
+                or (
+                    "user" in attrs
+                    and user.pk != getattr(self.instance, "user_id", None)
+                )
+            )
+            and str(user.role).lower() != expected_role.lower()
+        ):
             raise serializers.ValidationError({
                 "user": f"This staff type requires a user with the {expected_role} role."
             })
@@ -90,3 +100,32 @@ class StaffSerializer(serializers.ModelSerializer):
             )
 
         return Staff.objects.create(user=user, **validated_data)
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        staff = super().update(instance, validated_data)
+        if staff.user:
+            expected_role = (
+                User.Role.TEACHER
+                if staff.staff_type == Staff.StaffType.TEACHER
+                else User.Role.STAFF
+            )
+            updates = []
+            if staff.user.role != expected_role:
+                staff.user.role = expected_role
+                updates.append("role")
+            if staff.user.email != staff.email:
+                staff.user.email = staff.email
+                updates.append("email")
+            if staff.user.first_name != staff.first_name:
+                staff.user.first_name = staff.first_name
+                updates.append("first_name")
+            if staff.user.last_name != staff.last_name:
+                staff.user.last_name = staff.last_name
+                updates.append("last_name")
+            if staff.user.is_active != staff.is_active:
+                staff.user.is_active = staff.is_active
+                updates.append("is_active")
+            if updates:
+                staff.user.save(update_fields=updates)
+        return staff

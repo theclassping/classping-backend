@@ -1,7 +1,11 @@
+import logging
+
 from rest_framework import serializers
 
 from apps.uploads.services.media import MediaService
 from .models import AssessmentImage
+
+logger = logging.getLogger(__name__)
 
 
 class AssessmentImageSerializer(serializers.ModelSerializer):
@@ -37,9 +41,10 @@ class AssessmentImageSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError({
                         "image_data": "File not found. Please provide the full file path, e.g. 'C:/Users/audia/Downloads/brownies.jpg'"
                     })
-                except Exception as e:
+                except Exception:
+                    logger.exception("Failed to process image_data")
                     raise serializers.ValidationError({
-                        "image_data": f"Error processing image: {str(e)}"
+                        "image_data": "Error processing image."
                     })
 
         return attrs

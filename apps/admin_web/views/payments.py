@@ -54,6 +54,7 @@ def payment_form(request, pk=None):
     form = PaymentForm(request.POST or None, instance=payment)
     proof_formset = PaymentProofFormSet(
         request.POST or None,
+        request.FILES or None,
         instance=payment,
         prefix="proofs",
     )

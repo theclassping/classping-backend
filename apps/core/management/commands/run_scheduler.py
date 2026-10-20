@@ -3,7 +3,7 @@ import logging
 from django.conf import settings
 from django.core.management.base import BaseCommand
 from django_apscheduler.jobstores import DjangoJobStore, register_events
-from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.executors.pool import ThreadPoolExecutor
 
 from apps.student_invoices.scheduler import register_jobs
@@ -16,7 +16,7 @@ class Command(BaseCommand):
     help = "Runs APScheduler background jobs for invoice generation, reminders, and overdue marking."
 
     def handle(self, *args, **options):
-        scheduler = BackgroundScheduler(
+        scheduler = BlockingScheduler(
             timezone=settings.TIME_ZONE,
             executors={
                 "default": ThreadPoolExecutor(max_workers=10),
@@ -32,17 +32,15 @@ class Command(BaseCommand):
         register_events(scheduler)
         register_jobs(scheduler)
 
-        scheduler.start()
-
         self.stdout.write(
             self.style.SUCCESS("Scheduler started. Press CTRL+C to exit.")
         )
 
         try:
-            while True:
-                pass
+            scheduler.start()
         except KeyboardInterrupt:
-            scheduler.shutdown()
+            if scheduler.running:
+                scheduler.shutdown()
             self.stdout.write(
                 self.style.SUCCESS("Scheduler stopped.")
             )

@@ -1,3 +1,4 @@
+from apps.core.access import ScopedQuerysetMixin
 from rest_framework import permissions, viewsets
 from django.db.models import Q
 from apps.users.permissions import RoleBasedAccessPermission
@@ -6,7 +7,7 @@ from .models import Staff
 from .serializers import StaffSerializer
 
 
-class StaffViewSet(viewsets.ModelViewSet):
+class StaffViewSet(ScopedQuerysetMixin, viewsets.ModelViewSet):
     queryset = Staff.objects.select_related(
         "branch",
         "branch__school",

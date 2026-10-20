@@ -1,3 +1,4 @@
+from apps.core.access import ScopedQuerysetMixin, scope_queryset
 from rest_framework import viewsets
 from django.db.models import Q
 from rest_framework.decorators import action
@@ -13,17 +14,17 @@ from apps.student_invoices.models import StudentInvoice
 from apps.student_invoices.serializers import StudentInvoiceSerializer
 
 
-class StudentViewSet(viewsets.ModelViewSet):
+class StudentViewSet(ScopedQuerysetMixin, viewsets.ModelViewSet):
     serializer_class = StudentSerializer
 
     def get_queryset(self):
         if self.action == "retrieve":
-            return Student.objects.prefetch_related(
+            queryset = Student.objects.prefetch_related(
                 "student_guardians__guardian",
                 "class_students__class_obj",
             ).order_by("-id")
-
-        queryset = Student.objects.order_by("-id")
+        else:
+            queryset = Student.objects.order_by("-id")
         search = self.request.query_params.get("search") or self.request.query_params.get("q")
         status = self.request.query_params.get("status")
         guardian_id = self.request.query_params.get("guardian_id")
@@ -44,7 +45,7 @@ class StudentViewSet(viewsets.ModelViewSet):
                 class_students__class_obj_id=class_id
             )
 
-        return queryset.distinct()
+        return scope_queryset(queryset.distinct(), self.request.user)
 
     def get_serializer_class(self):
         if self.action == "retrieve":
@@ -58,6 +59,9 @@ class StudentViewSet(viewsets.ModelViewSet):
         url_path="invoices",
     )
     def invoices(self, request, pk=None):
+        # This action builds its own invoice queryset, so enforce the same
+        # student visibility check used by retrieve/update actions.
+        self.get_object()
 
         invoices = (
             StudentInvoice.objects
@@ -85,7 +89,7 @@ class StudentViewSet(viewsets.ModelViewSet):
             return self.get_paginated_response(serializer.data)
         return Response(serializer.data)
 
-class StudentGuardianViewSet(viewsets.ModelViewSet):
+class StudentGuardianViewSet(ScopedQuerysetMixin, viewsets.ModelViewSet):
     queryset = StudentGuardian.objects.select_related(
         "student",
         "guardian",

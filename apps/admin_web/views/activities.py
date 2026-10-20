@@ -60,6 +60,7 @@ def activity_form(request, pk=None):
     )
     image_formset = ActivityImageFormSet(
         request.POST or None,
+        request.FILES or None,
         instance=activity,
         prefix="images",
     )

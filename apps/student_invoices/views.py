@@ -1,3 +1,4 @@
+from apps.core.access import ScopedQuerysetMixin
 from django.db.models import Q
 from django.utils import timezone
 from rest_framework import permissions
@@ -8,7 +9,7 @@ from .models import StudentInvoice
 from .serializers import StudentInvoiceDetailSerializer, StudentInvoiceSerializer
 
 
-class StudentInvoiceViewSet(viewsets.ModelViewSet):
+class StudentInvoiceViewSet(ScopedQuerysetMixin, viewsets.ModelViewSet):
 
     queryset = StudentInvoice.objects.select_related(
         "class_student",

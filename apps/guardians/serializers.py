@@ -1,3 +1,5 @@
+import logging
+
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
@@ -5,6 +7,8 @@ from apps.uploads.services.media import MediaService
 from apps.students.models import Student, StudentGuardian
 from apps.users.managers import generate_temporary_password
 from .models import Guardian
+
+logger = logging.getLogger(__name__)
 
 User = get_user_model()
 
@@ -53,6 +57,23 @@ class GuardianSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if user and user.is_authenticated and str(user.role).upper() == "PARENT":
+            own_student_ids = set(
+                instance.student_guardians.filter(
+                    student__student_guardians__guardian__user_id=user.pk
+                ).values_list("student_id", flat=True)
+            )
+            data["student_guardians"] = [
+                relation
+                for relation in data.get("student_guardians", [])
+                if relation.get("student_id") in own_student_ids
+            ]
+        return data
     
     def get_image_url(self, obj):
         """Get the full URL for the guardian's image if metadata exists."""
@@ -76,9 +97,10 @@ class GuardianSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError({
                         "image_data": "File not found. Please provide the full file path, e.g. 'C:/Users/audia/Downloads/brownies.jpg'"
                     })
-                except Exception as e:
+                except Exception:
+                    logger.exception("Failed to process image_data")
                     raise serializers.ValidationError({
-                        "image_data": f"Error processing image: {str(e)}"
+                        "image_data": "Error processing image."
                     })
         
         return attrs
@@ -152,9 +174,10 @@ class GuardianInlineSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError({
                         "image_data": "File not found. Please provide the full file path, e.g. 'C:/Users/audia/Downloads/brownies.jpg'"
                     })
-                except Exception as e:
+                except Exception:
+                    logger.exception("Failed to process image_data")
                     raise serializers.ValidationError({
-                        "image_data": f"Error processing image: {str(e)}"
+                        "image_data": "Error processing image."
                     })
         
         return attrs

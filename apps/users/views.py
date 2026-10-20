@@ -1,3 +1,4 @@
+from apps.core.access import ScopedQuerysetMixin
 from datetime import datetime, timezone
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -27,7 +28,7 @@ from .permissions import RoleBasedAccessPermission
 User = get_user_model()
 
 
-class UserViewSet(viewsets.ModelViewSet):
+class UserViewSet(ScopedQuerysetMixin, viewsets.ModelViewSet):
     queryset = User.objects.all().order_by("-created_at")
     permission_classes = [RoleBasedAccessPermission]
 

@@ -84,6 +84,24 @@ class FeeTypeSerializer(serializers.ModelSerializer):
 
         return value
 
+    def validate_class_ids(self, class_ids):
+        from apps.core.access import scope_queryset
+        from apps.classes.models import Class
+
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        allowed_ids = set(
+            scope_queryset(Class.objects.all(), user)
+            .filter(pk__in=class_ids)
+            .values_list("pk", flat=True)
+        )
+        invalid_ids = set(class_ids) - allowed_ids
+        if invalid_ids:
+            raise serializers.ValidationError(
+                "One or more classes are outside your access scope."
+            )
+        return class_ids
+
     def validate(self, data):
         is_recurring = data.get("is_recurring", False)
         recurring_frequency = data.get("recurring_frequency")

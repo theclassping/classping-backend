@@ -1,3 +1,4 @@
+from apps.core.access import ScopedQuerysetMixin
 from rest_framework import permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -11,7 +12,7 @@ from .models import FeeType
 from .serializers import FeeTypeSerializer, GenerateInvoicesSerializer
 
 
-class FeeTypeViewSet(viewsets.ModelViewSet):
+class FeeTypeViewSet(ScopedQuerysetMixin, viewsets.ModelViewSet):
 
     queryset = FeeType.objects.select_related(
         "branch",

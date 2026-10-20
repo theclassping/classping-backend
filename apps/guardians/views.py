@@ -1,3 +1,4 @@
+from apps.core.access import ScopedQuerysetMixin
 from rest_framework import viewsets
 from django.db.models import Q
 
@@ -5,7 +6,7 @@ from .models import Guardian
 from .serializers import GuardianSerializer
 
 
-class GuardianViewSet(viewsets.ModelViewSet):
+class GuardianViewSet(ScopedQuerysetMixin, viewsets.ModelViewSet):
     queryset = Guardian.objects.all().order_by("-id")
     serializer_class = GuardianSerializer
 

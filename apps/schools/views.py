@@ -1,3 +1,4 @@
+from apps.core.access import ScopedQuerysetMixin
 from rest_framework import permissions, viewsets
 from django.db.models import Q
 from apps.users.permissions import RoleBasedAccessPermission
@@ -6,7 +7,7 @@ from .models import Branch, School
 from .serializers import BranchSerializer, SchoolSerializer
 
 
-class SchoolViewSet(viewsets.ModelViewSet):
+class SchoolViewSet(ScopedQuerysetMixin, viewsets.ModelViewSet):
     queryset = School.objects.all().order_by("-created_at")
     serializer_class = SchoolSerializer
     permission_classes = [RoleBasedAccessPermission]
@@ -22,7 +23,7 @@ class SchoolViewSet(viewsets.ModelViewSet):
         return queryset
 
 
-class BranchViewSet(viewsets.ModelViewSet):
+class BranchViewSet(ScopedQuerysetMixin, viewsets.ModelViewSet):
     queryset = Branch.objects.select_related("school").all()
     serializer_class = BranchSerializer
     permission_classes = [RoleBasedAccessPermission]

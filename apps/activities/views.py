@@ -1,3 +1,4 @@
+from apps.core.access import ScopedQuerysetMixin
 from rest_framework import viewsets
 from django.db.models import Q
 
@@ -9,7 +10,7 @@ from .serializers import (
 )
 
 
-class ActivityViewSet(viewsets.ModelViewSet):
+class ActivityViewSet(ScopedQuerysetMixin, viewsets.ModelViewSet):
     queryset = Activity.objects.select_related(
         "class_obj",
         "class_teacher",
@@ -40,7 +41,7 @@ class ActivityViewSet(viewsets.ModelViewSet):
         return queryset
     
 
-class ActivityImageViewSet(viewsets.ModelViewSet):
+class ActivityImageViewSet(ScopedQuerysetMixin, viewsets.ModelViewSet):
     queryset = ActivityImage.objects.select_related(
         "activity",
         "student",
@@ -57,7 +58,7 @@ class ActivityImageViewSet(viewsets.ModelViewSet):
         return queryset
 
 
-class ActivityStudentViewSet(viewsets.ModelViewSet):
+class ActivityStudentViewSet(ScopedQuerysetMixin, viewsets.ModelViewSet):
     queryset = ActivityStudent.objects.select_related(
         "activity",
         "student",

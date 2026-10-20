@@ -101,9 +101,10 @@ class ActivityImageSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError({
                         "image_data": f"File not found. Please provide the full file path, e.g. 'C:/Users/audia/Downloads/brownies.jpg'"
                     })
-                except Exception as e:
+                except Exception:
+                    logger.exception("Failed to process image_data")
                     raise serializers.ValidationError({
-                        "image_data": f"Error processing image: {str(e)}"
+                        "image_data": "Error processing image."
                     })
         
         return attrs
@@ -215,9 +216,10 @@ class ActivityImageNestedSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError({
                         "image_data": f"File not found. Please provide the full file path, e.g. 'C:/Users/audia/Downloads/brownies.jpg'"
                     })
-                except Exception as e:
+                except Exception:
+                    logger.exception("Failed to process image_data")
                     raise serializers.ValidationError({
-                        "image_data": f"Error processing image: {str(e)}"
+                        "image_data": "Error processing image."
                     })
         
         return attrs
@@ -359,6 +361,30 @@ class ActivitySerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if user and user.is_authenticated and str(user.role).upper() == "PARENT":
+            if not hasattr(self, "_parent_student_ids"):
+                self._parent_student_ids = set(
+                    Student.objects.filter(
+                        student_guardians__guardian__user_id=user.pk
+                    ).values_list("pk", flat=True)
+                )
+            own_student_ids = self._parent_student_ids
+            data["activity_students"] = [
+                student
+                for student in data.get("activity_students", [])
+                if student.get("id") in own_student_ids
+            ]
+            data["activity_images"] = [
+                image
+                for image in data.get("activity_images", [])
+                if image.get("student_id") in own_student_ids
+            ]
+        return data
 
     # ========================================================
     # VALIDATION

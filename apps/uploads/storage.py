@@ -3,6 +3,7 @@ Storage abstraction layer for media uploads.
 Supports both local storage and Cloudflare R2.
 """
 import os
+import time
 import uuid
 from abc import ABC, abstractmethod
 from pathlib import PurePosixPath
@@ -10,6 +11,9 @@ from urllib.parse import quote
 from typing import Optional, Dict, Any
 import boto3
 from django.conf import settings
+from django.core import signing
+
+UPLOAD_TOKEN_SALT = "apps.uploads.local-put"
 
 
 def validate_file_key(file_key: str) -> str:
@@ -30,6 +34,25 @@ def validate_file_key(file_key: str) -> str:
         raise ValueError("Invalid file_key path")
 
     return safe_key
+
+
+def make_upload_token(file_key: str, expires_in: int) -> str:
+    """Sign a short-lived capability to PUT exactly one local file_key."""
+    return signing.dumps(
+        {"key": validate_file_key(file_key), "exp": int(time.time()) + int(expires_in)},
+        salt=UPLOAD_TOKEN_SALT,
+    )
+
+
+def is_valid_upload_token(token: Optional[str], file_key: str) -> bool:
+    if not token:
+        return False
+    try:
+        payload = signing.loads(token, salt=UPLOAD_TOKEN_SALT)
+        safe_key = validate_file_key(file_key)
+    except (signing.BadSignature, ValueError):
+        return False
+    return payload.get("key") == safe_key and payload.get("exp", 0) >= time.time()
 
 
 class StorageBackend(ABC):
@@ -144,7 +167,8 @@ class LocalStorage(StorageBackend):
         """For local storage, return the upload endpoint URL with the required PUT method."""
         safe_key = validate_file_key(file_key)
         encoded_key = quote(safe_key, safe='/')
-        return f"{settings.SITE_URL}/api/media/upload/{encoded_key}?method=PUT"
+        token = quote(make_upload_token(safe_key, expires_in), safe='')
+        return f"{settings.SITE_URL}/api/media/upload/{encoded_key}?method=PUT&token={token}"
     
     def get_object_url(self, file_key: str) -> str:
         """Get the full URL for accessing a local file."""

@@ -1,5 +1,10 @@
+import logging
+
 from django.conf import settings
 from mailjet_rest import Client
+
+
+logger = logging.getLogger(__name__)
 
 
 class Mailer:
@@ -51,6 +56,11 @@ class Mailer:
                 f"Mailjet error {result.status_code}: {result.json()}"
             )
 
-        print(result.json())
+        payload = result.json()
+        logger.info(
+            "Mailjet template %s sent (status %s)",
+            template_id,
+            result.status_code,
+        )
 
-        return result.json()
+        return payload

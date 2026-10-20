@@ -134,6 +134,25 @@ class ClassDetailSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if user and user.is_authenticated and str(user.role).upper() == "PARENT":
+            from apps.students.models import Student
+
+            own_student_ids = set(
+                Student.objects.filter(
+                    student_guardians__guardian__user_id=user.pk
+                ).values_list("pk", flat=True)
+            )
+            data["class_students"] = [
+                item
+                for item in data.get("class_students", [])
+                if item.get("student", {}).get("id") in own_student_ids
+            ]
+        return data
+
 class ClassTeacherSerializer(serializers.ModelSerializer):
     class_id = serializers.PrimaryKeyRelatedField(
         source="class_obj",

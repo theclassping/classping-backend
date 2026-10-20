@@ -28,7 +28,13 @@ from django.test import override_settings
 class PaymentAuthorizationTests(SimpleTestCase):
     def test_non_staff_cannot_complete_payment_before_save(self):
         view = PaymentViewSet()
-        view.request = SimpleNamespace(user=SimpleNamespace(staff=None))
+        view.request = SimpleNamespace(
+            user=SimpleNamespace(
+                staff=None,
+                is_superuser=False,
+                role=User.Role.PARENT,
+            )
+        )
 
         serializer = Mock()
         serializer.instance = Mock(status=Payment.Status.COMPLETED)
@@ -87,6 +93,17 @@ class PaymentApiTests(TestCase):
             guardian=guardian,
             relationship="father",
             is_primary=True,
+        )
+        parent_guardian = Guardian.objects.create(
+            user=self.user,
+            name="Parent Payment",
+            email="parent-payment@example.com",
+        )
+        StudentGuardian.objects.create(
+            student=student,
+            guardian=parent_guardian,
+            relationship="mother",
+            is_primary=False,
         )
         class_student = ClassStudent.objects.create(class_obj=class_obj, student=student, is_current=True)
         fee_type = FeeType.objects.create(branch=branch, name="Tuition", amount=Decimal("100000"))

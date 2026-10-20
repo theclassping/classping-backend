@@ -1,3 +1,5 @@
+import logging
+
 from django.db import transaction
 from django.contrib.auth import get_user_model
 
@@ -11,6 +13,8 @@ from apps.locations.models import Location
 from apps.locations.serializers import LocationSerializer
 from apps.uploads.services.media import MediaService
 from .models import Student, StudentGuardian
+
+logger = logging.getLogger(__name__)
 
 User = get_user_model()
 
@@ -193,11 +197,20 @@ class StudentSerializer(serializers.ModelSerializer):
         """
         # Call parent which won't include write_only fields
         data = super().to_representation(instance)
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        is_parent = (
+            user
+            and user.is_authenticated
+            and str(user.role).upper() == "PARENT"
+        )
         
         # Add student_guardians as simple nested data (read response)
         if instance and instance.pk:
             student_guardians_data = []
             for sg in instance.student_guardians.select_related("guardian").all():
+                if is_parent and sg.guardian.user_id != user.pk:
+                    continue
                 student_guardians_data.append({
                     "id": sg.id,
                     "guardian_id": sg.guardian.id,
@@ -289,9 +302,10 @@ class StudentSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError({
                         "image_data": f"File not found. Please provide the full file path, e.g. 'C:/Users/audia/Downloads/brownies.jpg'"
                     })
-                except Exception as e:
+                except Exception:
+                    logger.exception("Failed to process image_data")
                     raise serializers.ValidationError({
-                        "image_data": f"Error processing image: {str(e)}"
+                        "image_data": "Error processing image."
                     })
 
         return attrs
@@ -715,6 +729,15 @@ class StudentDetailSerializer(StudentSerializer):
         Detail response includes full class serializer data.
         """
         data = super().to_representation(instance)
+
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if user and user.is_authenticated and str(user.role).upper() == "PARENT":
+            data["student_guardians"] = [
+                relation
+                for relation in data.get("student_guardians", [])
+                if relation.get("guardian", {}).get("user_id") == user.pk
+            ]
         
         # Override class_students with full ClassSerializer data
         class_students_list = instance.class_students.select_related("class_obj").all()

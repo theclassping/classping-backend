@@ -1,6 +1,7 @@
 import os
 from tempfile import TemporaryDirectory
 from unittest import mock
+from urllib.parse import quote
 
 from django.conf import settings
 from django.test import SimpleTestCase, override_settings
@@ -8,8 +9,9 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 from unittest.mock import patch
 from apps.users.models import User
+from apps.students.models import Student
 
-from apps.uploads.storage import LocalStorage
+from apps.uploads.storage import LocalStorage, make_upload_token
 
 
 class LocalStorageSecurityTests(SimpleTestCase):
@@ -99,6 +101,14 @@ class MediaApiTests(TestCase):
     def test_download_url_returns_url_for_existing_file(self, get_storage):
         get_storage.return_value.verify_object_exists.return_value = True
         get_storage.return_value.generate_presigned_download_url.return_value = "https://download.test/file.jpg"
+        Student.objects.create(
+            first_name="Media",
+            last_name="Owner",
+            date_of_birth="2018-01-01",
+            gender="other",
+            enroll_date="2026-07-01",
+            image_data={"id": "file.jpg"},
+        )
         response = self.client.get("/api/media/download/url/?file_key=file.jpg")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["url"], "https://download.test/file.jpg")
@@ -108,3 +118,42 @@ class MediaApiTests(TestCase):
         get_storage.return_value.verify_object_exists.return_value = False
         response = self.client.get("/api/media/download/url/?file_key=missing.jpg")
         self.assertEqual(response.status_code, 404)
+
+
+class SignedUploadTokenTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+
+    def _put(self, file_key, token):
+        return self.client.generic(
+            "PUT",
+            f"/api/media/upload/{file_key}?token={quote(token, safe='')}",
+            data=b"binary-content",
+            content_type="application/octet-stream",
+        )
+
+    def test_presigned_local_url_uploads_without_jwt(self):
+        with TemporaryDirectory() as tmpdir:
+            with override_settings(MEDIA_ROOT=tmpdir, SITE_URL="http://testserver"):
+                url = LocalStorage().generate_presigned_url("photos/signed.bin", expires_in=60)
+                response = self.client.generic(
+                    "PUT",
+                    url.replace("http://testserver", ""),
+                    data=b"binary-content",
+                    content_type="application/octet-stream",
+                )
+                self.assertEqual(response.status_code, 204)
+                with open(os.path.join(tmpdir, "photos", "signed.bin"), "rb") as handle:
+                    self.assertEqual(handle.read(), b"binary-content")
+
+    def test_token_for_another_key_is_rejected(self):
+        token = make_upload_token("photos/allowed.bin", expires_in=60)
+        self.assertEqual(self._put("photos/other.bin", token).status_code, 401)
+
+    def test_expired_token_is_rejected(self):
+        token = make_upload_token("photos/expired.bin", expires_in=-1)
+        self.assertEqual(self._put("photos/expired.bin", token).status_code, 401)
+
+    def test_tampered_token_is_rejected(self):
+        token = make_upload_token("photos/tampered.bin", expires_in=60)
+        self.assertEqual(self._put("photos/tampered.bin", token + "x").status_code, 401)

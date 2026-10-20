@@ -1,3 +1,4 @@
+from apps.core.access import ScopedQuerysetMixin, scope_queryset
 from rest_framework import permissions, viewsets
 from django.db.models import Q
 from rest_framework.decorators import action
@@ -8,7 +9,7 @@ from .models import Class, ClassTeacher, ClassStudent
 from .serializers import ClassSerializer, ClassDetailSerializer, ClassTeacherSerializer, ClassStudentSerializer
 
 
-class ClassViewSet(viewsets.ModelViewSet):
+class ClassViewSet(ScopedQuerysetMixin, viewsets.ModelViewSet):
     queryset = Class.objects.select_related(
         "branch",
         "academic_year",
@@ -42,8 +43,9 @@ class ClassViewSet(viewsets.ModelViewSet):
             .filter(class_obj=class_obj)
             .select_related("student")
         )
-
-        assignments = self.filter_queryset(assignments)
+        assignments = self.filter_queryset(
+            scope_queryset(assignments, request.user)
+        )
         page = self.paginate_queryset(assignments)
         serializer = ClassStudentSerializer(page if page is not None else assignments, many=True)
         if page is not None:
@@ -71,7 +73,7 @@ class ClassViewSet(viewsets.ModelViewSet):
             return self.get_paginated_response(serializer.data)
         return Response(serializer.data)
 
-class ClassTeacherViewSet(viewsets.ModelViewSet):
+class ClassTeacherViewSet(ScopedQuerysetMixin, viewsets.ModelViewSet):
     queryset = ClassTeacher.objects.select_related(
         "class_obj",
         "staff",
@@ -108,7 +110,7 @@ class ClassTeacherViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(Q(class_obj__name__icontains=search) | Q(staff__first_name__icontains=search) | Q(staff__last_name__icontains=search))
         return queryset
 
-class ClassStudentViewSet(viewsets.ModelViewSet):
+class ClassStudentViewSet(ScopedQuerysetMixin, viewsets.ModelViewSet):
     queryset = ClassStudent.objects.select_related(
         "class_obj",
         "student",

@@ -12,6 +12,9 @@ from apps.schools.models import Branch, School
 from apps.academic_years.models import AcademicYear
 from apps.staffs.models import Staff
 from apps.students.models import Student
+from apps.students.models import StudentGuardian
+from apps.guardians.models import Guardian
+from apps.users.models import RoleModulePermission
 from apps.classes.models import ClassTeacher, ClassStudent
 
 
@@ -115,6 +118,65 @@ class ClassRelationshipApiTests(TestCase):
         self.assertEqual(update.data["name"], "Grade 1 Updated")
         delete = self.client.delete(f"/api/classes/{self.class_obj.id}/")
         self.assertEqual(delete.status_code, 204)
+
+    def test_parent_sees_only_their_child_in_class_endpoints(self):
+        parent_user = User.objects.create_user(
+            email="class-parent@example.com",
+            password="StrongPassword123!",
+            role=User.Role.PARENT,
+        )
+        guardian = Guardian.objects.create(
+            user=parent_user,
+            name="Class Parent",
+            email=parent_user.email,
+        )
+        StudentGuardian.objects.create(
+            student=self.student,
+            guardian=guardian,
+            relationship="mother",
+            is_primary=True,
+        )
+        classmate = Student.objects.create(
+            first_name="Other",
+            last_name="Student",
+            date_of_birth=date(2018, 2, 1),
+            gender="female",
+            enroll_date=date(2026, 7, 1),
+            status="active",
+        )
+        ClassStudent.objects.create(
+            class_obj=self.class_obj,
+            student=self.student,
+            is_current=True,
+        )
+        ClassStudent.objects.create(
+            class_obj=self.class_obj,
+            student=classmate,
+            is_current=True,
+        )
+        RoleModulePermission.objects.update_or_create(
+            role=User.Role.PARENT,
+            module="classes",
+            defaults={"can_read": True},
+        )
+        RoleModulePermission.objects.update_or_create(
+            role=User.Role.PARENT,
+            module="schools",
+            defaults={"can_read": True},
+        )
+
+        self.client.force_authenticate(user=parent_user)
+        detail = self.client.get(f"/api/classes/{self.class_obj.pk}/")
+        students = self.client.get(f"/api/classes/{self.class_obj.pk}/students/")
+        branches = self.client.get("/api/branches/")
+
+        self.assertEqual(detail.status_code, 200)
+        self.assertEqual(len(detail.data["class_students"]), 1)
+        self.assertEqual(students.status_code, 200)
+        self.assertEqual(len(students.data), 1)
+        self.assertEqual(students.data[0]["student_id"], self.student.pk)
+        self.assertEqual(branches.status_code, 200)
+        self.assertEqual([branch["id"] for branch in branches.data], [self.class_obj.branch_id])
 
     def test_duplicate_class_and_invalid_references_fail(self):
         duplicate = self.client.post("/api/classes/", {
