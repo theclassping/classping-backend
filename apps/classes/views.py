@@ -19,7 +19,13 @@ class ClassViewSet(ScopedQuerysetMixin, viewsets.ModelViewSet):
     ).all()
 
     serializer_class = ClassSerializer
-
+    
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        branch_id = self.request.query_params.get("branch_id")
+        if branch_id:
+            queryset = queryset.filter(branch_id=branch_id)
+        return queryset
     permission_classes = [
         RoleBasedAccessPermission
     ]
