@@ -3,13 +3,31 @@ from django.contrib.auth.password_validation import validate_password
 from django.db import transaction
 from rest_framework import serializers
 from rest_framework_simplejwt.exceptions import TokenError
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer, TokenRefreshSerializer
+from rest_framework_simplejwt.settings import api_settings
+from rest_framework_simplejwt.utils import get_md5_hash_password
+from rest_framework.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.tokens import RefreshToken
 from apps.guardians.models import Guardian
 from apps.students.models import Student
 from .role_policy import check_account_management
 
 User = get_user_model()
+
+
+class PasswordAwareTokenRefreshSerializer(TokenRefreshSerializer):
+    """Reject stale password claims even if a refresh escaped the blacklist."""
+
+    def validate(self, attrs):
+        refresh = self.token_class(attrs["refresh"])
+        user = User.objects.filter(
+            **{api_settings.USER_ID_FIELD: refresh.get(api_settings.USER_ID_CLAIM)}
+        ).first()
+        if user is None or not user.is_active:
+            raise AuthenticationFailed("No active account found for the given token.")
+        if refresh.get(api_settings.REVOKE_TOKEN_CLAIM) != get_md5_hash_password(user.password):
+            raise AuthenticationFailed("Password has changed. Please log in again.")
+        return super().validate(attrs)
 
 
 class LoginTokenSerializer(TokenObtainPairSerializer):

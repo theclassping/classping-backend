@@ -248,9 +248,11 @@ LOGGING = {
     },
 }
 
-# Extended for easier local/manual testing (default is 5 minutes).
+# Password changes invalidate access and refresh tokens from every login.
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(days=1),
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=10),
+    "CHECK_REVOKE_TOKEN": True,
+    "TOKEN_REFRESH_SERIALIZER": "apps.users.serializers.PasswordAwareTokenRefreshSerializer",
 }
 
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"

@@ -36,3 +36,21 @@ Deploy migration `users.0007_account_management_permissions` to enable users API
 read/create/edit for STAFF and TEACHER, and read/edit only for PARENT. Non-admin
 delete permission defaults to false. The role restrictions remain enforced if
 module permissions are later changed.
+
+## Password changes and JWT sessions
+
+Access tokens expire after 10 minutes and carry Simple JWT's password hash claim.
+Changing or resetting a password invalidates every previous access token. The
+refresh endpoint also checks this claim, including for tokens absent from the
+outstanding-token table.
+
+`User.save()` blacklists the user's outstanding refresh tokens in the same
+transaction as the password write. This covers the API, admin web, Django admin,
+and management commands that use `set_password()` followed by `save()`. Do not
+write passwords with `QuerySet.update()` or raw SQL: those bypass this hook.
+Profile-only saves do not revoke sessions.
+
+After a successful password change/reset, clients must clear their tokens and
+log in again. Deploying this setting also rejects previously issued tokens that
+lack the password claim, so existing users must log in again once. No new schema
+migration is needed for password revocation.
