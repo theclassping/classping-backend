@@ -15,6 +15,11 @@ SECURE_SSL_REDIRECT = SESSION_COOKIE_SECURE
 # Enable only behind a proxy that overwrites X-Forwarded-Proto.
 if os.environ.get("TRUST_PROXY_HEADERS", "False") == "True":
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    # Rate limits key on the client IP that the trusted proxies appended.
+    REST_FRAMEWORK["NUM_PROXIES"] = int(os.environ.get("TRUSTED_PROXY_COUNT", "1"))  # noqa: F405
+
+if not REDIS_URL:  # noqa: F405
+    raise ImproperlyConfigured("Production requires REDIS_URL so rate limits are shared across workers.")
 
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 EMAIL_HOST = os.environ.get("EMAIL_HOST", "in-v3.mailjet.com")

@@ -54,3 +54,23 @@ After a successful password change/reset, clients must clear their tokens and
 log in again. Deploying this setting also rejects previously issued tokens that
 lack the password claim, so existing users must log in again once. No new schema
 migration is needed for password revocation.
+
+## Authentication rate limits
+
+Login, token refresh and password endpoints are rate limited
+(`apps/users/throttling.py`, rates in `REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]`).
+Refused requests get HTTP 429 with `Retry-After`.
+
+| Endpoint | Limit |
+| --- | --- |
+| `auth/login/`, admin web login, Django admin login | 20/min per IP, 5/min per email |
+| `auth/refresh/` | 30/min per IP |
+| `auth/forgot-password/` | 10/hour per IP, 3/hour per email |
+| `auth/reset-password/` | 20/hour per IP |
+| `auth/change-password/` | 5/min per user |
+
+Counters live in the default cache. Production requires `REDIS_URL` so every
+gunicorn worker shares them. Client IPs come from `REMOTE_ADDR` unless
+`TRUST_PROXY_HEADERS=True`; then the address appended by the trusted proxies in
+`X-Forwarded-For` is used (`TRUSTED_PROXY_COUNT`, default 1). Behind a reverse
+proxy, enable this, or every client shares the proxy's IP and one limit.

@@ -5,6 +5,7 @@ from datetime import date
 from functools import wraps
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponseForbidden
+from apps.users.throttling import login_throttle_wait
 
 def platform_admin_required(view_func):
     @wraps(view_func)
@@ -35,6 +36,18 @@ def login_view(request):
 
         email = request.POST.get("email", "").strip()
         password = request.POST.get("password", "")
+
+        # Same limits as the API login, so the form cannot be used to brute force.
+        if login_throttle_wait(request) is not None:
+            return render(
+                request,
+                "admin_web/login.html",
+                {
+                    "error": "Too many login attempts. Please try again later.",
+                    "email": email,
+                },
+                status=429,
+            )
 
         user = authenticate(
             request,

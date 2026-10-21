@@ -1,6 +1,7 @@
 from pathlib import Path
 from datetime import timedelta
 import os
+import sys
 from django.core.exceptions import ImproperlyConfigured
 
 try:
@@ -206,6 +207,18 @@ REST_FRAMEWORK = {
     "DEFAULT_FILTER_BACKENDS": (
         "apps.core.pagination.SafeOrderingFilter",
     ),
+    # Applied per view by apps.users.throttling; see ACCOUNT_ROLE_POLICY.md.
+    "DEFAULT_THROTTLE_RATES": {
+        "login_ip": "20/min",
+        "login_email": "5/min",
+        "token_refresh": "30/min",
+        "password_forgot_ip": "10/hour",
+        "password_forgot_email": "3/hour",
+        "password_reset": "20/hour",
+        "password_change": "5/min",
+    },
+    # Ignore X-Forwarded-For unless production trusts its proxy.
+    "NUM_PROXIES": 0,
 }
 
 # Log to stdout so container platforms can collect application logs.
@@ -321,6 +334,13 @@ SITE_URL = os.environ.get("SITE_URL", "http://localhost:8000")
 # fall back to the in-process cache in MediaService.
 REDIS_URL = os.environ.get("REDIS_URL", "")
 UPLOAD_METADATA_TTL = int(os.environ.get("UPLOAD_METADATA_TTL", "3600"))
+
+# Rate-limit counters must be shared by every worker, so use Redis when set.
+# Tests get a no-op cache; throttling tests opt into a local cache.
+if len(sys.argv) > 1 and sys.argv[1] == "test":
+    CACHES = {"default": {"BACKEND": "django.core.cache.backends.dummy.DummyCache"}}
+elif REDIS_URL:
+    CACHES = {"default": {"BACKEND": "django.core.cache.backends.redis.RedisCache", "LOCATION": REDIS_URL}}
 
 # Mailjet Configuration
 MAILJET_API_KEY = os.environ.get("MAILJET_API_KEY")

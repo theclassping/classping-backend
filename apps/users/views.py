@@ -24,6 +24,12 @@ from .serializers import (
     ChangePasswordSerializer,
 )
 from .permissions import RoleBasedAccessPermission
+from .throttling import (
+    ChangePasswordThrottle,
+    ForgotPasswordEmailThrottle,
+    ForgotPasswordIPThrottle,
+    ResetPasswordThrottle,
+)
 from .role_policy import check_account_management
 
 User = get_user_model()
@@ -115,6 +121,7 @@ class LogoutView(GenericAPIView):
     
 class ForgotPasswordView(GenericAPIView):
     permission_classes = [AllowAny]
+    throttle_classes = [ForgotPasswordIPThrottle, ForgotPasswordEmailThrottle]
     serializer_class = ForgotPasswordSerializer
 
     def post(self, request):
@@ -171,6 +178,7 @@ class ForgotPasswordView(GenericAPIView):
     
 class ChangePasswordView(GenericAPIView):
     permission_classes = [IsAuthenticated]
+    throttle_classes = [ChangePasswordThrottle]
     serializer_class = ChangePasswordSerializer
 
     def post(self, request):
@@ -188,6 +196,7 @@ class ChangePasswordView(GenericAPIView):
 
 class ResetPasswordView(GenericAPIView):
     permission_classes = [AllowAny]
+    throttle_classes = [ResetPasswordThrottle]
     serializer_class = ResetPasswordSerializer
 
     def post(self, request):
