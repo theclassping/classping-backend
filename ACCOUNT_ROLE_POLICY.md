@@ -74,3 +74,20 @@ gunicorn worker shares them. Client IPs come from `REMOTE_ADDR` unless
 `TRUST_PROXY_HEADERS=True`; then the address appended by the trusted proxies in
 `X-Forwarded-For` is used (`TRUSTED_PROXY_COUNT`, default 1). Behind a reverse
 proxy, enable this, or every client shares the proxy's IP and one limit.
+
+## JWT logout sessions
+
+Each login issues a new signed `sid` claim, shared by its refresh token and all
+access tokens derived from it. Logout revokes this session and blacklists the
+submitted refresh token atomically. Other login sessions remain active.
+
+Send the current session's access token in `Authorization: Bearer ...` and its
+refresh token in the existing logout JSON body. Tokens from a different user or
+login session are rejected without revoking either session. Access and refresh
+requests both check session revocation, so access tokens issued before logout
+are rejected immediately on subsequent requests.
+
+Apply migration `users.0008_revokedtokensession` before starting the updated
+backend. Tokens issued before this change lack `sid` and require login again.
+Keep session revocation records: `expires_at` describes the tokens seen at logout
+and is not a safe automatic cleanup bound if refresh rotation is later enabled.

@@ -7,12 +7,12 @@ from django.core.mail import send_mail
 from django.utils.encoding import force_bytes, force_str
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.db.models import Q
+from django.db import transaction
 from rest_framework import status, viewsets
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.generics import GenericAPIView
-from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
-from .models import RevokedAccessToken
+from .models import RevokedAccessToken, RevokedTokenSession
 
 from .serializers import (
     UserCreateSerializer,
@@ -83,9 +83,20 @@ class LogoutView(GenericAPIView):
     permission_classes = [IsAuthenticated]
     serializer_class = LogoutSerializer
 
+    @transaction.atomic
     def post(self, request):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+
+        refresh = serializer.token
+        # Cover access tokens minted near refresh expiry too. With rotation,
+        # retain the revocation record: other refresh tokens may expire later.
+        RevokedTokenSession.objects.get_or_create(
+            sid=refresh["sid"],
+            defaults={"expires_at": datetime.fromtimestamp(
+                max(refresh["exp"], request.auth["exp"]), tz=timezone.utc,
+            )},
+        )
 
         access_token = request.auth
 
@@ -103,16 +114,7 @@ class LogoutView(GenericAPIView):
                 },
             )
 
-        refresh_token = serializer.validated_data.get("refresh")
-
-        if refresh_token:
-            try:
-                RefreshToken(refresh_token).blacklist()
-            except Exception:
-                return Response(
-                    {"detail": "Invalid refresh token."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+        serializer.save()
 
         return Response(
             {"detail": "Successfully logged out."},

@@ -11,6 +11,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from apps.guardians.models import Guardian
 from apps.students.models import Student
 from .role_policy import check_account_management
+from .models import RevokedTokenSession
 
 User = get_user_model()
 
@@ -20,6 +21,9 @@ class PasswordAwareTokenRefreshSerializer(TokenRefreshSerializer):
 
     def validate(self, attrs):
         refresh = self.token_class(attrs["refresh"])
+        sid = refresh.get("sid")
+        if not sid or RevokedTokenSession.objects.filter(sid=sid).exists():
+            raise AuthenticationFailed("Session has been revoked. Please log in again.")
         user = User.objects.filter(
             **{api_settings.USER_ID_FIELD: refresh.get(api_settings.USER_ID_CLAIM)}
         ).first()
@@ -34,6 +38,13 @@ class LoginTokenSerializer(TokenObtainPairSerializer):
     """JWT response serializer with the authenticated user's details."""
 
     user = serializers.SerializerMethodField()
+
+    @classmethod
+    def get_token(cls, user):
+        token = super().get_token(user)
+        # Simple JWT copies this claim to every derived access/rotated refresh.
+        token["sid"] = token["jti"]
+        return token
     
     def validate(self, attrs):
         data = super().validate(attrs)
@@ -217,6 +228,13 @@ class LogoutSerializer(serializers.Serializer):
             self.token = RefreshToken(attrs["refresh"])
         except TokenError as exc:
             raise serializers.ValidationError({"refresh": "Invalid refresh token."}) from exc
+        request = self.context["request"]
+        if (
+            str(self.token.get(api_settings.USER_ID_CLAIM)) != str(getattr(request.user, api_settings.USER_ID_FIELD))
+            or not self.token.get("sid")
+            or self.token.get("sid") != request.auth.get("sid")
+        ):
+            raise serializers.ValidationError({"refresh": "Refresh token must belong to the current login session."})
         return attrs
 
     def save(self, **kwargs):
