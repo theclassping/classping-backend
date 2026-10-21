@@ -10,10 +10,14 @@ class RoleBasedAccessPermission(IsAuthenticated):
 		if not super().has_permission(request, view):
 			return False
 
+		module = view.__class__.__module__.split(".")[1]
+		if module == "users" and request.method in ("POST", "DELETE"):
+			if str(request.user.role).upper() == "PARENT":
+				return False
+
 		if request.user.is_superuser:
 			return True
 
-		module = view.__class__.__module__.split(".")[1]
 		if request.method in ("GET", "HEAD", "OPTIONS"):
 			permission_field = "can_read"
 		elif request.method == "POST":

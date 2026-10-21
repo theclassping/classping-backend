@@ -555,6 +555,12 @@ class StudentSerializer(serializers.ModelSerializer):
 
     def _update_guardian(self, guardian, data):
         user = guardian.user
+        request = self.context.get("request")
+        if request is not None and not (
+            request.user.pk == user.pk and request.user.role == User.Role.PARENT
+        ):
+            from apps.users.role_policy import check_account_management
+            check_account_management(request.user, user)
         if "email" in data:
             if not data["email"]:
                 raise serializers.ValidationError({

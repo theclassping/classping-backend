@@ -24,6 +24,7 @@ from .serializers import (
     ChangePasswordSerializer,
 )
 from .permissions import RoleBasedAccessPermission
+from .role_policy import check_account_management
 
 User = get_user_model()
 
@@ -62,6 +63,7 @@ class UserViewSet(ScopedQuerysetMixin, viewsets.ModelViewSet):
 
     def destroy(self, request, *args, **kwargs):
         user = self.get_object()
+        check_account_management(request.user, user)
 
         # Soft delete instead of permanently deleting the user.
         user.is_active = False
