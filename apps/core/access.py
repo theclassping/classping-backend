@@ -81,7 +81,10 @@ def scope_queryset(queryset, user):
             "assessmentimage": Q(student_assessment__assessment__class_teacher__staff__user_id=user.pk),
             "feetype": Q(branch_id=branch_id),
             "feetypeclass": Q(fee_type__branch_id=branch_id),
-            "user": Q(pk=user.pk),
+            "user": Q(pk=user.pk) | Q(
+                role="PARENT",
+                guardian__student_guardians__student__class_students__class_obj__class_teachers__staff__user_id=user.pk,
+            ),
         }
         return queryset.filter(scopes[name]).distinct() if name in scopes else queryset.none()
 
@@ -108,7 +111,13 @@ def scope_queryset(queryset, user):
         "assessment": Q(class_obj__branch_id=branch_id),
         "studentassessment": Q(assessment__class_obj__branch_id=branch_id),
         "assessmentimage": Q(student_assessment__assessment__class_obj__branch_id=branch_id),
-        "user": Q(staff__branch_id=branch_id),
+        "user": Q(staff__branch_id=branch_id) | Q(
+            role="PARENT",
+            guardian__student_guardians__student__branch_id=branch_id,
+        ) | Q(
+            role="PARENT",
+            guardian__student_guardians__student__class_students__class_obj__branch_id=branch_id,
+        ),
     }
     return queryset.filter(branch_filters[name]).distinct() if name in branch_filters else queryset.none()
 

@@ -3,6 +3,7 @@ from django.db import transaction
 from rest_framework import serializers
 
 from apps.users.managers import generate_temporary_password
+from apps.users.role_policy import check_account_management
 from .models import Staff
 
 User = get_user_model()
@@ -55,6 +56,11 @@ class StaffSerializer(serializers.ModelSerializer):
             if staff_type == Staff.StaffType.TEACHER
             else User.Role.STAFF
         )
+        request = self.context.get("request")
+        if request is not None:
+            if self.instance is not None and self.instance.user is not None:
+                check_account_management(request.user, self.instance.user, expected_role)
+            check_account_management(request.user, user, expected_role)
         if (
             user
             and (

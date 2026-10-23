@@ -12,10 +12,20 @@ from rest_framework_simplejwt.views import (
 )
 from rest_framework_simplejwt.views import TokenObtainPairView
 from apps.users.serializers import LoginTokenSerializer
+from apps.users.throttling import LOGIN_THROTTLES, TokenRefreshThrottle, throttle_login_form
 
 
 class LoginTokenView(TokenObtainPairView):
     serializer_class = LoginTokenSerializer
+    throttle_classes = LOGIN_THROTTLES
+
+
+class ThrottledTokenRefreshView(TokenRefreshView):
+    throttle_classes = [TokenRefreshThrottle]
+
+
+# Django admin's session login shares the API login limits.
+admin.site.login = throttle_login_form(admin.site.login)
 from apps.users.views import (
     LogoutView,
     ForgotPasswordView,
@@ -40,7 +50,7 @@ urlpatterns = [
 
     path(
         "api/auth/refresh/",
-        TokenRefreshView.as_view(),
+        ThrottledTokenRefreshView.as_view(),
         name="token_refresh",
     ),
     

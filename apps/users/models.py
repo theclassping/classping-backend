@@ -1,5 +1,5 @@
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
-from django.db import models
+from django.db import models, router, transaction
 from django.utils import timezone
 
 from .managers import UserManager
@@ -68,6 +68,33 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     objects = UserManager()
 
+    def save(self, *args, **kwargs):
+        """Invalidate refresh tokens atomically on every persisted password change.
+
+        Keeping this here also covers admin forms and management commands.
+        Password writes must use save(), rather than QuerySet.update().
+        """
+        using = kwargs.get("using") or router.db_for_write(type(self), instance=self)
+        update_fields = kwargs.get("update_fields")
+        checks_password = update_fields is None or "password" in update_fields
+        with transaction.atomic(using=using):
+            previous = None
+            if self.pk and checks_password:
+                previous = type(self).objects.using(using).select_for_update().filter(
+                    pk=self.pk
+                ).values_list("password", flat=True).first()
+            result = super().save(*args, **kwargs)
+            if previous is not None and previous != self.password:
+                from rest_framework_simplejwt.token_blacklist.models import (
+                    BlacklistedToken, OutstandingToken,
+                )
+                tokens = OutstandingToken.objects.using(using).filter(user_id=self.pk)
+                BlacklistedToken.objects.using(using).bulk_create(
+                    [BlacklistedToken(token_id=pk) for pk in tokens.values_list("pk", flat=True)],
+                    ignore_conflicts=True,
+                )
+            return result
+
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []
 
@@ -111,3 +138,9 @@ class RevokedAccessToken(models.Model):
 
     def __str__(self):
         return self.jti
+
+
+class RevokedTokenSession(models.Model):
+    sid = models.CharField(max_length=255, unique=True)
+    expires_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)

@@ -1,7 +1,7 @@
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework.exceptions import AuthenticationFailed
 
-from .models import RevokedAccessToken
+from .models import RevokedAccessToken, RevokedTokenSession
 
 
 class CustomJWTAuthentication(JWTAuthentication):
@@ -13,6 +13,10 @@ class CustomJWTAuthentication(JWTAuthentication):
             return None
 
         user, token = result
+
+        sid = token.get("sid")
+        if not sid or RevokedTokenSession.objects.filter(sid=sid).exists():
+            raise AuthenticationFailed("Session has been revoked. Please log in again.")
 
         jti = token.get("jti")
 
