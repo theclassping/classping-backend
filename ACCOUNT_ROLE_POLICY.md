@@ -32,6 +32,12 @@ ADMIN can continue creating accounts without these optional profile fields.
 Account and profile creation is atomic. The existing staff API can also create a
 staff profile and its linked login account together.
 
+TEACHER can also create a student and their PARENT login/guardian together with
+`POST /api/students/`, using `student_guardians[].user` and a primary guardian.
+`class_students` must include a class they teach; every supplied class must be
+assigned to them. Apply migration `users.0009_teacher_student_creation` to enable
+the student create permission. Student edit/delete permissions remain unchanged.
+
 Deploy migration `users.0007_account_management_permissions` to enable users API
 read/create/edit for STAFF and TEACHER, and read/edit only for PARENT. Non-admin
 delete permission defaults to false. The role restrictions remain enforced if

@@ -15,6 +15,65 @@ from apps.schools.models import Branch, School
 from apps.academic_years.models import AcademicYear
 
 
+class TeacherStudentCreationTests(TestCase):
+    def setUp(self):
+        from apps.staffs.models import Staff
+        from apps.classes.models import ClassTeacher
+
+        self.teacher = User.objects.create_user(
+            email="enrollment-teacher@example.test", password="StrongPassword123!", role="TEACHER",
+        )
+        location = Location.objects.create(name="Province", code="TSC", location_type="PROVINCE")
+        school = School.objects.create(name="School", register_number="TSC")
+        branch = Branch.objects.create(school=school, location=location, name="Main", code="TSC")
+        staff = Staff.objects.create(
+            user=self.teacher, branch=branch, first_name="Teacher", email=self.teacher.email,
+            staff_type="teacher", hire_date="2026-01-01", qualification="Education",
+        )
+        year = AcademicYear.objects.create(
+            branch=branch, name="2026", start_date="2026-01-01", end_date="2026-12-31",
+        )
+        self.classroom = Class.objects.create(branch=branch, academic_year=year, name="Assigned")
+        self.other_class = Class.objects.create(branch=branch, academic_year=year, name="Other")
+        ClassTeacher.objects.create(class_obj=self.classroom, staff=staff)
+        self.client = APIClient()
+        self.client.force_authenticate(self.teacher)
+
+    def payload(self):
+        return {
+            "first_name": "New", "last_name": "Student", "date_of_birth": "2018-01-01",
+            "gender": "male", "enroll_date": "2026-10-25",
+            "class_students": [{"class_id": self.classroom.pk}],
+            "student_guardians": [{
+                "relationship": "mother", "is_primary": True,
+                "user": {"email": "new-parent@example.test", "first_name": "New", "last_name": "Parent"},
+            }],
+        }
+
+    def test_teacher_creates_student_guardian_and_parent_login(self):
+        response = self.client.post("/api/students/", self.payload(), format="json")
+        self.assertEqual(response.status_code, 201, response.data)
+        student = Student.objects.get(pk=response.data["id"])
+        link = student.student_guardians.get()
+        self.assertTrue(link.is_primary)
+        self.assertEqual(link.guardian.user.role, "PARENT")
+        self.assertTrue(link.guardian.user.has_usable_password())
+        self.assertEqual(student.class_students.get().class_obj, self.classroom)
+        self.assertEqual(self.client.get(f"/api/students/{student.pk}/").status_code, 200)
+        self.assertEqual(self.client.get(f"/api/users/{link.guardian.user_id}/").status_code, 200)
+
+    def test_teacher_cannot_create_without_assigned_class(self):
+        for assignments in ([], [{"class_id": self.other_class.pk}],
+                            [{"class_id": self.classroom.pk}, {"class_id": self.other_class.pk}]):
+            with self.subTest(assignments=assignments):
+                payload = self.payload()
+                payload["class_students"] = assignments
+                response = self.client.post("/api/students/", payload, format="json")
+                self.assertEqual(response.status_code, 400, response.data)
+                self.assertFalse(Student.objects.exists())
+                self.assertFalse(User.objects.filter(email="new-parent@example.test").exists())
+
+
 class StudentGuardianRequirementTests(TestCase):
     def _existing_guardian_student(self):
         student = Student.objects.create(

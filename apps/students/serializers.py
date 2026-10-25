@@ -273,6 +273,22 @@ class StudentSerializer(serializers.ModelSerializer):
         # A student must be created with a primary guardian. Updates may
         # omit guardians and preserve the existing relationships.
         if self.instance is None:
+            request = self.context.get("request")
+            actor = getattr(request, "user", None)
+            if actor and str(actor.role).upper() == "TEACHER":
+                from apps.core.access import scope_queryset
+
+                assignments = attrs.get("class_students") or []
+                visible_classes = scope_queryset(Class.objects.all(), actor)
+                if not assignments or any(
+                    item.get("id") or item.get("_destroy")
+                    or not item.get("class_obj")
+                    or not visible_classes.filter(pk=item["class_obj"].pk).exists()
+                    for item in assignments
+                ):
+                    raise serializers.ValidationError({
+                        "class_students": "Assign the new student to classes you teach."
+                    })
             guardians = attrs.get("student_guardians") or []
             if not guardians:
                 raise serializers.ValidationError({

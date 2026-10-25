@@ -46,7 +46,7 @@ class ActivityRolePermissionTests(APITestCase):
 		self.client.force_authenticate(user=self.teacher)
 
 		self.assertEqual(self.client.get("/api/activities/").status_code, 200)
-		self.assertEqual(self.client.get("/api/users/").status_code, 403)
+		self.assertEqual(self.client.get("/api/users/").status_code, 200)
 		self.assertEqual(
 			self.client.post("/api/activities/", {}, format="json").status_code,
 			400,
