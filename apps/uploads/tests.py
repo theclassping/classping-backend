@@ -146,6 +146,18 @@ class SignedUploadTokenTests(TestCase):
                 with open(os.path.join(tmpdir, "photos", "signed.bin"), "rb") as handle:
                     self.assertEqual(handle.read(), b"binary-content")
 
+    def test_missing_token_is_rejected_without_writing_file(self):
+        with TemporaryDirectory() as tmpdir:
+            with override_settings(MEDIA_ROOT=tmpdir):
+                file_key = "photos/unsigned.bin"
+                response = self.client.put(
+                    f"/api/media/upload/{file_key}",
+                    b"binary-content",
+                    content_type="application/octet-stream",
+                )
+                self.assertIn(response.status_code, (401, 403))
+                self.assertFalse(os.path.exists(os.path.join(tmpdir, file_key)))
+
     def test_token_for_another_key_is_rejected(self):
         token = make_upload_token("photos/allowed.bin", expires_in=60)
         self.assertEqual(self._put("photos/other.bin", token).status_code, 401)
