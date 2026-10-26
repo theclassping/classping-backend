@@ -3,17 +3,14 @@ import logging
 
 from django.db.models.signals import post_delete, post_save, pre_save
 from django.dispatch import receiver
+from django.db import transaction
 
 from apps.uploads.services.media import MediaService
 from apps.uploads.utils import MediaFieldMixin
+from apps.uploads.references import MEDIA_MODELS, is_media_referenced
 
 logger = logging.getLogger(__name__)
 
-MEDIA_MODELS = (
-    "schools.School", "students.Student", "guardians.Guardian",
-    "activities.ActivityImage", "assessments.AssessmentImage",
-    "payments.PaymentProof",
-)
 
 
 def _key(value):
@@ -27,7 +24,8 @@ def _delete(key):
     if not key:
         return
     try:
-        MediaService.delete_object(key)
+        if not is_media_referenced(key):
+            MediaService.delete_object(key)
     except Exception:
         # Storage cleanup must not turn a successful database deletion into a 500.
         logger.exception("Unable to delete media object %s", key)
@@ -56,9 +54,17 @@ for label in MEDIA_MODELS:
     def delete_replaced_media(sender, instance, **kwargs):
         old_key = getattr(instance, "_old_media_key", None)
         new_key = _key(getattr(instance, "image_data", None))
+        if new_key:
+            def mark_attached(key=new_key):
+                try:
+                    MediaService.mark_upload_attached(key)
+                except Exception:
+                    logger.exception("Unable to clear pending upload %s", key)
+            transaction.on_commit(mark_attached, using=kwargs.get("using"))
         if old_key and old_key != new_key:
-            _delete(old_key)
+            transaction.on_commit(lambda key=old_key: _delete(key), using=kwargs.get("using"))
 
     @receiver(post_delete, sender=model, weak=False)
     def delete_model_media(sender, instance, **kwargs):
-        _delete(_key(getattr(instance, "image_data", None)))
+        key = _key(getattr(instance, "image_data", None))
+        transaction.on_commit(lambda: _delete(key), using=kwargs.get("using"))

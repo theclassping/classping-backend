@@ -11,6 +11,16 @@ class RoleBasedAccessPermission(IsAuthenticated):
 			return False
 
 		module = view.__class__.__module__.split(".")[1]
+		# This role boundary applies even to superusers and overrides module grants.
+		role = str(request.user.role).upper()
+		allowed_delete_roles = {"TEACHER", "ADMIN", "STAFF"}
+		if request.method == "DELETE" and role not in allowed_delete_roles:
+			return False
+		# Activity updates can remove images through nested _destroy, replace
+		# image_data, or move an activity to another class. Guard all writes.
+		if module == "activities" and request.method not in ("GET", "HEAD", "OPTIONS"):
+			if role not in allowed_delete_roles:
+				return False
 		if module == "users" and request.method in ("POST", "DELETE"):
 			if str(request.user.role).upper() == "PARENT":
 				return False

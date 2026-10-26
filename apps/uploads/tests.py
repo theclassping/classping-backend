@@ -157,3 +157,82 @@ class SignedUploadTokenTests(TestCase):
     def test_tampered_token_is_rejected(self):
         token = make_upload_token("photos/tampered.bin", expires_in=60)
         self.assertEqual(self._put("photos/tampered.bin", token + "x").status_code, 401)
+
+
+class UploadCleanupTests(TestCase):
+    def create_owner(self, data):
+        return Student.objects.create(
+            first_name="Upload", last_name="Owner", date_of_birth="2018-01-01",
+            gender="other", enroll_date="2026-07-01", image_data=data,
+        )
+
+    @patch("apps.uploads.services.media.MediaService._redis")
+    def test_pending_cleared_only_after_commit(self, redis):
+        with self.captureOnCommitCallbacks(execute=True):
+            self.create_owner({"id": "attached.jpg"})
+            redis.return_value.zrem.assert_not_called()
+        redis.return_value.zrem.assert_called_once_with(
+            "classping:uploads:pending", "attached.jpg"
+        )
+
+    @patch("apps.uploads.services.media.MediaService._redis")
+    @patch("apps.uploads.management.commands.cleanup_orphaned_uploads.get_storage")
+    def test_cleanup_preserves_referenced_files_including_legacy_metadata(self, storage, redis):
+        import json
+        from django.core.management import call_command
+        from io import StringIO
+
+        self.create_owner({"id": "attached.jpg"})
+        self.create_owner(json.dumps({"object_key": "legacy.jpg"}))
+        redis.return_value.zrangebyscore.return_value = [
+            "attached.jpg", "legacy.jpg", "orphan.jpg",
+        ]
+        call_command("cleanup_orphaned_uploads", stdout=StringIO())
+        storage.return_value.delete_object.assert_called_once_with("orphan.jpg")
+
+    @patch("apps.uploads.services.media.MediaService._redis")
+    @patch("apps.uploads.management.commands.cleanup_orphaned_uploads.get_storage")
+    def test_failed_delete_keeps_pending_entry_for_retry(self, storage, redis):
+        from django.core.management import call_command
+        redis.return_value.zrangebyscore.return_value = ["orphan.jpg"]
+        storage.return_value.delete_object.side_effect = RuntimeError("storage unavailable")
+        with self.assertRaises(RuntimeError):
+            call_command("cleanup_orphaned_uploads")
+        redis.return_value.zrem.assert_not_called()
+
+    @patch("apps.uploads.signals.MediaService.delete_object")
+    def test_shared_media_is_preserved_when_owner_deleted(self, delete):
+        first = self.create_owner({"id": "shared.jpg"})
+        self.create_owner({"id": "shared.jpg"})
+        with self.captureOnCommitCallbacks(execute=True):
+            first.delete()
+        delete.assert_not_called()
+
+    def test_cleanup_schedule_removed_from_persistent_store_at_start(self):
+        from apscheduler.events import EVENT_SCHEDULER_STARTED
+        from apps.student_invoices.scheduler import register_jobs, SCHEDULED_JOBS
+        scheduler = mock.Mock()
+        register_jobs(scheduler)
+        self.assertNotIn("cleanup_orphaned_uploads", [job["id"] for job in SCHEDULED_JOBS])
+        callback, event = scheduler.add_listener.call_args.args
+        self.assertEqual(event, EVENT_SCHEDULER_STARTED)
+        callback(None)
+        scheduler.remove_job.assert_called_once_with("cleanup_orphaned_uploads")
+
+    @patch("apps.uploads.services.media.MediaService._redis")
+    def test_rolled_back_save_keeps_pending_state(self, redis):
+        from django.db import transaction
+        with self.captureOnCommitCallbacks(execute=True):
+            with self.assertRaises(RuntimeError):
+                with transaction.atomic():
+                    self.create_owner({"id": "rolled-back.jpg"})
+                    raise RuntimeError("rollback")
+        redis.assert_not_called()
+
+    @patch("apps.uploads.services.media.MediaService._redis", return_value=None)
+    @patch("apps.uploads.management.commands.cleanup_orphaned_uploads.get_storage")
+    def test_cleanup_without_redis_does_not_access_storage(self, storage, redis):
+        from django.core.management import call_command
+        from io import StringIO
+        call_command("cleanup_orphaned_uploads", stdout=StringIO())
+        storage.assert_not_called()

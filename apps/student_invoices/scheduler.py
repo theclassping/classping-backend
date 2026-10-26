@@ -6,6 +6,7 @@ Import and call register_jobs(scheduler) from the run_scheduler command.
 from io import StringIO
 
 from django.core.management import call_command
+from apscheduler.events import EVENT_SCHEDULER_STARTED
 
 from apps.student_invoices.services import generate_recurring_invoices
 
@@ -60,18 +61,18 @@ SCHEDULED_JOBS = [
         "hour": 8,
         "minute": 0,
     },
-    {
-        "id": "cleanup_orphaned_uploads",
-        "func": run_cleanup_orphaned_uploads,
-        "trigger": "cron",
-        "hour": 3,
-        "minute": 0,
-    },
 ]
 
 
 def register_jobs(scheduler):
     """Register all invoice-related scheduled jobs."""
+    # Also remove the previous schedule persisted by DjangoJobStore.
+    def remove_cleanup_job(event):
+        if scheduler.get_job("cleanup_orphaned_uploads"):
+            scheduler.remove_job("cleanup_orphaned_uploads")
+
+    # Persistent jobs become visible only after the scheduler starts.
+    scheduler.add_listener(remove_cleanup_job, EVENT_SCHEDULER_STARTED)
     for job_kwargs in SCHEDULED_JOBS:
         scheduler.add_job(
             **job_kwargs,

@@ -184,6 +184,15 @@ class MediaService:
             'storage': storage_type,
             'metadata': metadata,
         }
+
+    @classmethod
+    def mark_upload_attached(cls, file_key: str) -> None:
+        """Clear pending state after the owning database transaction commits."""
+        client = cls._redis()
+        if client:
+            client.zrem(cls._pending_uploads_key(), file_key)
+            client.delete(cls._upload_cache_key(file_key))
+        cls._pending_uploads.pop(file_key, None)
     
     @classmethod
     def get_object_url(cls, media_data: Dict[str, Any]) -> str:
