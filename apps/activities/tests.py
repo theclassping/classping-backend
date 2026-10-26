@@ -280,3 +280,96 @@ class ActivityApiTests(TestCase):
         )
         self.assertEqual(response.status_code, 201)
         return Activity.objects.get(pk=response.data["id"])
+
+
+class ActivityMediaLifecycleTests(TestCase):
+    def setUp(self):
+        ActivityApiTests.setUp(self)
+        self.activity = Activity.objects.create(
+            class_teacher=self.class_teacher,
+            class_obj=self.class_teacher.class_obj,
+            name="Media lifecycle", activity_date="2026-10-26",
+        )
+
+    def test_activity_image_clears_pending_after_save(self):
+        from unittest.mock import patch
+        with patch("apps.uploads.signals.MediaService.mark_upload_attached") as attached:
+            with self.captureOnCommitCallbacks(execute=True):
+                ActivityImage.objects.create(activity=self.activity, image_data={"id": "activity.jpg"})
+                attached.assert_not_called()
+            attached.assert_called_once_with("activity.jpg")
+
+    def test_cleanup_preserves_activity_image(self):
+        from unittest.mock import patch
+        from django.core.management import call_command
+        from io import StringIO
+        ActivityImage.objects.create(activity=self.activity, image_data={"object_key": "activity.jpg"})
+        with patch("apps.uploads.services.media.MediaService._redis") as redis:
+            redis.return_value.zrangebyscore.return_value = ["activity.jpg"]
+            with patch("apps.uploads.management.commands.cleanup_orphaned_uploads.get_storage") as storage:
+                call_command("cleanup_orphaned_uploads", stdout=StringIO())
+                storage.return_value.delete_object.assert_not_called()
+            redis.return_value.zrem.assert_called_with("classping:uploads:pending", "activity.jpg")
+
+    def test_caption_update_and_empty_images_preserve_file(self):
+        from unittest.mock import patch
+        from apps.activities.serializers import ActivitySerializer
+        image = ActivityImage.objects.create(activity=self.activity, image_data={"id": "activity.jpg"})
+        with patch("apps.uploads.signals.MediaService.delete_object") as delete:
+            with self.captureOnCommitCallbacks(execute=True):
+                ActivitySerializer().update(self.activity, {"images": [{"id": image.pk, "caption": "Updated"}]})
+                ActivitySerializer().update(self.activity, {"images": []})
+            delete.assert_not_called()
+        image.refresh_from_db()
+        self.assertEqual(image.image_data["id"], "activity.jpg")
+        self.assertEqual(image.caption, "Updated")
+
+    def test_serializers_support_both_metadata_keys(self):
+        from unittest.mock import patch
+        from apps.activities.serializers import ActivityImageSerializer, ActivityImageNestedSerializer
+        with patch("apps.activities.serializers.get_storage") as storage:
+            storage.return_value.generate_presigned_download_url.return_value = "https://example.test/fresh"
+            for metadata in ({"id": "activity.jpg"}, {"object_key": "activity.jpg"}):
+                image = ActivityImage(activity=self.activity, image_data=metadata)
+                for serializer in (ActivityImageSerializer, ActivityImageNestedSerializer):
+                    self.assertEqual(serializer(image).data["image_url"], "https://example.test/fresh")
+                    storage.return_value.generate_presigned_download_url.assert_called_with(file_key="activity.jpg", expires_in=3600)
+
+
+class ActivityDeleteRoleBoundaryTests(TestCase):
+    def test_parent_cannot_delete_or_remove_images_even_with_grants(self):
+        from apps.users.models import RoleModulePermission
+        parent = User.objects.create_user(
+            email="parent-delete@example.com", password="StrongPassword123!", role=User.Role.PARENT,
+        )
+        RoleModulePermission.objects.update_or_create(
+            role=User.Role.PARENT, module="activities",
+            defaults={"can_read": True, "can_create": True, "can_edit": True, "can_delete": True},
+        )
+        client = APIClient()
+        client.force_authenticate(user=parent)
+        for superuser in (False, True):
+            parent.is_superuser = superuser
+            parent.save()
+            for endpoint in ("activities", "activity-images", "activity-students"):
+                self.assertEqual(client.delete(f"/api/{endpoint}/999999/").status_code, 403)
+                self.assertEqual(client.patch(
+                    f"/api/{endpoint}/999999/",
+                    {"activity_images": [{"id": 1, "_destroy": True}], "image_data": None},
+                    format="json",
+                ).status_code, 403)
+
+    def test_allowed_roles_still_require_module_delete_permission(self):
+        from types import SimpleNamespace
+        from apps.users.permissions import RoleBasedAccessPermission
+        from apps.users.models import RoleModulePermission
+        from apps.activities.views import ActivityImageViewSet
+        for role in (User.Role.ADMIN, User.Role.TEACHER, User.Role.STAFF):
+            user = User.objects.create_user(email=f"{role.lower()}-delete@example.com", password="StrongPassword123!", role=role)
+            request = SimpleNamespace(user=user, method="DELETE")
+            RoleModulePermission.objects.update_or_create(
+                role=role, module="activities", defaults={"can_delete": False},
+            )
+            self.assertFalse(RoleBasedAccessPermission().has_permission(request, ActivityImageViewSet()))
+            RoleModulePermission.objects.filter(role=role, module="activities").update(can_delete=True)
+            self.assertTrue(RoleBasedAccessPermission().has_permission(request, ActivityImageViewSet()))

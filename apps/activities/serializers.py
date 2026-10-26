@@ -7,6 +7,7 @@ from apps.classes.models import Class, ClassTeacher
 from apps.students.models import Student
 from apps.uploads.services.media import MediaService
 from apps.uploads.storage import get_storage
+from apps.uploads.utils import MediaFieldMixin
 
 from .models import (
     Activity,
@@ -113,7 +114,8 @@ class ActivityImageSerializer(serializers.ModelSerializer):
         if not obj.image_data:
             return None
 
-        object_key = obj.image_data.get("object_key")
+        data = MediaFieldMixin._parse_media_data(obj.image_data)
+        object_key = data.get("id") or data.get("object_key") if isinstance(data, dict) else None
 
         if not object_key:
             return None
@@ -180,24 +182,8 @@ class ActivityImageNestedSerializer(serializers.ModelSerializer):
         }
 
     def get_image_url(self, obj):
-            if not obj.image_data:
-                return None
-    
-            object_key = obj.image_data.get("object_key")
-    
-            if not object_key:
-                return None
-    
-            try:
-                storage = get_storage()
-    
-                return storage.generate_presigned_download_url(
-                    file_key=object_key,
-                    expires_in=3600,
-                )
-            except Exception:
-                return None
-    
+        return ActivityImageSerializer.get_image_url(self, obj)
+
     def validate(self, attrs):
         """
         Validate activity image data:
