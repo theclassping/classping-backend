@@ -166,6 +166,20 @@ class PaymentSerializer(serializers.ModelSerializer):
             self.instance.rejection_reason if self.instance else None,
         )
 
+        # An invoice has a single payment; a rejected one is resubmitted by
+        # uploading a new proof to it.
+        if (
+            student_invoice
+            and Payment.objects.filter(student_invoice=student_invoice)
+            .exclude(pk=getattr(self.instance, "pk", None))
+            .exists()
+        ):
+            raise serializers.ValidationError(
+                {
+                    "student_invoice_id": "This invoice already has a payment."
+                }
+            )
+
         if student_invoice and amount and amount != student_invoice.total_amount:
             raise serializers.ValidationError(
                 {
