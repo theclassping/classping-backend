@@ -3,7 +3,7 @@ import logging
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
-from apps.uploads.services.media import MediaService
+from apps.uploads.services.media import FileTooLargeError, MediaService
 from apps.students.models import Student, StudentGuardian
 from apps.users.managers import generate_temporary_password
 from .models import Guardian
@@ -97,6 +97,8 @@ class GuardianSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError({
                         "image_data": "File not found. Please provide the full file path, e.g. 'C:/Users/audia/Downloads/brownies.jpg'"
                     })
+                except FileTooLargeError as error:
+                    raise serializers.ValidationError({"image_data": str(error)})
                 except Exception:
                     logger.exception("Failed to process image_data")
                     raise serializers.ValidationError({
@@ -174,6 +176,8 @@ class GuardianInlineSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError({
                         "image_data": "File not found. Please provide the full file path, e.g. 'C:/Users/audia/Downloads/brownies.jpg'"
                     })
+                except FileTooLargeError as error:
+                    raise serializers.ValidationError({"image_data": str(error)})
                 except Exception:
                     logger.exception("Failed to process image_data")
                     raise serializers.ValidationError({

@@ -3,7 +3,6 @@ from django.utils import timezone
 
 from apps.student_invoices.models import StudentInvoice
 from apps.uploads.services.media import MediaService
-from apps.uploads.storage import get_storage
 from apps.mailer.services import Mailer
 from django.conf import settings
 from django.utils import timezone
@@ -45,10 +44,7 @@ class PaymentProofSerializer(serializers.ModelSerializer):
             return None
 
         try:
-            return get_storage().generate_presigned_download_url(
-                file_key=object_key,
-                expires_in=3600,
-            )
+            return MediaService.generate_download_url(object_key, expires_in=3600)
         except Exception:
             return None
 

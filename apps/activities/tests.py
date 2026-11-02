@@ -327,7 +327,7 @@ class ActivityMediaLifecycleTests(TestCase):
     def test_serializers_support_both_metadata_keys(self):
         from unittest.mock import patch
         from apps.activities.serializers import ActivityImageSerializer, ActivityImageNestedSerializer
-        with patch("apps.activities.serializers.get_storage") as storage:
+        with patch("apps.uploads.services.media.get_storage") as storage:
             storage.return_value.generate_presigned_download_url.return_value = "https://example.test/fresh"
             for metadata in ({"id": "activity.jpg"}, {"object_key": "activity.jpg"}):
                 image = ActivityImage(activity=self.activity, image_data=metadata)

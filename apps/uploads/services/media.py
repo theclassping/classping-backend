@@ -13,6 +13,7 @@ import logging
 
 import boto3
 from django.conf import settings
+from django.core.cache import cache
 from django.contrib.messages import storage
 
 from apps.uploads.storage import get_storage, generate_file_key
@@ -20,11 +21,22 @@ from apps.uploads.storage import get_storage, generate_file_key
 logger = logging.getLogger(__name__)
 
 
+class FileTooLargeError(ValueError):
+    """Raised when a stored upload is bigger than settings.MAX_UPLOAD_BYTES."""
+
+
 class MediaService:
     """Service for managing media uploads and metadata."""
     
     # Development fallback when REDIS_URL is not configured.
     _pending_uploads: Dict[str, Dict[str, Any]] = {}
+
+    # Phone JPEGs can carry ~100 KB of EXIF/ICC data before the size marker.
+    DIMENSION_PROBE_BYTES = 256 * 1024
+
+    # Reuse a download URL until this many seconds before it expires, so
+    # clients see the same URL and can cache the image.
+    DOWNLOAD_URL_REFRESH_MARGIN = 600
 
     @classmethod
     def _redis(cls):
@@ -114,12 +126,26 @@ class MediaService:
         file_key: str,
         expires_in: int = 3600,
     ) -> str:
-        storage = get_storage()
+        cache_key = f"classping:download-url:{expires_in}:{file_key}"
+        try:
+            url = cache.get(cache_key)
+        except Exception:
+            logger.warning("Download URL cache unavailable", exc_info=True)
+            url = None
+        if url:
+            return url
 
-        return storage.generate_presigned_download_url(
+        url = get_storage().generate_presigned_download_url(
             file_key=file_key,
             expires_in=expires_in,
         )
+        ttl = expires_in - cls.DOWNLOAD_URL_REFRESH_MARGIN
+        if ttl > 0:
+            try:
+                cache.set(cache_key, url, ttl)
+            except Exception:
+                logger.warning("Download URL cache unavailable", exc_info=True)
+        return url
         
     @classmethod
     def complete_upload(
@@ -205,13 +231,12 @@ class MediaService:
         Returns:
             Full URL to access the file
         """
-        storage = get_storage()
-        file_key = media_data.get('id')
+        file_key = media_data.get('id') or media_data.get('object_key')
         
         if not file_key:
             raise ValueError("media_data must contain 'id' field")
         
-        return storage.get_object_url(file_key)
+        return cls.generate_download_url(file_key)
     
     @classmethod
     def _get_file_size(cls, file_key: str) -> int:
@@ -287,6 +312,14 @@ class MediaService:
             return cls._process_local_image(image_data_input)
     
     @classmethod
+    def _check_file_size(cls, file_size: int) -> None:
+        limit = settings.MAX_UPLOAD_BYTES
+        if file_size > limit:
+            raise FileTooLargeError(
+                f"File is too large. Maximum size is {limit // (1024 * 1024)} MB."
+            )
+
+    @classmethod
     def _process_local_image(cls, file_path: str) -> Dict[str, Any]:
         """Process image from local filesystem."""
         import shutil
@@ -303,6 +336,7 @@ class MediaService:
             content_type = 'application/octet-stream'
         
         file_size = os.path.getsize(file_path)
+        cls._check_file_size(file_size)
         
         # Generate object key
         object_key = generate_file_key(filename)
@@ -340,14 +374,7 @@ class MediaService:
         else:
             object_key = image_url_or_key
         
-        # Initialize R2 client
-        s3_client = boto3.client(
-            's3',
-            endpoint_url=f'https://{settings.R2_ACCOUNT_ID}.r2.cloudflarestorage.com',
-            aws_access_key_id=settings.R2_ACCESS_KEY_ID,
-            aws_secret_access_key=settings.R2_SECRET_ACCESS_KEY,
-            region_name=settings.R2_REGION,
-        )
+        s3_client = get_storage().client
         
         # Verify file exists and get metadata
         try:
@@ -363,14 +390,17 @@ class MediaService:
         # Extract metadata
         content_type = response.get('ContentType', 'application/octet-stream')
         file_size = response.get('ContentLength', 0)
+        cls._check_file_size(file_size)
         filename = object_key.split('/')[-1]
         
-        # Try to get image dimensions from R2
+        # Image headers sit at the start of the file, so fetch only that part
+        # instead of pulling the whole photo into memory.
         width, height = 0, 0
         try:
             file_obj = s3_client.get_object(
                 Bucket=settings.R2_BUCKET_NAME,
-                Key=object_key
+                Key=object_key,
+                Range=f'bytes=0-{cls.DIMENSION_PROBE_BYTES - 1}',
             )
             width, height = cls._get_image_dimensions_from_bytes(
                 file_obj['Body'].read()
