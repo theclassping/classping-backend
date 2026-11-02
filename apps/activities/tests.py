@@ -266,6 +266,64 @@ class ActivityApiTests(TestCase):
         delete = self.client.delete(f"/api/activity-images/{image_id}/")
         self.assertEqual(delete.status_code, 204)
 
+    def test_repeated_saves_with_client_id_do_not_duplicate_images(self):
+        activity = self._create_activity()
+        images = [
+            {"client_id": "photo-a", "image_data": {"object_key": "activities/a.jpg"}, "position": 0},
+            {"client_id": "photo-b", "image_data": {"object_key": "activities/b.jpg"}, "position": 1},
+        ]
+        for caption in ["first save", "second save", "third save"]:
+            response = self.client.patch(
+                f"/api/activities/{activity.id}/",
+                {"activity_images": [{**image, "caption": caption} for image in images]},
+                format="json",
+            )
+            self.assertEqual(response.status_code, 200)
+
+        self.assertEqual(ActivityImage.objects.filter(activity=activity).count(), 2)
+        returned = {image["client_id"]: image for image in response.data["activity_images"]}
+        self.assertEqual(set(returned), {"photo-a", "photo-b"})
+        self.assertEqual(returned["photo-a"]["caption"], "third save")
+
+        # Once the client knows the id it may send it alone.
+        response = self.client.patch(
+            f"/api/activities/{activity.id}/",
+            {"activity_images": [{"id": returned["photo-a"]["id"], "caption": "by id"}, images[1]]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(ActivityImage.objects.filter(activity=activity).count(), 2)
+
+    def test_create_with_repeated_client_id_keeps_one_image(self):
+        response = self.client.post(
+            "/api/activities/",
+            {
+                "class_teacher_id": self.class_teacher.id,
+                "class_id": self.class_teacher.class_obj_id,
+                "name": "Repeated photo",
+                "activity_date": "2026-08-05",
+                "activity_images": [
+                    {"client_id": "photo-a", "image_data": {"object_key": "activities/a.jpg"}, "position": 0},
+                    {"client_id": "photo-a", "image_data": {"object_key": "activities/a.jpg"}, "position": 0},
+                ],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(ActivityImage.objects.filter(activity_id=response.data["id"]).count(), 1)
+
+    def test_destroy_by_client_id_removes_image(self):
+        activity = self._create_activity()
+        image = {"client_id": "photo-a", "image_data": {"object_key": "activities/a.jpg"}}
+        self.client.patch(f"/api/activities/{activity.id}/", {"activity_images": [image]}, format="json")
+        response = self.client.patch(
+            f"/api/activities/{activity.id}/",
+            {"activity_images": [{"client_id": "photo-a", "_destroy": True}]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(ActivityImage.objects.filter(activity=activity).exists())
+
     def _create_activity(self):
         response = self.client.post(
             "/api/activities/",

@@ -168,6 +168,7 @@ class ActivityImageNestedSerializer(serializers.ModelSerializer):
             "image_url",
             "caption",
             "position",
+            "client_id",
             "_destroy",
         ]
 
@@ -710,6 +711,14 @@ class ActivitySerializer(serializers.ModelSerializer):
             image.id: image
             for image in activity.images.all()
         }
+
+        # A repeated save of a new photo carries the same client_id
+        # but no id yet, so match it to the row created earlier.
+        images_by_client_id = {
+            image.client_id: image
+            for image in existing_images.values()
+            if image.client_id
+        }
         
         logger.debug(f"Existing image IDs: {list(existing_images.keys())}")
 
@@ -739,6 +748,15 @@ class ActivitySerializer(serializers.ModelSerializer):
             # CREATE NEW IMAGE
             # ------------------------------------------------
 
+            client_id = image_data.get("client_id")
+            client_image = images_by_client_id.get(client_id) if client_id else None
+
+            if image_id is None and client_image is not None:
+                logger.debug(f"  Matched client_id {client_id} to image {client_image.id}")
+                image_id = client_image.id
+                # The file was stored when the row was created.
+                image_data.pop("image_data", None)
+
             if image_id is None:
 
                 # Ignore if frontend sends:
@@ -754,10 +772,13 @@ class ActivitySerializer(serializers.ModelSerializer):
                     continue
 
                 logger.info(f"  Creating new image with data: {image_data}")
-                ActivityImage.objects.create(
+                image = ActivityImage.objects.create(
                     activity=activity,
                     **image_data,
                 )
+                if client_id:
+                    images_by_client_id[client_id] = image
+                    existing_images[image.id] = image
 
                 continue
 

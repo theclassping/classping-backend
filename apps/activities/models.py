@@ -87,6 +87,14 @@ class ActivityImage(models.Model, MediaFieldMixin):
         default=0,
     )
 
+    # Key the client generated for a new photo. Saves that repeat it update
+    # the same row instead of creating a duplicate image.
+    client_id = models.CharField(
+        max_length=64,
+        null=True,
+        blank=True,
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -95,6 +103,13 @@ class ActivityImage(models.Model, MediaFieldMixin):
         ordering = [
             "position",
             "id",
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["activity", "client_id"],
+                condition=models.Q(client_id__isnull=False),
+                name="unique_activity_image_client_id",
+            ),
         ]
 
     def __str__(self):
