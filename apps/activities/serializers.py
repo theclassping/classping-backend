@@ -6,7 +6,6 @@ from rest_framework import serializers
 from apps.classes.models import Class, ClassTeacher
 from apps.students.models import Student
 from apps.uploads.services.media import MediaService
-from apps.uploads.storage import get_storage
 from apps.uploads.utils import MediaFieldMixin
 
 from .models import (
@@ -121,12 +120,7 @@ class ActivityImageSerializer(serializers.ModelSerializer):
             return None
 
         try:
-            storage = get_storage()
-
-            return storage.generate_presigned_download_url(
-                file_key=object_key,
-                expires_in=3600,
-            )
+            return MediaService.generate_download_url(object_key, expires_in=3600)
         except Exception:
             return None
 

@@ -236,3 +236,43 @@ class UploadCleanupTests(TestCase):
         from io import StringIO
         call_command("cleanup_orphaned_uploads", stdout=StringIO())
         storage.assert_not_called()
+
+
+class MediaServiceDownloadAndDimensionTests(SimpleTestCase):
+    @override_settings(CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}})
+    @patch("apps.uploads.services.media.get_storage")
+    def test_download_url_is_reused_while_cached(self, storage):
+        from django.core.cache import cache
+        from apps.uploads.services.media import MediaService
+        cache.clear()
+        storage.return_value.generate_presigned_download_url.side_effect = ["https://r2.test/a", "https://r2.test/b"]
+
+        first = MediaService.generate_download_url("photo.jpg")
+        second = MediaService.get_object_url({"object_key": "photo.jpg"})
+
+        self.assertEqual(first, "https://r2.test/a")
+        self.assertEqual(second, "https://r2.test/a")
+        storage.return_value.generate_presigned_download_url.assert_called_once_with(
+            file_key="photo.jpg", expires_in=3600,
+        )
+
+    @patch("apps.uploads.services.media.get_storage")
+    def test_r2_dimensions_read_only_file_header(self, storage):
+        import io
+        from PIL import Image
+        from apps.uploads.services.media import MediaService
+        png = io.BytesIO()
+        Image.new("RGB", (40, 30)).save(png, "PNG")
+        client = storage.return_value.client
+        client.head_object.return_value = {"ContentType": "image/png", "ContentLength": 5_000_000}
+        client.get_object.return_value = {"Body": io.BytesIO(png.getvalue())}
+
+        with override_settings(R2_BUCKET_NAME="bucket"):
+            metadata = MediaService._process_r2_image("2026/11/01/photo.png")
+
+        self.assertEqual((metadata["width"], metadata["height"]), (40, 30))
+        self.assertEqual(metadata["size"], 5_000_000)
+        client.get_object.assert_called_once_with(
+            Bucket="bucket", Key="2026/11/01/photo.png",
+            Range=f"bytes=0-{MediaService.DIMENSION_PROBE_BYTES - 1}",
+        )
