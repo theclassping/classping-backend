@@ -21,6 +21,10 @@ from apps.uploads.storage import get_storage, generate_file_key
 logger = logging.getLogger(__name__)
 
 
+class FileTooLargeError(ValueError):
+    """Raised when a stored upload is bigger than settings.MAX_UPLOAD_BYTES."""
+
+
 class MediaService:
     """Service for managing media uploads and metadata."""
     
@@ -308,6 +312,14 @@ class MediaService:
             return cls._process_local_image(image_data_input)
     
     @classmethod
+    def _check_file_size(cls, file_size: int) -> None:
+        limit = settings.MAX_UPLOAD_BYTES
+        if file_size > limit:
+            raise FileTooLargeError(
+                f"File is too large. Maximum size is {limit // (1024 * 1024)} MB."
+            )
+
+    @classmethod
     def _process_local_image(cls, file_path: str) -> Dict[str, Any]:
         """Process image from local filesystem."""
         import shutil
@@ -324,6 +336,7 @@ class MediaService:
             content_type = 'application/octet-stream'
         
         file_size = os.path.getsize(file_path)
+        cls._check_file_size(file_size)
         
         # Generate object key
         object_key = generate_file_key(filename)
@@ -377,6 +390,7 @@ class MediaService:
         # Extract metadata
         content_type = response.get('ContentType', 'application/octet-stream')
         file_size = response.get('ContentLength', 0)
+        cls._check_file_size(file_size)
         filename = object_key.split('/')[-1]
         
         # Image headers sit at the start of the file, so fetch only that part

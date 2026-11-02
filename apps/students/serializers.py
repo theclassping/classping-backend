@@ -11,7 +11,7 @@ from apps.guardians.models import Guardian
 from apps.guardians.serializers import GuardianSerializer, GuardianInlineSerializer
 from apps.locations.models import Location
 from apps.locations.serializers import LocationSerializer
-from apps.uploads.services.media import MediaService
+from apps.uploads.services.media import FileTooLargeError, MediaService
 from .models import Student, StudentGuardian
 
 logger = logging.getLogger(__name__)
@@ -318,6 +318,8 @@ class StudentSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError({
                         "image_data": f"File not found. Please provide the full file path, e.g. 'C:/Users/audia/Downloads/brownies.jpg'"
                     })
+                except FileTooLargeError as error:
+                    raise serializers.ValidationError({"image_data": str(error)})
                 except Exception:
                     logger.exception("Failed to process image_data")
                     raise serializers.ValidationError({

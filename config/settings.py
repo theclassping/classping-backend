@@ -334,6 +334,8 @@ SITE_URL = os.environ.get("SITE_URL", "http://localhost:8000")
 # fall back to the in-process cache in MediaService.
 REDIS_URL = os.environ.get("REDIS_URL", "")
 UPLOAD_METADATA_TTL = int(os.environ.get("UPLOAD_METADATA_TTL", "3600"))
+# Uploads above this size are rejected when they are attached to a record.
+MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_BYTES", str(10 * 1024 * 1024)))
 
 # Rate-limit counters must be shared by every worker, so use Redis when set.
 # Tests get a no-op cache; throttling tests opt into a local cache.

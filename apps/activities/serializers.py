@@ -5,7 +5,7 @@ from rest_framework import serializers
 
 from apps.classes.models import Class, ClassTeacher
 from apps.students.models import Student
-from apps.uploads.services.media import MediaService
+from apps.uploads.services.media import FileTooLargeError, MediaService
 from apps.uploads.utils import MediaFieldMixin
 
 from .models import (
@@ -101,6 +101,8 @@ class ActivityImageSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError({
                         "image_data": f"File not found. Please provide the full file path, e.g. 'C:/Users/audia/Downloads/brownies.jpg'"
                     })
+                except FileTooLargeError as error:
+                    raise serializers.ValidationError({"image_data": str(error)})
                 except Exception:
                     logger.exception("Failed to process image_data")
                     raise serializers.ValidationError({
@@ -196,6 +198,8 @@ class ActivityImageNestedSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError({
                         "image_data": f"File not found. Please provide the full file path, e.g. 'C:/Users/audia/Downloads/brownies.jpg'"
                     })
+                except FileTooLargeError as error:
+                    raise serializers.ValidationError({"image_data": str(error)})
                 except Exception:
                     logger.exception("Failed to process image_data")
                     raise serializers.ValidationError({

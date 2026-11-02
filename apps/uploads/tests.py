@@ -276,3 +276,57 @@ class MediaServiceDownloadAndDimensionTests(SimpleTestCase):
             Bucket="bucket", Key="2026/11/01/photo.png",
             Range=f"bytes=0-{MediaService.DIMENSION_PROBE_BYTES - 1}",
         )
+
+    @patch("apps.uploads.services.media.get_storage")
+    def test_oversized_r2_upload_is_rejected_without_download(self, storage):
+        from apps.uploads.services.media import FileTooLargeError, MediaService
+        client = storage.return_value.client
+        client.head_object.return_value = {"ContentType": "image/jpeg", "ContentLength": 11 * 1024 * 1024}
+
+        with override_settings(R2_BUCKET_NAME="bucket", MAX_UPLOAD_BYTES=10 * 1024 * 1024):
+            with self.assertRaisesMessage(FileTooLargeError, "Maximum size is 10 MB"):
+                MediaService._process_r2_image("2026/11/02/huge.jpg")
+        client.get_object.assert_not_called()
+
+
+@override_settings(STORAGE_TYPE="r2")
+class AdminWebImageUploadTests(SimpleTestCase):
+    def upload(self, name, size, fmt, content_type, noise=True):
+        import io
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from PIL import Image
+        img = Image.frombytes("RGB", size, os.urandom(size[0] * size[1] * 3)) if noise else Image.new("RGB", size, "white")
+        data = io.BytesIO()
+        img.save(data, fmt)
+        return SimpleUploadedFile(name, data.getvalue(), content_type=content_type)
+
+    @patch("apps.admin_web.media.get_storage")
+    def test_large_photo_is_shrunk_and_not_read_back_from_r2(self, storage):
+        from apps.admin_web.media import process_uploaded_image
+        stored = {}
+        storage.return_value.bucket_name = "bucket"
+        storage.return_value.client.put_object.side_effect = lambda **kw: stored.update(kw, body=kw["Body"].read())
+
+        metadata = process_uploaded_image(self.upload("photo.png", (2400, 1200), "PNG", "image/png"))
+
+        self.assertEqual((metadata["width"], metadata["height"]), (1600, 800))
+        self.assertEqual(metadata["filename"], "photo.jpg")
+        self.assertEqual(metadata["content_type"], "image/jpeg")
+        self.assertEqual(metadata["size"], len(stored["body"]))
+        self.assertTrue(stored["Key"].endswith(".jpg"))
+        self.assertEqual(stored["ContentType"], "image/jpeg")
+        storage.return_value.client.get_object.assert_not_called()
+        storage.return_value.client.head_object.assert_not_called()
+
+    @patch("apps.admin_web.media.get_storage")
+    def test_small_photo_is_stored_untouched(self, storage):
+        from apps.admin_web.media import process_uploaded_image
+        storage.return_value.bucket_name = "bucket"
+        upload = self.upload("logo.png", (200, 100), "PNG", "image/png", noise=False)
+
+        metadata = process_uploaded_image(upload)
+
+        self.assertEqual((metadata["width"], metadata["height"]), (200, 100))
+        self.assertEqual(metadata["filename"], "logo.png")
+        self.assertEqual(metadata["content_type"], "image/png")
+        self.assertEqual(metadata["size"], upload.size)
