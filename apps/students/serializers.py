@@ -753,15 +753,6 @@ class StudentDetailSerializer(StudentSerializer):
         Detail response includes full class serializer data.
         """
         data = super().to_representation(instance)
-
-        request = self.context.get("request")
-        user = getattr(request, "user", None)
-        if user and user.is_authenticated and str(user.role).upper() == "PARENT":
-            data["student_guardians"] = [
-                relation
-                for relation in data.get("student_guardians", [])
-                if relation.get("guardian", {}).get("user_id") == user.pk
-            ]
         
         # Override class_students with full ClassSerializer data
         class_students_list = instance.class_students.select_related("class_obj").all()
