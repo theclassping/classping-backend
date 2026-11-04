@@ -367,7 +367,8 @@ class ActivitySerializer(serializers.ModelSerializer):
             data["activity_images"] = [
                 image
                 for image in data.get("activity_images", [])
-                if image.get("student_id") in own_student_ids
+                if image.get("student_id") is None
+                or image.get("student_id") in own_student_ids
             ]
         return data
 
