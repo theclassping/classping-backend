@@ -197,20 +197,10 @@ class StudentSerializer(serializers.ModelSerializer):
         """
         # Call parent which won't include write_only fields
         data = super().to_representation(instance)
-        request = self.context.get("request")
-        user = getattr(request, "user", None)
-        is_parent = (
-            user
-            and user.is_authenticated
-            and str(user.role).upper() == "PARENT"
-        )
-        
         # Add student_guardians as simple nested data (read response)
         if instance and instance.pk:
             student_guardians_data = []
             for sg in instance.student_guardians.select_related("guardian").all():
-                if is_parent and sg.guardian.user_id != user.pk:
-                    continue
                 student_guardians_data.append({
                     "id": sg.id,
                     "guardian_id": sg.guardian.id,
