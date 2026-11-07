@@ -222,12 +222,13 @@ class UploadCleanupTests(TestCase):
 
     @patch("apps.uploads.services.media.MediaService._redis")
     def test_pending_cleared_only_after_commit(self, redis):
+        pipe = redis.return_value.pipeline.return_value
         with self.captureOnCommitCallbacks(execute=True):
             self.create_owner({"id": "attached.jpg"})
-            redis.return_value.zrem.assert_not_called()
-        redis.return_value.zrem.assert_called_once_with(
-            "classping:uploads:pending", "attached.jpg"
-        )
+            pipe.zrem.assert_not_called()
+        pipe.zrem.assert_called_once_with("classping:uploads:pending", "attached.jpg")
+        pipe.delete.assert_called_once_with("classping:upload:attached.jpg")
+        pipe.execute.assert_called_once_with()
 
     @patch("apps.uploads.services.media.MediaService._redis")
     @patch("apps.uploads.management.commands.cleanup_orphaned_uploads.get_storage")
@@ -564,3 +565,82 @@ class MediaReferenceLookupTests(TestCase):
             plan = queryset.explain()
         self.assertIn("students_media_id", plan)
         self.assertIn("students_media_key", plan)
+
+
+class RedisClientTests(SimpleTestCase):
+    """One shared client per process, and no silent fallback once Redis is configured."""
+
+    def setUp(self):
+        from apps.uploads.services.media import MediaService
+        self.MediaService = MediaService
+        MediaService._redis_client = None
+        self.addCleanup(setattr, MediaService, "_redis_client", None)
+
+    def test_no_client_without_redis_url(self):
+        with override_settings(REDIS_URL=""):
+            self.assertIsNone(self.MediaService._redis())
+
+    def test_client_is_reused_and_never_pinged(self):
+        with patch("redis.Redis.from_url") as from_url, \
+                override_settings(REDIS_URL="redis://cache:6379/0"):
+            first = self.MediaService._redis()
+            second = self.MediaService._redis()
+        self.assertIs(first, second)
+        from_url.assert_called_once()
+        first.ping.assert_not_called()
+        kwargs = from_url.call_args.kwargs
+        self.assertEqual(kwargs["socket_timeout"], self.MediaService.REDIS_TIMEOUT_SECONDS)
+        self.assertEqual(kwargs["socket_connect_timeout"], self.MediaService.REDIS_TIMEOUT_SECONDS)
+
+    def test_new_client_when_redis_url_changes(self):
+        with patch("redis.Redis.from_url", side_effect=lambda *a, **k: mock.Mock()) as from_url:
+            with override_settings(REDIS_URL="redis://one:6379/0"):
+                first = self.MediaService._redis()
+            with override_settings(REDIS_URL="redis://two:6379/0"):
+                second = self.MediaService._redis()
+        self.assertIsNot(first, second)
+        self.assertEqual(from_url.call_count, 2)
+
+    def down_client(self):
+        import redis
+        client = mock.Mock()
+        client.get.side_effect = redis.ConnectionError("down")
+        client.pipeline.return_value.execute.side_effect = redis.ConnectionError("down")
+        return client
+
+    def test_presign_fails_instead_of_using_process_memory(self):
+        from apps.uploads.services.media import UploadStoreUnavailable
+        self.MediaService._pending_uploads.clear()
+        with patch.object(self.MediaService, "_redis", return_value=self.down_client()), \
+                override_settings(SITE_URL="http://testserver"):
+            with self.assertRaises(UploadStoreUnavailable):
+                self.MediaService.generate_presign_url("a.jpg", "image/jpeg", size=10, user_id=1)
+        self.assertEqual(self.MediaService._pending_uploads, {})
+
+    def test_attach_returns_503_when_redis_is_down(self):
+        from apps.uploads.serializers import ServiceUnavailable, resolve_image_input
+        serializer = mock.Mock(context={"request": mock.Mock(user=mock.Mock(pk=1))})
+        with patch.object(self.MediaService, "_redis", return_value=self.down_client()):
+            with self.assertRaises(ServiceUnavailable) as caught:
+                resolve_image_input(serializer, "2026/11/07/a.jpg")
+        self.assertEqual(caught.exception.status_code, 503)
+
+
+class PresignRedisOutageTests(TestCase):
+    def test_presign_endpoint_returns_503(self):
+        import redis
+        from apps.uploads.services.media import MediaService
+        user = User.objects.create_user(
+            email="presign-503@example.com", password="StrongPassword123!", role=User.Role.ADMIN,
+        )
+        client = APIClient()
+        client.force_authenticate(user=user)
+        down = mock.Mock()
+        down.pipeline.return_value.execute.side_effect = redis.ConnectionError("down")
+        with patch.object(MediaService, "_redis", return_value=down):
+            response = client.post(
+                "/api/media/presign/",
+                {"filename": "a.jpg", "content_type": "image/jpeg", "size": 10},
+                format="json",
+            )
+        self.assertEqual(response.status_code, 503)

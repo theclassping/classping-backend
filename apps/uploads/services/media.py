@@ -41,11 +41,27 @@ class FileTooLargeError(MediaInputError):
     """Raised when a stored upload is bigger than settings.MAX_UPLOAD_BYTES."""
 
 
+class UploadStoreUnavailable(RuntimeError):
+    """Raised when REDIS_URL is set but Redis cannot be reached.
+
+    Pending uploads must be visible to every worker, so there is no silent
+    fallback to per-process memory once Redis is configured.
+    """
+
+
 class MediaService:
     """Service for managing media uploads and metadata."""
 
-    # Development fallback when REDIS_URL is not configured.
+    # Development store, used only when REDIS_URL is not configured. It is
+    # per process, so it is only correct with a single worker (runserver).
     _pending_uploads: Dict[str, Dict[str, Any]] = {}
+
+    # One Redis client per process, as (url, client). redis-py keeps a
+    # connection pool inside the client and resets it after a fork.
+    _redis_client = None
+
+    # Fail fast instead of hanging a request when Redis is unreachable.
+    REDIS_TIMEOUT_SECONDS = 2
 
     # Phone JPEGs can carry ~100 KB of EXIF/ICC data before the size marker.
     DIMENSION_PROBE_BYTES = 256 * 1024
@@ -56,17 +72,38 @@ class MediaService:
 
     @classmethod
     def _redis(cls):
+        """
+        Return the shared Redis client, or None when REDIS_URL is not set.
+
+        Creating the client doesn't connect; a Redis outage shows up as a
+        redis.RedisError from the command that needs it, which callers turn
+        into UploadStoreUnavailable via _redis_call().
+        """
         redis_url = getattr(settings, "REDIS_URL", "")
         if not redis_url:
             return None
-        try:
+        cached = cls._redis_client
+        if cached is None or cached[0] != redis_url:
             import redis
-            client = redis.Redis.from_url(redis_url, decode_responses=True)
-            client.ping()
-            return client
-        except Exception:
-            logger.warning("Redis unavailable; using in-process upload cache", exc_info=True)
-            return None
+            client = redis.Redis.from_url(
+                redis_url,
+                decode_responses=True,
+                socket_connect_timeout=cls.REDIS_TIMEOUT_SECONDS,
+                socket_timeout=cls.REDIS_TIMEOUT_SECONDS,
+                health_check_interval=30,
+            )
+            cls._redis_client = cached = (redis_url, client)
+        return cached[1]
+
+    @classmethod
+    def _redis_call(cls, operation):
+        """Run operation(client) and report a Redis outage as UploadStoreUnavailable."""
+        import redis
+        try:
+            return operation(cls._redis())
+        except redis.RedisError as error:
+            logger.exception("Redis unavailable for upload tracking")
+            raise UploadStoreUnavailable("Upload service is temporarily unavailable.") from error
 
     @classmethod
     def _upload_cache_key(cls, file_key: str) -> str:
@@ -126,17 +163,22 @@ class MediaService:
             'created_at': datetime.now().isoformat(),
             'status': 'pending'
         }
-        redis_client = cls._redis()
-        if redis_client:
-            redis_client.setex(
-                cls._upload_cache_key(file_key),
-                settings.UPLOAD_METADATA_TTL,
-                json.dumps(upload_info),
-            )
-            redis_client.zadd(
-                cls._pending_uploads_key(),
-                {file_key: datetime.now().timestamp() + settings.UPLOAD_METADATA_TTL},
-            )
+        if cls._redis():
+            def save_pending(client):
+                # MULTI/EXEC: the metadata and the cleanup entry are written
+                # together, so an upload is never attachable but untracked.
+                pipe = client.pipeline(transaction=True)
+                pipe.setex(
+                    cls._upload_cache_key(file_key),
+                    settings.UPLOAD_METADATA_TTL,
+                    json.dumps(upload_info),
+                )
+                pipe.zadd(
+                    cls._pending_uploads_key(),
+                    {file_key: datetime.now().timestamp() + settings.UPLOAD_METADATA_TTL},
+                )
+                pipe.execute()
+            cls._redis_call(save_pending)
         else:
             cls._pending_uploads[file_key] = upload_info
 
@@ -149,9 +191,8 @@ class MediaService:
 
     @classmethod
     def _get_pending(cls, file_key: str) -> Optional[Dict[str, Any]]:
-        redis_client = cls._redis()
-        if redis_client:
-            raw_info = redis_client.get(cls._upload_cache_key(file_key))
+        if cls._redis():
+            raw_info = cls._redis_call(lambda client: client.get(cls._upload_cache_key(file_key)))
             return json.loads(raw_info) if raw_info else None
         return cls._pending_uploads.get(file_key)
 
@@ -248,10 +289,13 @@ class MediaService:
     @classmethod
     def mark_upload_attached(cls, file_key: str) -> None:
         """Clear pending state after the owning database transaction commits."""
-        client = cls._redis()
-        if client:
-            client.zrem(cls._pending_uploads_key(), file_key)
-            client.delete(cls._upload_cache_key(file_key))
+        if cls._redis():
+            def clear_pending(client):
+                pipe = client.pipeline(transaction=True)
+                pipe.zrem(cls._pending_uploads_key(), file_key)
+                pipe.delete(cls._upload_cache_key(file_key))
+                pipe.execute()
+            cls._redis_call(clear_pending)
         cls._pending_uploads.pop(file_key, None)
 
     @classmethod

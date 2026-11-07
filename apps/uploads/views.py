@@ -10,7 +10,7 @@ from apps.users.permissions import RoleBasedAccessPermission
 from rest_framework.views import APIView
 from django.conf import settings
 
-from apps.uploads.services.media import MediaService
+from apps.uploads.services.media import MediaService, UploadStoreUnavailable
 from apps.uploads.serializers import (
     PresignUrlSerializer,
     PresignUrlResponseSerializer,
@@ -72,6 +72,11 @@ class PresignUrlView(APIView):
             
             response_serializer = PresignUrlResponseSerializer(result)
             return Response(response_serializer.data, status=status.HTTP_200_OK)
+        except UploadStoreUnavailable:
+            return Response(
+                {'error': 'Upload service is temporarily unavailable. Please try again shortly.'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
         except Exception:
             logger.exception("Failed to generate presigned upload URL")
             return Response(

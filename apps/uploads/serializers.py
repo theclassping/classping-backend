@@ -6,9 +6,24 @@ from rest_framework import serializers
 
 import logging
 
-from apps.uploads.services.media import ALLOWED_IMAGE_TYPES, MediaInputError, MediaService
+from rest_framework import status
+from rest_framework.exceptions import APIException
+
+from apps.uploads.services.media import (
+    ALLOWED_IMAGE_TYPES,
+    MediaInputError,
+    MediaService,
+    UploadStoreUnavailable,
+)
 
 logger = logging.getLogger(__name__)
+
+
+class ServiceUnavailable(APIException):
+    """503: the request was fine but a dependency (Redis) is down; retry it."""
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    default_detail = "Upload service is temporarily unavailable. Please try again shortly."
+    default_code = "service_unavailable"
 
 
 def resolve_image_input(serializer, value, as_field=True):
@@ -32,6 +47,9 @@ def resolve_image_input(serializer, value, as_field=True):
         fail("File not found. Upload the image first, then send its file_key.")
     except MediaInputError as error:
         fail(str(error))
+    except UploadStoreUnavailable:
+        # 503, not 400: the request is fine and can be retried as-is.
+        raise ServiceUnavailable()
     except Exception:
         logger.exception("Failed to process image_data")
         fail("Error processing image.")
