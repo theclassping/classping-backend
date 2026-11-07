@@ -45,8 +45,22 @@ class PaymentAuthorizationTests(SimpleTestCase):
             view.perform_update(serializer)
 
 
+def accept_image_data_as_sent(test):
+    """These API tests are not about upload ownership (see apps.uploads.tests),
+    so attach whatever image_data they send without touching storage."""
+    from unittest.mock import patch
+    from apps.uploads.services.media import MediaService
+    def resolve(value, user):
+        key = MediaService.extract_key(value)
+        return {"id": key, "object_key": key}
+    patcher = patch.object(MediaService, "resolve_image_data", side_effect=resolve)
+    patcher.start()
+    test.addCleanup(patcher.stop)
+
+
 class PaymentApiTests(TestCase):
     def setUp(self):
+        accept_image_data_as_sent(self)
         self.user = User.objects.create_user(
             email="parent-payment@example.com",
             password="StrongPassword123!",

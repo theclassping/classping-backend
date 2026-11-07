@@ -99,7 +99,7 @@ def process_uploaded_image(uploaded_file):
                 "height": height,
             }
         else:
-            metadata = MediaService.process_image_data(stored_path)
+            metadata = MediaService.store_local_file(stored_path, filename, content_type)
         metadata["filename"] = filename
         metadata["content_type"] = content_type or metadata.get("content_type")
         return metadata

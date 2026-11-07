@@ -46,7 +46,8 @@ class LocalStorageSecurityTests(SimpleTestCase):
 
         response = UploadView.as_view()(request, file_key="../../escape.txt")
 
-        self.assertEqual(response.status_code, 400)
+        # No signed token can name a traversal key, so the request is refused.
+        self.assertEqual(response.status_code, 403)
 
 
 class MediaApiTests(TestCase):
@@ -69,22 +70,62 @@ class MediaApiTests(TestCase):
         }
         response = self.client.post(
             "/api/media/presign/",
-            {"filename": "photo.jpg", "content_type": "image/jpeg"},
+            {"filename": "photo.jpg", "content_type": "image/jpeg", "size": 1234},
             format="json",
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["content_type"], "image/jpeg")
+        generate.assert_called_once_with(
+            filename="photo.jpg", content_type="image/jpeg", size=1234,
+            user_id=self.user.pk, expires_in=3600,
+        )
 
     def test_presign_rejects_invalid_expiration(self):
         response = self.client.post(
             "/api/media/presign/",
-            {"filename": "photo.jpg", "content_type": "image/jpeg", "expires_in": 10},
+            {"filename": "photo.jpg", "content_type": "image/jpeg", "size": 10, "expires_in": 10},
             format="json",
         )
         self.assertEqual(response.status_code, 400)
 
-    @override_settings(MEDIA_ROOT="/tmp/classping-media-api")
-    def test_upload_success_writes_binary_content(self):
+    def test_presign_rejects_non_image_types(self):
+        for content_type in ("application/pdf", "text/html", "image/svg+xml", "application/octet-stream"):
+            response = self.client.post(
+                "/api/media/presign/",
+                {"filename": "file.jpg", "content_type": content_type, "size": 10},
+                format="json",
+            )
+            self.assertEqual(response.status_code, 400, content_type)
+            self.assertIn("content_type", response.data)
+
+    def test_presign_requires_size_within_limit(self):
+        with override_settings(MAX_UPLOAD_BYTES=1024):
+            too_big = self.client.post(
+                "/api/media/presign/",
+                {"filename": "a.jpg", "content_type": "image/jpeg", "size": 1025},
+                format="json",
+            )
+        missing = self.client.post(
+            "/api/media/presign/",
+            {"filename": "a.jpg", "content_type": "image/jpeg"},
+            format="json",
+        )
+        self.assertEqual(too_big.status_code, 400)
+        self.assertIn("size", too_big.data)
+        self.assertEqual(missing.status_code, 400)
+        self.assertIn("size", missing.data)
+
+    def test_presign_key_extension_comes_from_content_type(self):
+        from apps.uploads.services.media import MediaService
+        with override_settings(SITE_URL="http://testserver"), \
+                patch.object(MediaService, "_redis", return_value=None):
+            result = MediaService.generate_presign_url(
+                "evil.html", "image/png", size=10, user_id=self.user.pk,
+            )
+        self.assertTrue(result["file_key"].endswith(".png"))
+        MediaService._pending_uploads.pop(result["file_key"], None)
+
+    def test_upload_without_signed_token_is_rejected(self):
         with TemporaryDirectory() as tmpdir:
             with override_settings(MEDIA_ROOT=tmpdir):
                 response = self.client.generic(
@@ -93,9 +134,8 @@ class MediaApiTests(TestCase):
                     data=b"binary-content",
                     content_type="application/octet-stream",
                 )
-                self.assertEqual(response.status_code, 204)
-                with open(os.path.join(tmpdir, "photos", "test.bin"), "rb") as handle:
-                    self.assertEqual(handle.read(), b"binary-content")
+                self.assertEqual(response.status_code, 403)
+                self.assertFalse(os.path.exists(os.path.join(tmpdir, "photos", "test.bin")))
 
     @patch("apps.uploads.views.get_storage")
     def test_download_url_returns_url_for_existing_file(self, get_storage):
@@ -145,6 +185,20 @@ class SignedUploadTokenTests(TestCase):
                 self.assertEqual(response.status_code, 204)
                 with open(os.path.join(tmpdir, "photos", "signed.bin"), "rb") as handle:
                     self.assertEqual(handle.read(), b"binary-content")
+
+    def test_upload_must_match_signed_type_and_size(self):
+        with TemporaryDirectory() as tmpdir:
+            with override_settings(MEDIA_ROOT=tmpdir, SITE_URL="http://testserver"):
+                url = LocalStorage().generate_presigned_url(
+                    "photos/signed.jpg", expires_in=60,
+                    content_type="image/jpeg", content_length=len(b"binary-content"),
+                ).replace("http://testserver", "")
+                wrong_type = self.client.generic("PUT", url, data=b"binary-content", content_type="text/html")
+                wrong_size = self.client.generic("PUT", url, data=b"binary-content-plus", content_type="image/jpeg")
+                ok = self.client.generic("PUT", url, data=b"binary-content", content_type="image/jpeg")
+        self.assertEqual(wrong_type.status_code, 403)
+        self.assertEqual(wrong_size.status_code, 403)
+        self.assertEqual(ok.status_code, 204)
 
     def test_token_for_another_key_is_rejected(self):
         token = make_upload_token("photos/allowed.bin", expires_in=60)
@@ -267,8 +321,9 @@ class MediaServiceDownloadAndDimensionTests(SimpleTestCase):
         client.head_object.return_value = {"ContentType": "image/png", "ContentLength": 5_000_000}
         client.get_object.return_value = {"Body": io.BytesIO(png.getvalue())}
 
-        with override_settings(R2_BUCKET_NAME="bucket"):
-            metadata = MediaService._process_r2_image("2026/11/01/photo.png")
+        storage.return_value.bucket_name = "bucket"
+        with override_settings(STORAGE_TYPE="r2"):
+            metadata = MediaService._describe_object("2026/11/01/photo.png", None)
 
         self.assertEqual((metadata["width"], metadata["height"]), (40, 30))
         self.assertEqual(metadata["size"], 5_000_000)
@@ -283,10 +338,120 @@ class MediaServiceDownloadAndDimensionTests(SimpleTestCase):
         client = storage.return_value.client
         client.head_object.return_value = {"ContentType": "image/jpeg", "ContentLength": 11 * 1024 * 1024}
 
-        with override_settings(R2_BUCKET_NAME="bucket", MAX_UPLOAD_BYTES=10 * 1024 * 1024):
+        storage.return_value.bucket_name = "bucket"
+        pending = {"user_id": "1", "content_type": "image/jpeg"}
+        with override_settings(STORAGE_TYPE="r2", MAX_UPLOAD_BYTES=10 * 1024 * 1024):
             with self.assertRaisesMessage(FileTooLargeError, "Maximum size is 10 MB"):
-                MediaService._process_r2_image("2026/11/02/huge.jpg")
+                MediaService._describe_object("2026/11/02/huge.jpg", pending)
         client.get_object.assert_not_called()
+        # A rejected new upload is removed instead of lingering in the bucket.
+        storage.return_value.delete_object.assert_called_once_with("2026/11/02/huge.jpg")
+
+    @patch("apps.uploads.services.media.get_storage")
+    def test_new_upload_with_non_image_type_is_deleted(self, storage):
+        from apps.uploads.services.media import MediaInputError, MediaService
+        client = storage.return_value.client
+        client.head_object.return_value = {"ContentType": "text/html", "ContentLength": 10}
+        with override_settings(STORAGE_TYPE="r2"):
+            with self.assertRaisesMessage(MediaInputError, "Unsupported file type"):
+                MediaService._describe_object("2026/11/02/page.jpg", {"user_id": "1"})
+        client.get_object.assert_not_called()
+        storage.return_value.delete_object.assert_called_once_with("2026/11/02/page.jpg")
+
+    @patch("apps.uploads.services.media.get_storage")
+    def test_missing_r2_object_is_reported_as_not_found(self, storage):
+        from botocore.exceptions import ClientError
+        from apps.uploads.services.media import MediaService
+        storage.return_value.client.head_object.side_effect = ClientError(
+            {"Error": {"Code": "404", "Message": "Not Found"}}, "HeadObject",
+        )
+        with override_settings(STORAGE_TYPE="r2"):
+            with self.assertRaises(FileNotFoundError):
+                MediaService._describe_object("2026/11/02/gone.jpg", None)
+
+    def test_extract_key_accepts_keys_dicts_and_urls(self):
+        from apps.uploads.services.media import MediaInputError, MediaService
+        with override_settings(R2_BUCKET_NAME="bucket", MEDIA_URL="/media/"):
+            for value in (
+                "2026/11/02/a.jpg",
+                {"id": "2026/11/02/a.jpg"},
+                {"object_key": "2026/11/02/a.jpg"},
+                "https://bucket.acct.r2.cloudflarestorage.com/2026/11/02/a.jpg?X-Amz-Signature=x",
+                "https://acct.r2.cloudflarestorage.com/bucket/2026/11/02/a.jpg",
+                "http://localhost:8000/media/2026/11/02/a.jpg",
+            ):
+                self.assertEqual(MediaService.extract_key(value), "2026/11/02/a.jpg", value)
+            for value in ("", {}, 42, "/etc/passwd", "../secret"):
+                with self.assertRaises(MediaInputError):
+                    MediaService.extract_key(value)
+
+
+class ImageOwnershipTests(TestCase):
+    """Only the uploader, or someone who can already see the image, may attach a key."""
+
+    def setUp(self):
+        from apps.uploads.services.media import MediaService
+        self.MediaService = MediaService
+        self.owner = User.objects.create_user(
+            email="owner@example.com", password="StrongPassword123!", role=User.Role.ADMIN,
+        )
+        self.other = User.objects.create_user(
+            email="other@example.com", password="StrongPassword123!", role=User.Role.ADMIN,
+        )
+        MediaService._pending_uploads.clear()
+        MediaService._pending_uploads["2026/11/03/mine.jpg"] = {
+            "user_id": str(self.owner.pk), "content_type": "image/jpeg", "filename": "mine.jpg",
+        }
+        # Use the in-process pending store even if REDIS_URL is set locally.
+        patch.object(MediaService, "_redis", return_value=None).start()
+        self.describe = patch.object(
+            MediaService, "_describe_object",
+            side_effect=lambda key, pending: {"id": key, "object_key": key, "pending": bool(pending)},
+        ).start()
+        self.addCleanup(patch.stopall)
+        self.addCleanup(MediaService._pending_uploads.clear)
+
+    def test_uploader_can_attach_pending_key(self):
+        metadata = self.MediaService.resolve_image_data("2026/11/03/mine.jpg", self.owner)
+        self.assertEqual(metadata["id"], "2026/11/03/mine.jpg")
+        self.assertTrue(metadata["pending"])
+
+    def test_other_user_cannot_attach_someone_elses_pending_key(self):
+        with self.assertRaises(FileNotFoundError):
+            self.MediaService.resolve_image_data("2026/11/03/mine.jpg", self.other)
+
+    def test_unknown_key_is_not_found_even_if_it_exists_in_storage(self):
+        with self.assertRaises(FileNotFoundError):
+            self.MediaService.resolve_image_data({"id": "2026/11/03/someone-elses.jpg"}, self.owner)
+        self.describe.assert_not_called()
+
+    def test_key_already_on_a_visible_record_can_be_sent_again(self):
+        Student.objects.create(
+            first_name="Seen", last_name="Before", date_of_birth="2018-01-01",
+            gender="other", enroll_date="2026-07-01", image_data={"id": "2026/11/03/existing.jpg"},
+        )
+        metadata = self.MediaService.resolve_image_data({"id": "2026/11/03/existing.jpg"}, self.other)
+        self.assertFalse(metadata["pending"])
+
+    def test_anonymous_user_cannot_attach(self):
+        from django.contrib.auth.models import AnonymousUser
+        with self.assertRaises(FileNotFoundError):
+            self.MediaService.resolve_image_data("2026/11/03/mine.jpg", AnonymousUser())
+
+    def test_payment_proof_dict_goes_through_ownership_check(self):
+        from rest_framework.test import APIRequestFactory
+        from apps.payments.serializers import PaymentProofSerializer
+        request = APIRequestFactory().post("/")
+        request.user = self.other
+        serializer = PaymentProofSerializer(context={"request": request})
+        from rest_framework.exceptions import ValidationError
+        with self.assertRaises(ValidationError):
+            serializer.validate_image_data({"id": "2026/11/03/mine.jpg", "storage": "r2"})
+        request.user = self.owner
+        self.assertEqual(
+            serializer.validate_image_data({"id": "2026/11/03/mine.jpg"})["id"],
+            "2026/11/03/mine.jpg",
+        )
 
 
 @override_settings(STORAGE_TYPE="r2")

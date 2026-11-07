@@ -15,7 +15,7 @@ from apps.uploads.serializers import (
     PresignUrlSerializer,
     PresignUrlResponseSerializer,
 )
-from apps.uploads.storage import get_storage, is_valid_upload_token, validate_file_key
+from apps.uploads.storage import get_storage, is_valid_upload_token, read_upload_token, validate_file_key
 from apps.core.access import user_can_access_media
 
 logger = logging.getLogger(__name__)
@@ -38,9 +38,13 @@ class PresignUrlView(APIView):
     Request body:
     {
         "filename": "logo-1.png",
-        "content_type": "image/png",
+        "content_type": "image/png",   # jpeg, png, webp, gif, heic or heif
+        "size": 70389,                 # exact bytes; the upload must match
         "expires_in": 3600
     }
+
+    The client must PUT the file to presigned_url with exactly this
+    Content-Type header and byte size, or the upload is rejected.
     
     Response:
     {
@@ -61,6 +65,8 @@ class PresignUrlView(APIView):
             result = MediaService.generate_presign_url(
                 filename=serializer.validated_data['filename'],
                 content_type=serializer.validated_data['content_type'],
+                size=serializer.validated_data['size'],
+                user_id=request.user.pk,
                 expires_in=serializer.validated_data.get('expires_in', 3600),
             )
             
@@ -90,12 +96,25 @@ class UploadView(APIView):
     """
     # LocalStorage returns a presigned-style URL that is uploaded directly by
     # the browser and therefore does not include the user's JWT header. The
-    # signed, expiring token in that URL is the upload capability; callers
-    # without one must be authenticated with upload permission.
-    permission_classes = [HasValidUploadToken | RoleBasedAccessPermission]
+    # signed, expiring token in that URL is the only upload capability: it
+    # names one key and, like R2's signed headers, its type and size.
+    permission_classes = [HasValidUploadToken]
     
     def put(self, request, file_key):
         """Handle file upload via PUT request."""
+        payload = read_upload_token(request.query_params.get("token"), file_key) or {}
+        content_type = request.META.get("CONTENT_TYPE", "").split(";")[0].strip()
+        if "ct" in payload and content_type != payload["ct"]:
+            return Response(
+                {'error': 'Content-Type does not match the upload URL.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        if "len" in payload and len(request.body) != payload["len"]:
+            return Response(
+                {'error': 'File size does not match the upload URL.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         try:
             safe_file_key = validate_file_key(file_key)
             media_root = os.path.abspath(settings.MEDIA_ROOT)

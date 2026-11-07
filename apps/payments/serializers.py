@@ -3,6 +3,7 @@ from django.utils import timezone
 
 from apps.student_invoices.models import StudentInvoice
 from apps.uploads.services.media import MediaService
+from apps.uploads.serializers import resolve_image_input
 from apps.mailer.services import Mailer
 from django.conf import settings
 from django.utils import timezone
@@ -39,7 +40,7 @@ class PaymentProofSerializer(serializers.ModelSerializer):
         if not obj.image_data:
             return None
 
-        object_key = obj.image_data.get("object_key")
+        object_key = obj.image_data.get("id") or obj.image_data.get("object_key")
         if not object_key:
             return None
 
@@ -49,24 +50,9 @@ class PaymentProofSerializer(serializers.ModelSerializer):
             return None
 
     def validate_image_data(self, value):
-        if isinstance(value, str):
-            try:
-                return MediaService.process_image_data(value)
-            except FileNotFoundError:
-                raise serializers.ValidationError(
-                    "File not found. Provide a valid full file path or R2 URL."
-                )
-            except Exception as error:
-                raise serializers.ValidationError(
-                    f"Error processing image: {error}"
-                )
-
-        if not isinstance(value, dict):
-            raise serializers.ValidationError(
-                "image_data must be a file path string or media metadata object."
-            )
-
-        return value
+        # A metadata dict gets the same checks as a file_key: it must be this
+        # user's pending upload or an image they can already see.
+        return resolve_image_input(self, value, as_field=False)
 
 
 class PaymentSerializer(serializers.ModelSerializer):
