@@ -2,6 +2,7 @@ from django.db import models
 
 from apps.student_invoices.models import StudentInvoice
 from apps.staffs.models import Staff
+from apps.uploads.indexes import media_key_indexes
 
 
 class Payment(models.Model):
@@ -97,6 +98,7 @@ class PaymentProof(models.Model):
 
     class Meta:
         db_table = "payment_proofs"
+        indexes = media_key_indexes("payment_proofs")
         ordering = ["-uploaded_at"]
 
     def __str__(self):

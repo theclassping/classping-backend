@@ -2,6 +2,7 @@ from django.db import models
 
 from apps.locations.models import Location
 from apps.uploads.utils import MediaFieldMixin
+from apps.uploads.indexes import media_key_indexes
 
 
 class School(models.Model, MediaFieldMixin):
@@ -20,6 +21,7 @@ class School(models.Model, MediaFieldMixin):
 
     class Meta:
         db_table = "schools"
+        indexes = media_key_indexes("schools")
 
     def __str__(self):
         return self.name

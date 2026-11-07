@@ -232,12 +232,13 @@ class UploadCleanupTests(TestCase):
     @patch("apps.uploads.services.media.MediaService._redis")
     @patch("apps.uploads.management.commands.cleanup_orphaned_uploads.get_storage")
     def test_cleanup_preserves_referenced_files_including_legacy_metadata(self, storage, redis):
-        import json
         from django.core.management import call_command
         from io import StringIO
 
         self.create_owner({"id": "attached.jpg"})
-        self.create_owner(json.dumps({"object_key": "legacy.jpg"}))
+        # Older metadata named the key only under object_key. (Rows stored as
+        # JSON strings are converted by uploads migration 0002.)
+        self.create_owner({"object_key": "legacy.jpg"})
         redis.return_value.zrangebyscore.return_value = [
             "attached.jpg", "legacy.jpg", "orphan.jpg",
         ]
@@ -495,3 +496,71 @@ class AdminWebImageUploadTests(SimpleTestCase):
         self.assertEqual(metadata["filename"], "logo.png")
         self.assertEqual(metadata["content_type"], "image/png")
         self.assertEqual(metadata["size"], upload.size)
+
+
+class MediaReferenceLookupTests(TestCase):
+    """is_media_referenced asks the database instead of loading every row."""
+
+    def create_student(self, image_data):
+        return Student.objects.create(
+            first_name="Ref", last_name="Owner", date_of_birth="2018-01-01",
+            gender="other", enroll_date="2026-07-01", image_data=image_data,
+        )
+
+    def test_finds_key_under_id_or_object_key(self):
+        from apps.uploads.references import is_media_referenced
+        self.create_student({"id": "2026/11/07/by-id.jpg"})
+        self.create_student({"object_key": "2026/11/07/by-object-key.jpg"})
+        self.assertTrue(is_media_referenced("2026/11/07/by-id.jpg"))
+        self.assertTrue(is_media_referenced("2026/11/07/by-object-key.jpg"))
+        self.assertFalse(is_media_referenced("2026/11/07/unused.jpg"))
+
+    def test_query_count_does_not_grow_with_rows(self):
+        from apps.uploads.references import MEDIA_MODELS, is_media_referenced
+        for i in range(20):
+            self.create_student({"id": f"2026/11/07/{i}.jpg"})
+        # One EXISTS query per media table, however many rows there are.
+        with self.assertNumQueries(len(MEDIA_MODELS)):
+            self.assertFalse(is_media_referenced("2026/11/07/unused.jpg"))
+
+    def test_migration_turns_json_strings_into_objects(self):
+        import importlib
+        from django.apps import apps as django_apps
+        from apps.uploads.references import is_media_referenced
+        migration = importlib.import_module("apps.uploads.migrations.0002_normalize_image_data")
+
+        legacy = self.create_student('{"id": "2026/11/07/legacy.jpg"}')
+        plain = self.create_student("not json")
+        normal = self.create_student({"id": "2026/11/07/normal.jpg"})
+        self.assertFalse(is_media_referenced("2026/11/07/legacy.jpg"))
+
+        migration.normalize_image_data(django_apps, None)
+
+        for row in (legacy, plain, normal):
+            row.refresh_from_db()
+        self.assertEqual(legacy.image_data, {"id": "2026/11/07/legacy.jpg"})
+        self.assertEqual(plain.image_data, "not json")
+        self.assertEqual(normal.image_data, {"id": "2026/11/07/normal.jpg"})
+        self.assertTrue(is_media_referenced("2026/11/07/legacy.jpg"))
+
+    def test_download_access_matches_object_key_only_records(self):
+        from apps.core.access import user_can_access_media
+        admin = User.objects.create_user(
+            email="ref-admin@example.com", password="StrongPassword123!", role=User.Role.ADMIN,
+        )
+        self.create_student({"object_key": "2026/11/07/old-style.jpg"})
+        self.assertTrue(user_can_access_media(admin, "2026/11/07/old-style.jpg"))
+
+    def test_lookup_can_use_the_image_data_key_indexes(self):
+        from django.db import connection
+        from apps.uploads.references import media_key_filter
+        if connection.vendor != "postgresql":
+            self.skipTest("expression indexes are checked on PostgreSQL")
+        queryset = Student._base_manager.filter(media_key_filter("2026/11/07/x.jpg"))
+        with connection.cursor() as cursor:
+            # Tiny test tables are cheaper to scan, so make the planner show
+            # whether it *can* use the indexes for this exact filter.
+            cursor.execute("SET LOCAL enable_seqscan = off")
+            plan = queryset.explain()
+        self.assertIn("students_media_id", plan)
+        self.assertIn("students_media_key", plan)

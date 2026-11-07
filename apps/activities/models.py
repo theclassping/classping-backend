@@ -4,6 +4,7 @@ from django.utils import timezone
 from apps.classes.models import Class, ClassTeacher
 from apps.students.models import Student
 from apps.uploads.utils import MediaFieldMixin
+from apps.uploads.indexes import media_key_indexes
 
 
 class Activity(models.Model):
@@ -100,6 +101,7 @@ class ActivityImage(models.Model, MediaFieldMixin):
 
     class Meta:
         db_table = "activity_images"
+        indexes = media_key_indexes("activity_images")
         ordering = [
             "position",
             "id",
