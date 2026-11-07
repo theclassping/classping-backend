@@ -7,6 +7,7 @@ from django.db import transaction
 
 from apps.uploads.services.media import MediaService
 from apps.uploads.utils import MediaFieldMixin
+from apps.uploads.paths import check_media_location
 from apps.uploads.references import MEDIA_MODELS, is_media_referenced
 
 logger = logging.getLogger(__name__)
@@ -46,9 +47,15 @@ for label in MEDIA_MODELS:
     def remember_old_media(sender, instance, **kwargs):
         if not instance.pk:
             instance._old_media_key = None
-            return
-        old = sender.objects.filter(pk=instance.pk).values_list("image_data", flat=True).first()
-        instance._old_media_key = _key(old)
+        else:
+            old = sender.objects.filter(pk=instance.pk).values_list("image_data", flat=True).first()
+            instance._old_media_key = _key(old)
+
+        # A newly attached branch-rooted key must belong to this record's
+        # branch/class/category; an unchanged key was checked when attached.
+        new_key = _key(getattr(instance, "image_data", None))
+        if new_key and new_key != instance._old_media_key and not kwargs.get("raw"):
+            check_media_location(instance, new_key)
 
     @receiver(post_save, sender=model, weak=False)
     def delete_replaced_media(sender, instance, **kwargs):

@@ -2,6 +2,7 @@ from rest_framework import serializers
 from django.utils import timezone
 
 from apps.student_invoices.models import StudentInvoice
+from apps.uploads.paths import check_media_location
 from apps.uploads.services.media import MediaService
 from apps.uploads.serializers import resolve_image_input
 from apps.mailer.services import Mailer
@@ -166,20 +167,26 @@ class PaymentSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         proofs_data = validated_data.pop("proofs", [])
-        payment = Payment.objects.create(**validated_data)
-        PaymentProof.objects.bulk_create(
-            [
-                PaymentProof(
-                    payment=payment,
-                    **{
-                        key: value
-                        for key, value in proof_data.items()
-                        if key != "payment"
-                    },
-                )
-                for proof_data in proofs_data
-            ]
-        )
+        payment = Payment(**validated_data)
+        proofs = [
+            PaymentProof(
+                payment=payment,
+                **{
+                    key: value
+                    for key, value in proof_data.items()
+                    if key != "payment"
+                },
+            )
+            for proof_data in proofs_data
+        ]
+        # bulk_create skips the media signals, so check each key here,
+        # before anything is written.
+        for proof in proofs:
+            key = (proof.image_data or {}).get("id") or (proof.image_data or {}).get("object_key")
+            if key:
+                check_media_location(proof, key)
+        payment.save(force_insert=True)
+        PaymentProof.objects.bulk_create(proofs)
 
         self._send_status_email(payment)
 

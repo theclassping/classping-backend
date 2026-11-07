@@ -49,7 +49,7 @@ class SearchableImageUploadMixin:
         instance = super().save(commit=False)
         uploaded_file = self.cleaned_data.get("image_file")
         if uploaded_file:
-            instance.image_data = process_uploaded_image(uploaded_file)
+            instance.image_data = process_uploaded_image(uploaded_file, instance)
         if commit:
             instance.save()
             self.save_m2m()

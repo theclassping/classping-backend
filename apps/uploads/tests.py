@@ -77,7 +77,7 @@ class MediaApiTests(TestCase):
         self.assertEqual(response.data["content_type"], "image/jpeg")
         generate.assert_called_once_with(
             filename="photo.jpg", content_type="image/jpeg", size=1234,
-            user_id=self.user.pk, expires_in=3600,
+            user_id=self.user.pk, expires_in=3600, location=None,
         )
 
     def test_presign_rejects_invalid_expiration(self):

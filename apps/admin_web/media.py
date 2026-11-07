@@ -7,6 +7,7 @@ from django.conf import settings
 from PIL import Image, ImageOps
 
 from apps.uploads.services.media import MediaService
+from apps.uploads.paths import media_key_for_instance
 from apps.uploads.storage import get_storage, generate_file_key
 
 # Same limits the school frontend applies before uploading (lib/imageResize.ts).
@@ -56,8 +57,12 @@ def _shrink_image(path):
     return output_path, width, height
 
 
-def process_uploaded_image(uploaded_file):
-    """Convert an uploaded file into the same metadata shape used by the API."""
+def process_uploaded_image(uploaded_file, instance=None):
+    """Convert an uploaded file into the same metadata shape used by the API.
+
+    With instance, the file is stored under that record's branch folder when
+    the record already knows its branch; otherwise a legacy date key is used.
+    """
     if not uploaded_file:
         return None
 
@@ -77,9 +82,12 @@ def process_uploaded_image(uploaded_file):
             filename = uploaded_file.name
             content_type = uploaded_file.content_type
 
+        extension = os.path.splitext(filename)[1].lower()
+        file_key = (media_key_for_instance(instance, extension) if instance is not None else None) \
+            or generate_file_key(filename)
+
         if getattr(settings, "STORAGE_TYPE", "local") == "r2":
             content_type = content_type or "application/octet-stream"
-            file_key = generate_file_key(filename)
             storage = get_storage()
             with open(stored_path, "rb") as file_handle:
                 storage.client.put_object(
@@ -99,7 +107,7 @@ def process_uploaded_image(uploaded_file):
                 "height": height,
             }
         else:
-            metadata = MediaService.store_local_file(stored_path, filename, content_type)
+            metadata = MediaService.store_local_file(stored_path, filename, content_type, object_key=file_key)
         metadata["filename"] = filename
         metadata["content_type"] = content_type or metadata.get("content_type")
         return metadata

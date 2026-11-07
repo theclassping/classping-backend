@@ -10,7 +10,8 @@ from apps.users.permissions import RoleBasedAccessPermission
 from rest_framework.views import APIView
 from django.conf import settings
 
-from apps.uploads.services.media import MediaService, UploadStoreUnavailable
+from apps.uploads.paths import UploadTargetNotFound, resolve_upload_location
+from apps.uploads.services.media import MediaInputError, MediaService, UploadStoreUnavailable
 from apps.uploads.serializers import (
     PresignUrlSerializer,
     PresignUrlResponseSerializer,
@@ -40,8 +41,17 @@ class PresignUrlView(APIView):
         "filename": "logo-1.png",
         "content_type": "image/png",   # jpeg, png, webp, gif, heic or heif
         "size": 70389,                 # exact bytes; the upload must match
-        "expires_in": 3600
+        "expires_in": 3600,
+        "purpose": "activity",         # activity|assessment|payment|student|guardian|general
+        "class_id": 12,                # required for activity, assessment, payment
+        "branch_id": 3                 # optional for student, guardian, general
     }
+
+    The key is built under the branch the upload belongs to:
+    branch_{id}/class_{id}/{category}/... or branch_{id}/{category}/...
+    For student/guardian/general, the branch is branch_id if sent, else the
+    uploader's staff branch, else the only branch they can see.
+    Without purpose, the legacy {yyyy}/{mm}/{dd}/... key is used.
 
     The client must PUT the file to presigned_url with exactly this
     Content-Type header and byte size, or the upload is rejected.
@@ -61,13 +71,29 @@ class PresignUrlView(APIView):
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
+        data = serializer.validated_data
+        location = None
+        if data.get('purpose'):
+            try:
+                location = resolve_upload_location(
+                    request.user,
+                    data['purpose'],
+                    class_id=data.get('class_id'),
+                    branch_id=data.get('branch_id'),
+                )
+            except UploadTargetNotFound as error:
+                return Response({'error': str(error)}, status=status.HTTP_404_NOT_FOUND)
+            except MediaInputError as error:
+                return Response({'error': str(error)}, status=status.HTTP_400_BAD_REQUEST)
+
         try:
             result = MediaService.generate_presign_url(
-                filename=serializer.validated_data['filename'],
-                content_type=serializer.validated_data['content_type'],
-                size=serializer.validated_data['size'],
+                filename=data['filename'],
+                content_type=data['content_type'],
+                size=data['size'],
                 user_id=request.user.pk,
-                expires_in=serializer.validated_data.get('expires_in', 3600),
+                expires_in=data.get('expires_in', 3600),
+                location=location,
             )
             
             response_serializer = PresignUrlResponseSerializer(result)

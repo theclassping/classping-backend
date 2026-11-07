@@ -9,6 +9,7 @@ import logging
 from rest_framework import status
 from rest_framework.exceptions import APIException
 
+from apps.uploads.paths import PURPOSE_CATEGORIES
 from apps.uploads.services.media import (
     ALLOWED_IMAGE_TYPES,
     MediaInputError,
@@ -79,6 +80,11 @@ class PresignUrlSerializer(serializers.Serializer):
     # Exact byte size of the file; the upload URL is signed for it.
     size = serializers.IntegerField(min_value=1)
     expires_in = serializers.IntegerField(default=3600, min_value=60, max_value=86400)
+    # What the image is for; the server picks the branch/class folder from it.
+    # Optional only while older clients still presign without it.
+    purpose = serializers.ChoiceField(choices=sorted(PURPOSE_CATEGORIES), required=False)
+    class_id = serializers.IntegerField(min_value=1, required=False)
+    branch_id = serializers.IntegerField(min_value=1, required=False)
 
     def validate_size(self, value):
         limit = settings.MAX_UPLOAD_BYTES
