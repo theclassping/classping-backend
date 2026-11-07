@@ -349,6 +349,17 @@ MAILJET_API_KEY = os.environ.get("MAILJET_API_KEY")
 MAILJET_API_SECRET = os.environ.get("MAILJET_API_SECRET")
 MAIL_FROM_EMAIL = os.environ.get("MAIL_FROM_EMAIL", "the.class.ping@gmail.com")
 MAIL_FROM_NAME = os.environ.get("MAIL_FROM_NAME", "ClassPing")
+# WhatsApp Cloud API (OTP via an approved AUTHENTICATION template)
+WHATSAPP_ACCESS_TOKEN = os.environ.get("WHATSAPP_ACCESS_TOKEN", "")
+WHATSAPP_PHONE_NUMBER_ID = os.environ.get("WHATSAPP_PHONE_NUMBER_ID", "")
+WHATSAPP_API_VERSION = os.environ.get("WHATSAPP_API_VERSION", "v23.0")
+WHATSAPP_OTP_TEMPLATE_NAME = os.environ.get("WHATSAPP_OTP_TEMPLATE_NAME", "classping_otp")
+WHATSAPP_OTP_TEMPLATE_LANGUAGE = os.environ.get("WHATSAPP_OTP_TEMPLATE_LANGUAGE", "id")
+WHATSAPP_OTP_LENGTH = int(os.environ.get("WHATSAPP_OTP_LENGTH", "6"))
+WHATSAPP_OTP_TTL_SECONDS = int(os.environ.get("WHATSAPP_OTP_TTL_SECONDS", "300"))
+WHATSAPP_OTP_MAX_ATTEMPTS = int(os.environ.get("WHATSAPP_OTP_MAX_ATTEMPTS", "5"))
+WHATSAPP_TIMEOUT_SECONDS = int(os.environ.get("WHATSAPP_TIMEOUT_SECONDS", "10"))
+
 MAILJET_TEMPLATES = {
     "invoice_reminder": 8345505,
     "payment_submitted": 8345507,
