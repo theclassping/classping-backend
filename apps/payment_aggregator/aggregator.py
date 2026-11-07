@@ -50,20 +50,12 @@ class PaymentAggregator:
     # --- configuration ---------------------------------------------------
 
     @classmethod
-    def provider_name(cls):
-        return get_provider().name
-
-    @classmethod
     def get_banks(cls):
         return get_provider().get_banks()
 
     @classmethod
     def is_supported_bank(cls, bank_code):
         return bank_code in get_provider().get_banks()
-
-    @classmethod
-    def get_payment_deadline_days(cls):
-        return get_provider().get_payment_deadline_days()
 
     @classmethod
     def get_withdrawal_rules(cls):

@@ -1,5 +1,5 @@
 """
-Provider selection for the payment aggregator.
+General (provider-independent) payment rules and provider selection.
 
 Fee amounts, channels and limits are NOT defined here: each provider keeps
 its own numbers in ``providers/<name>/constants.py``.
@@ -11,3 +11,11 @@ PAYMENT_AGGREGATOR_PROVIDER = "rintisan"
 PROVIDER_CLASSES = {
     "rintisan": "apps.payment_aggregator.providers.rintisan.provider.RintisanProvider",
 }
+
+# --- Classping rules ------------------------------------------------------
+
+# A gateway checkout must be paid within this many minutes. The expiry time is
+# sent to the provider with the billing; the provider expires it and notifies
+# Classping via the payment callback. After that the invoice is open for
+# manual payment again.
+PAYMENT_DEADLINE_MINUTES = 60

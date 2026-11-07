@@ -26,7 +26,7 @@ class FeeType:
 class BillingStatus:
     PENDING = "pending"
     PAID = "paid"
-    FAILED = "failed"
+    EXPIRED = "expired"
 
 
 class SettlementStatus:
@@ -91,7 +91,9 @@ class BillingRequest:
     channel_code: str
     amount: Decimal
     invoice_date: datetime.date
-    deadline_date: datetime.date
+    # Classping payment window end (aware datetime); the provider decides how
+    # to express it (Rintisan: deadline_date + expiry time).
+    expires_at: datetime.datetime
     payer_name: str
     payer_phone: str
     # Providers may ignore this (Rintisan always sends its own PAYER_EMAIL).
@@ -167,10 +169,6 @@ class BaseProvider(abc.ABC):
     @abc.abstractmethod
     def get_banks(self) -> Mapping[str, str]:
         """Supported payout bank codes -> display names."""
-        ...
-
-    @abc.abstractmethod
-    def get_payment_deadline_days(self) -> int:
         ...
 
     # Pay-in

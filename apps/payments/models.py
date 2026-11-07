@@ -1,6 +1,7 @@
 from django.db import models
 from django.db.models import Q
 
+from apps.payment_aggregator.base import PaymentMethod as GatewayMethod
 from apps.student_invoices.models import StudentInvoice
 from apps.staffs.models import Staff
 
@@ -15,10 +16,11 @@ class Payment(models.Model):
     class PaymentMethod(models.TextChoices):
         BANK_TRANSFER = "bank_transfer", "Bank Transfer"
         CASH = "cash", "Cash"
-        # Gateway methods: set only by payment_gateway services.
-        VIRTUAL_ACCOUNT = "virtual_account", "Virtual Account"
-        CREDIT_CARD = "credit_card", "Credit Card"
-        E_COMMERCE = "e_commerce", "E-commerce"
+        # Gateway methods (values defined once, in payment_aggregator.base);
+        # set only by payment_gateway services.
+        VIRTUAL_ACCOUNT = GatewayMethod.VIRTUAL_ACCOUNT, "Virtual Account"
+        CREDIT_CARD = GatewayMethod.CREDIT_CARD, "Credit Card"
+        E_COMMERCE = GatewayMethod.E_COMMERCE, "E-commerce"
 
     class PaymentChannel(models.TextChoices):
         MANUAL = "manual", "Manual"
@@ -29,6 +31,16 @@ class Payment(models.Model):
         PaymentMethod.BANK_TRANSFER,
         PaymentMethod.CASH,
     )
+    GATEWAY_PAYMENT_METHODS = (
+        PaymentMethod.VIRTUAL_ACCOUNT,
+        PaymentMethod.CREDIT_CARD,
+        PaymentMethod.E_COMMERCE,
+    )
+
+    @classmethod
+    def method_choices(cls, methods):
+        """(value, label) choices for a subset of PaymentMethod."""
+        return [(value, label) for value, label in cls.PaymentMethod.choices if value in methods]
 
     student_invoice = models.OneToOneField(
         StudentInvoice,

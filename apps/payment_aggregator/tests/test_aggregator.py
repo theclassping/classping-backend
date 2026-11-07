@@ -65,5 +65,9 @@ class PaymentAggregatorFacadeTests(SimpleTestCase):
         for code in ("GOPAY", "OVO", "DANA", "SHOPEEPAY", "LINKAJA"):
             self.assertFalse(PaymentAggregator.is_supported_bank(code), msg=code)
 
-    def test_payment_deadline_days(self):
-        self.assertEqual(PaymentAggregator.get_payment_deadline_days(), 1)
+    def test_payment_window_is_a_general_classping_rule(self):
+        from apps.payment_aggregator import constants
+        from apps.payment_aggregator.providers.rintisan import constants as rintisan_constants
+
+        self.assertEqual(constants.PAYMENT_DEADLINE_MINUTES, 60)
+        self.assertFalse(hasattr(rintisan_constants, "PAYMENT_DEADLINE_MINUTES"))

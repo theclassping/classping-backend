@@ -36,9 +36,6 @@ DISBURSEMENT_FEE = Decimal("2500")
 # withdrawn amount. Covers DISBURSEMENT_FEE.
 WITHDRAWAL_FEE = Decimal("2500")
 
-# Classping platform fee per gateway payment, deducted from the branch.
-PLATFORM_FEE = Decimal("0")
-
 # --- Pay-in channels ------------------------------------------------------
 # QRIS is intentionally not offered (BI forbids charging QRIS MDR to the payer).
 # VAPERMATA is not in the pricing deck; it uses MDR_VA until Rintisan confirms.
@@ -131,9 +128,13 @@ CHANNELS = {
 # Overridable with env RINTISAN_PAYER_EMAIL.
 PAYER_EMAIL = "no-reply@hamanto.com"
 
-# Rintisan has no cancel API, so keep the payment window short:
-# deadline_date = today + N days (valid until end of that day, WIB).
-PAYMENT_DEADLINE_DAYS = 1
+# Billing expiry. Rintisan expires the billing at the requested time and sends
+# the expiry to the payment callback URL; /querypayment then returns EXPIRED.
+# Field name / format in /create are NOT in the OpenAPI v1.0.0 yet: set
+# BILLING_EXPIRY_FIELD once Rintisan confirms them (None = not sent; only
+# deadline_date, the WIB date of expires_at, is sent).
+BILLING_EXPIRY_FIELD = None
+BILLING_EXPIRY_FORMAT = "%Y-%m-%d %H:%M:%S"  # WIB
 
 # --- Payout limits --------------------------------------------------------
 
@@ -187,10 +188,14 @@ BANK_CODES = {
 REQUEST_TIMEOUT_SECONDS = 15
 
 RESPONSE_CODE_SUCCESS = "200"
-RESPONSE_CODE_ERROR = "400"
 RESPONSE_CODE_DUPLICATE = "409"
 
 PAYMENT_STATUS_PAID = "PAID"
+PAYMENT_STATUS_EXPIRED = "EXPIRED"
+# Expiry callback: same URL as payments. status.code to be confirmed by
+# Rintisan; status.message "expired" is matched meanwhile.
+CALLBACK_STATUS_EXPIRED_CODES = ()
+CALLBACK_STATUS_EXPIRED_MESSAGE = "expired"
 DISBURSE_STATUS_DISBURSED = "DISBURSED"
 
 # Payment callback status.code

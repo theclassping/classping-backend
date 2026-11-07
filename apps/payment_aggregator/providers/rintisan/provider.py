@@ -41,8 +41,8 @@ class RintisanProvider(BaseProvider):
     # --- keys ------------------------------------------------------------
 
     def _load_private_key(self):
+        # Credentials are checked by RintisanClient.post before signing.
         if self._private_key is None:
-            self.config.require_request_credentials()
             with open(self.config.private_key_path, "rb") as handle:
                 self._private_key = signing.load_private_key(handle.read())
         return self._private_key
@@ -80,9 +80,6 @@ class RintisanProvider(BaseProvider):
 
     def get_banks(self):
         return dict(constants.BANK_CODES)
-
-    def get_payment_deadline_days(self):
-        return constants.PAYMENT_DEADLINE_DAYS
 
     # --- pay-in ----------------------------------------------------------
 

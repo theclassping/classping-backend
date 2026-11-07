@@ -48,8 +48,7 @@ class RintisanClient:
 
     def get(self, path):
         """Unsigned GET (only /balance uses this)."""
-        if not self.config.client_id or not self.config.api_key:
-            self.config.require_request_credentials()
+        self.config.require_api_credentials()
         return self._send("GET", path, headers=self._headers())
 
     def _send(self, method, path, **kwargs):

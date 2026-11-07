@@ -9,7 +9,10 @@ from apps.classes.models import Class, ClassTeacher
 from apps.fee_types.models import FeeType, FeeTypeClass
 from apps.guardians.models import Guardian
 from apps.locations.models import Location
+from apps.payment_gateway.selectors import locked_invoice_ids
+from apps.payments.exceptions import InvoiceLocked
 from apps.payments.models import Payment, PaymentProof
+from apps.payments.services import ensure_invoice_open_for_manual_payment
 from apps.schools.models import Branch, School
 from apps.score_settings.models import ScoreSetting
 from apps.student_invoices.models import StudentInvoice
@@ -377,18 +380,17 @@ class PaymentForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         invoices = StudentInvoice.objects.select_related(
             "class_student__student", "class_student__class_obj__branch__school"
-        ).filter(status=StudentInvoice.Status.UNPAID, payment__isnull=True)
+        ).filter(status=StudentInvoice.Status.UNPAID, payment__isnull=True).exclude(
+            # Invoices locked by an active payment gateway checkout.
+            pk__in=locked_invoice_ids()
+        )
         if self.instance.pk:
             invoices = invoices | StudentInvoice.objects.filter(
                 pk=self.instance.student_invoice_id
             )
         self.fields["student_invoice"].queryset = invoices.order_by("invoice_date", "pk")
         # Gateway methods are set only by the payment gateway, never by hand.
-        self.fields["payment_method"].choices = [
-            (value, label)
-            for value, label in Payment.PaymentMethod.choices
-            if value in Payment.MANUAL_PAYMENT_METHODS
-        ]
+        self.fields["payment_method"].choices = Payment.method_choices(Payment.MANUAL_PAYMENT_METHODS)
 
     def clean(self):
         cleaned_data = super().clean()
@@ -396,6 +398,11 @@ class PaymentForm(forms.ModelForm):
         if not self.instance.pk and invoice:
             if Payment.objects.filter(student_invoice=invoice).exists():
                 self.add_error("student_invoice", "This invoice already has a payment record.")
+        if invoice:
+            try:
+                ensure_invoice_open_for_manual_payment(invoice)
+            except InvoiceLocked as error:
+                self.add_error("student_invoice", error.message)
         return cleaned_data
 
 

@@ -87,7 +87,7 @@ class GatewayFixtureMixin:
             guardian=guardian or self.guardian,
             provider="rintisan",
             channel_code="VABCA",
-            payment_method=GatewayPayment.PaymentMethod.VIRTUAL_ACCOUNT,
+            payment_method=Payment.PaymentMethod.VIRTUAL_ACCOUNT,
             invoice_total=Decimal("125000"),
             transaction_fee=Decimal("5000"),
             amount=Decimal("130000"),

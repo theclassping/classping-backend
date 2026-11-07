@@ -1,6 +1,21 @@
 from ..views_common import *
 from django.conf import settings
+from apps.payments.exceptions import InvoiceLocked
+from apps.payments.services import (
+    is_gateway_payment,
+    lock_invoice_for_manual_payment,
+)
 from apps.uploads.services.media import MediaService
+
+GATEWAY_READONLY_MESSAGE = "Payment gateway records cannot be edited, deleted or reviewed."
+
+
+def _gateway_payment_redirect(request, payment):
+    """Redirect with an error when ``payment`` came from the payment gateway."""
+    if is_gateway_payment(payment):
+        messages.error(request, GATEWAY_READONLY_MESSAGE)
+        return redirect("admin_web:payment_detail", pk=payment.pk)
+    return None
 
 @login_required(login_url="admin_web:login")
 def payment_list(request):
@@ -48,6 +63,8 @@ def payment_list(request):
 @login_required(login_url="admin_web:login")
 def payment_form(request, pk=None):
     payment = get_object_or_404(Payment, pk=pk) if pk else None
+    if payment and (blocked := _gateway_payment_redirect(request, payment)):
+        return blocked
     if payment and payment.status != Payment.Status.SUBMITTED:
         messages.error(request, "Only submitted, unverified payments can be edited.")
         return redirect("admin_web:payment_detail", pk=payment.pk)
@@ -59,16 +76,23 @@ def payment_form(request, pk=None):
         prefix="proofs",
     )
     if request.method == "POST" and form.is_valid() and proof_formset.is_valid():
-        with transaction.atomic():
-            payment = form.save()
-            proof_formset.instance = payment
-            proof_formset.save()
-            invoice = payment.student_invoice
-            if invoice.status == StudentInvoice.Status.UNPAID:
-                invoice.status = StudentInvoice.Status.PAYMENT_SUBMITTED
-                invoice.save(update_fields=["status", "updated_at"])
-        messages.success(request, "Payment saved.")
-        return redirect("admin_web:payment_detail", pk=payment.pk)
+        try:
+            with transaction.atomic():
+                # Re-check under the invoice row lock (the form check can race
+                # a gateway checkout).
+                lock_invoice_for_manual_payment(form.cleaned_data["student_invoice"])
+                payment = form.save()
+                proof_formset.instance = payment
+                proof_formset.save()
+                invoice = payment.student_invoice
+                if invoice.status == StudentInvoice.Status.UNPAID:
+                    invoice.status = StudentInvoice.Status.PAYMENT_SUBMITTED
+                    invoice.save(update_fields=["status", "updated_at"])
+        except InvoiceLocked as error:
+            form.add_error("student_invoice", error.message)
+        else:
+            messages.success(request, "Payment saved.")
+            return redirect("admin_web:payment_detail", pk=payment.pk)
     return render(
         request,
         "admin_web/payments/form.html",
@@ -81,6 +105,8 @@ def payment_delete(request, pk):
     payment = get_object_or_404(Payment.objects.select_related("student_invoice"), pk=pk)
     if request.method != "POST":
         return redirect("admin_web:payment_detail", pk=pk)
+    if blocked := _gateway_payment_redirect(request, payment):
+        return blocked
     if payment.status != Payment.Status.SUBMITTED:
         messages.error(request, "Reviewed payments are retained for audit and cannot be deleted.")
         return redirect("admin_web:payment_detail", pk=pk)
@@ -102,6 +128,7 @@ def payment_detail(request, pk):
             "student_invoice__class_student__class_obj__branch",
             "student_invoice__fee_type",
             "verified_by__user",
+            "gateway_payment",
         ).prefetch_related("proofs"),
         pk=pk,
     )
@@ -116,13 +143,19 @@ def payment_detail(request, pk):
     return render(
         request,
         "admin_web/payments/detail.html",
-        {"payment": payment, "can_review": hasattr(request.user, "staff")},
+        {
+            "payment": payment,
+            "can_review": hasattr(request.user, "staff"),
+            "is_gateway_payment": is_gateway_payment(payment),
+        },
     )
 
 
 @login_required(login_url="admin_web:login")
 def payment_review(request, pk, action):
     payment = get_object_or_404(Payment.objects.select_related("student_invoice"), pk=pk)
+    if blocked := _gateway_payment_redirect(request, payment):
+        return blocked
     staff = getattr(request.user, "staff", None)
     if not staff:
         messages.error(request, "A staff profile is required to review payments.")

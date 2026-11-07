@@ -97,11 +97,7 @@ class PaymentSerializer(serializers.ModelSerializer):
 
     # Writes accept only manual methods; gateway rows are created by services.
     payment_method = serializers.ChoiceField(
-        choices=[
-            (value, label)
-            for value, label in Payment.PaymentMethod.choices
-            if value in Payment.MANUAL_PAYMENT_METHODS
-        ],
+        choices=Payment.method_choices(Payment.MANUAL_PAYMENT_METHODS),
     )
 
     gateway_payment_id = serializers.IntegerField(read_only=True)

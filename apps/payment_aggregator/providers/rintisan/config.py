@@ -61,27 +61,25 @@ class RintisanConfig:
             ),
         )
 
-    def require_request_credentials(self):
-        missing = [
-            name
-            for name, value in (
-                ("RINTISAN_CLIENT_ID", self.client_id),
-                ("RINTISAN_API_KEY", self.api_key),
-                ("RINTISAN_PRIVATE_KEY_PATH", self.private_key_path),
-            )
-            if not value
-        ]
+    def _require(self, **settings):
+        missing = [name for name, value in settings.items() if not value]
         if missing:
             raise ProviderNotConfigured("Missing Rintisan settings: " + ", ".join(missing))
 
+    def require_api_credentials(self):
+        """Unsigned requests (GET /balance)."""
+        self._require(RINTISAN_CLIENT_ID=self.client_id, RINTISAN_API_KEY=self.api_key)
+
+    def require_request_credentials(self):
+        """Signed requests."""
+        self._require(
+            RINTISAN_CLIENT_ID=self.client_id,
+            RINTISAN_API_KEY=self.api_key,
+            RINTISAN_PRIVATE_KEY_PATH=self.private_key_path,
+        )
+
     def require_callback_credentials(self):
-        missing = [
-            name
-            for name, value in (
-                ("RINTISAN_CLIENT_ID", self.client_id),
-                ("RINTISAN_PUBLIC_KEY_PATH", self.public_key_path),
-            )
-            if not value
-        ]
-        if missing:
-            raise ProviderNotConfigured("Missing Rintisan settings: " + ", ".join(missing))
+        self._require(
+            RINTISAN_CLIENT_ID=self.client_id,
+            RINTISAN_PUBLIC_KEY_PATH=self.public_key_path,
+        )

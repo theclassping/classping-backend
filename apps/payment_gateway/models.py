@@ -1,7 +1,7 @@
 from django.db import models
 from django.db.models import F, Q
 
-from apps.payment_aggregator.base import PaymentMethod as AggregatorPaymentMethod
+from apps.payments.models import Payment
 
 
 class GatewayPayment(models.Model):
@@ -14,11 +14,6 @@ class GatewayPayment(models.Model):
         PENDING = "pending", "Pending"
         PAID = "paid", "Paid"
         EXPIRED = "expired", "Expired"
-
-    class PaymentMethod(models.TextChoices):
-        VIRTUAL_ACCOUNT = AggregatorPaymentMethod.VIRTUAL_ACCOUNT, "Virtual Account"
-        CREDIT_CARD = AggregatorPaymentMethod.CREDIT_CARD, "Credit Card"
-        E_COMMERCE = AggregatorPaymentMethod.E_COMMERCE, "E-commerce"
 
     # Sent to the provider as its transaction reference (Rintisan partner_trx_id).
     payment_no = models.CharField(max_length=50, unique=True)
@@ -42,7 +37,11 @@ class GatewayPayment(models.Model):
 
     provider = models.CharField(max_length=30)
     channel_code = models.CharField(max_length=30)
-    payment_method = models.CharField(max_length=30, choices=PaymentMethod.choices)
+    # Same values as payments.payment_method for gateway rows.
+    payment_method = models.CharField(
+        max_length=30,
+        choices=Payment.method_choices(Payment.GATEWAY_PAYMENT_METHODS),
+    )
     status = models.CharField(
         max_length=20,
         choices=Status.choices,

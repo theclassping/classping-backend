@@ -88,11 +88,15 @@ def _status_code(body):
 
 def billing_payload(request, payer_email):
     """``payer_email`` replaces request.payer_email so Rintisan never emails payers."""
-    return {
+    if request.expires_at.tzinfo is None:
+        raise ValueError("BillingRequest.expires_at must be timezone-aware")
+    expires_at_wib = request.expires_at.astimezone(PROVIDER_TZ)
+    payload = {
         "partner_trx_id": request.reference_no,
         "partner_identifier_id": request.identifier or request.reference_no,
         "invoice_date": request.invoice_date.isoformat(),
-        "deadline_date": request.deadline_date.isoformat(),
+        # Rintisan's due date is a date: the WIB date of expires_at.
+        "deadline_date": expires_at_wib.date().isoformat(),
         "to_name": request.payer_name,
         "to_address": request.payer_address or "",
         "to_phone": request.payer_phone,
@@ -101,6 +105,20 @@ def billing_payload(request, payer_email):
         "payment_method": request.channel_code,
         "amount": to_idr_int(request.amount),
     }
+    if c.BILLING_EXPIRY_FIELD:
+        payload[c.BILLING_EXPIRY_FIELD] = expires_at_wib.strftime(c.BILLING_EXPIRY_FORMAT)
+    return payload
+
+
+def _is_expired(payment_status, body):
+    if payment_status == c.PAYMENT_STATUS_EXPIRED:
+        return True
+    status = body.get("status")
+    if not isinstance(status, dict):
+        return False
+    if str(status.get("code") or "") in c.CALLBACK_STATUS_EXPIRED_CODES:
+        return True
+    return str(status.get("message") or "").strip().lower() == c.CALLBACK_STATUS_EXPIRED_MESSAGE
 
 
 def raise_for_billing_response(body):
@@ -128,6 +146,8 @@ def billing_result(body, reference_no=""):
     callback_code = _status_code(body)
     if payment_status == c.PAYMENT_STATUS_PAID or callback_code == c.CALLBACK_STATUS_SUCCESS:
         status = BillingStatus.PAID
+    elif _is_expired(payment_status, body):
+        status = BillingStatus.EXPIRED
     else:
         status = BillingStatus.PENDING
 

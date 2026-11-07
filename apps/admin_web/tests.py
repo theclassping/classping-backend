@@ -590,3 +590,80 @@ class PaymentGatewayAdminWebTests(TestCase):
 
 		values = [value for value, _ in PaymentForm().fields["payment_method"].choices if value]
 		self.assertEqual(values, ["bank_transfer", "cash"])
+
+
+class PaymentGatewayGuardAdminWebTests(TestCase):
+	def setUp(self):
+		from apps.payment_gateway.tests import GatewayFixtureMixin
+
+		fixture = type("Fixture", (GatewayFixtureMixin,), {})()
+		GatewayFixtureMixin.setUp(fixture)
+		self.fx = fixture
+		admin = User.objects.create_superuser(
+			email="gw-guard-admin@example.com",
+			password="StrongPassword123!",
+			first_name="Guard",
+			last_name="Admin",
+		)
+		self.client.force_login(admin)
+
+	def lock(self, invoice):
+		checkout = self.fx.make_payment("PAY-ADM-LOCK", "key-adm-lock")
+		self.fx.add_item(checkout, invoice)
+		return checkout
+
+	def gateway_payment_row(self):
+		from apps.payment_gateway.models import GatewayPayment
+
+		checkout = self.fx.make_payment("PAY-ADM-PAID", "key-adm-paid", status=GatewayPayment.Status.PAID)
+		return Payment.objects.create(
+			student_invoice=self.fx.invoice,
+			amount=self.fx.invoice.total_amount,
+			payment_method=Payment.PaymentMethod.VIRTUAL_ACCOUNT,
+			payment_channel=Payment.PaymentChannel.PAYMENT_GATEWAY,
+			gateway_payment=checkout,
+			status=Payment.Status.SUBMITTED,
+		)
+
+	def test_locked_invoice_hidden_from_manual_payment_form(self):
+		from apps.admin_web.forms import PaymentForm
+
+		self.lock(self.fx.invoice)
+		invoice_ids = set(PaymentForm().fields["student_invoice"].queryset.values_list("pk", flat=True))
+		self.assertNotIn(self.fx.invoice.pk, invoice_ids)
+		self.assertIn(self.fx.invoice_2.pk, invoice_ids)
+
+	def test_locked_invoice_rejected_by_form_validation(self):
+		from apps.admin_web.forms import PaymentForm
+
+		self.lock(self.fx.invoice)
+		form = PaymentForm(data={
+			"student_invoice": self.fx.invoice.pk,
+			"amount": "50000",
+			"payment_method": "cash",
+		})
+		self.assertFalse(form.is_valid())
+		self.assertIn("student_invoice", form.errors)
+
+	def test_gateway_payment_cannot_be_edited_deleted_or_reviewed(self):
+		# Even a gateway row in "submitted" state (defence in depth).
+		payment = self.gateway_payment_row()
+		detail_url = reverse("admin_web:payment_detail", args=[payment.pk])
+		for url in (
+			reverse("admin_web:payment_edit", args=[payment.pk]),
+			reverse("admin_web:payment_delete", args=[payment.pk]),
+			reverse("admin_web:payment_review", args=[payment.pk, "approve"]),
+		):
+			response = self.client.post(url, {})
+			self.assertRedirects(response, detail_url, fetch_redirect_response=False)
+		payment.refresh_from_db()
+		self.assertEqual(payment.status, Payment.Status.SUBMITTED)
+
+	def test_gateway_payment_detail_and_list_show_channel(self):
+		payment = self.gateway_payment_row()
+		detail = self.client.get(reverse("admin_web:payment_detail", args=[payment.pk]))
+		self.assertContains(detail, "Payment Gateway")
+		self.assertContains(detail, "PAY-ADM-PAID")
+		self.assertNotContains(detail, reverse("admin_web:payment_edit", args=[payment.pk]))
+		listing = self.client.get(reverse("admin_web:payment_list"))
+		self.assertContains(listing, "<th>Channel</th>", html=False)
