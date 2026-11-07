@@ -381,7 +381,10 @@ class ActivityMediaLifecycleTests(TestCase):
             with patch("apps.uploads.management.commands.cleanup_orphaned_uploads.get_storage") as storage:
                 call_command("cleanup_orphaned_uploads", stdout=StringIO())
                 storage.return_value.delete_object.assert_not_called()
-            redis.return_value.zrem.assert_called_with("classping:uploads:pending", "activity.jpg")
+            # mark_upload_attached clears pending state in one MULTI/EXEC pipeline.
+            pipe = redis.return_value.pipeline.return_value
+            pipe.zrem.assert_called_with("classping:uploads:pending", "activity.jpg")
+            pipe.execute.assert_called_once_with()
 
     def test_caption_update_and_empty_images_preserve_file(self):
         from unittest.mock import patch
