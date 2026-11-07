@@ -10,7 +10,11 @@ from apps.classes.serializers import ClassSerializer
 from apps.guardians.models import Guardian
 from apps.guardians.serializers import GuardianSerializer, GuardianInlineSerializer
 from apps.locations.models import Location
-from apps.locations.serializers import LocationSerializer
+from apps.locations.serializers import (
+    LocationPreloadListSerializer,
+    LocationSerializer,
+    preloaded_location,
+)
 from apps.uploads.services.media import FileTooLargeError, MediaService
 from .models import Student, StudentGuardian
 
@@ -184,10 +188,19 @@ class StudentSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-    
+        list_serializer_class = LocationPreloadListSerializer
+
     def get_image_url(self, obj):
         """Get the full URL for the student's image if metadata exists."""
         return obj.image_url
+
+    @staticmethod
+    def _related_rows(instance, relation, *select):
+        """Use rows prefetched by the view (see apps.students.selectors), else query."""
+        manager = getattr(instance, relation)
+        if relation in getattr(instance, "_prefetched_objects_cache", {}):
+            return manager.all()
+        return manager.select_related(*select).all()
 
     def to_representation(self, instance):
         """
@@ -200,7 +213,7 @@ class StudentSerializer(serializers.ModelSerializer):
         # Add student_guardians as simple nested data (read response)
         if instance and instance.pk:
             student_guardians_data = []
-            for sg in instance.student_guardians.select_related("guardian").all():
+            for sg in self._related_rows(instance, "student_guardians", "guardian"):
                 student_guardians_data.append({
                     "id": sg.id,
                     "guardian_id": sg.guardian.id,
@@ -214,7 +227,7 @@ class StudentSerializer(serializers.ModelSerializer):
             
             # Add class_students as simple nested data (read response)
             class_students_data = []
-            for cs in instance.class_students.select_related("class_obj").all():
+            for cs in self._related_rows(instance, "class_students", "class_obj"):
                 class_students_data.append({
                     "id": cs.id,
                     "class_id": cs.class_obj.id,
@@ -235,6 +248,10 @@ class StudentSerializer(serializers.ModelSerializer):
     def get_location(self, obj):
         if not obj.location_id:
             return None
+
+        preloaded, payload = preloaded_location(self, obj.location_id)
+        if preloaded:
+            return payload
 
         location = Location.objects.filter(pk=obj.location_id).first()
 
@@ -745,7 +762,12 @@ class StudentDetailSerializer(StudentSerializer):
         data = super().to_representation(instance)
         
         # Override class_students with full ClassSerializer data
-        class_students_list = instance.class_students.select_related("class_obj").all()
+        class_students_list = self._related_rows(
+            instance,
+            "class_students",
+            "class_obj__branch",
+            "class_obj__academic_year",
+        )
         
         class_students_data = []
         for cs in class_students_list:

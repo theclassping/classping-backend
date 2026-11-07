@@ -5,6 +5,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from .models import Student, StudentGuardian
+from .selectors import with_student_relations
 from .serializers import (
     StudentSerializer,
     StudentDetailSerializer,
@@ -18,11 +19,8 @@ class StudentViewSet(ScopedQuerysetMixin, viewsets.ModelViewSet):
     serializer_class = StudentSerializer
 
     def get_queryset(self):
-        if self.action == "retrieve":
-            queryset = Student.objects.prefetch_related(
-                "student_guardians__guardian",
-                "class_students__class_obj",
-            ).order_by("-id")
+        if self.action in ("list", "retrieve"):
+            queryset = with_student_relations(Student.objects.order_by("-id"))
         else:
             queryset = Student.objects.order_by("-id")
         search = self.request.query_params.get("search") or self.request.query_params.get("q")

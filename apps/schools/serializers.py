@@ -3,7 +3,11 @@ import logging
 from rest_framework import serializers
 
 from apps.locations.models import Location
-from apps.locations.serializers import LocationSerializer
+from apps.locations.serializers import (
+    LocationPreloadListSerializer,
+    LocationSerializer,
+    preloaded_location,
+)
 from apps.uploads.services.media import FileTooLargeError, MediaService
 from .models import Branch, School
 
@@ -39,10 +43,15 @@ class BranchSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+        list_serializer_class = LocationPreloadListSerializer
 
     def get_location(self, obj):
         if not obj.location_id:
             return None
+
+        preloaded, payload = preloaded_location(self, obj.location_id)
+        if preloaded:
+            return payload
 
         location = Location.objects.filter(pk=obj.location_id).first()
 

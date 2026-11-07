@@ -8,7 +8,7 @@ from .serializers import BranchSerializer, SchoolSerializer
 
 
 class SchoolViewSet(ScopedQuerysetMixin, viewsets.ModelViewSet):
-    queryset = School.objects.all().order_by("-created_at")
+    queryset = School.objects.prefetch_related("branches").order_by("-created_at")
     serializer_class = SchoolSerializer
     permission_classes = [RoleBasedAccessPermission]
 
