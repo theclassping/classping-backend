@@ -14,6 +14,19 @@ class GatewayPayment(models.Model):
         PENDING = "pending", "Pending"
         PAID = "paid", "Paid"
         EXPIRED = "expired", "Expired"
+        CANCELLED = "cancelled", "Cancelled"
+
+    # Allowed status changes. PAID is final; a payment confirmed after the
+    # checkout expired / was cancelled still moves it to PAID (late payment).
+    TRANSITIONS = {
+        Status.PENDING: {Status.PAID, Status.EXPIRED, Status.CANCELLED},
+        Status.EXPIRED: {Status.PAID},
+        Status.CANCELLED: {Status.PAID},
+        Status.PAID: set(),
+    }
+
+    def can_transition_to(self, status):
+        return status in self.TRANSITIONS.get(self.status, set())
 
     # Sent to the provider as its transaction reference (Rintisan partner_trx_id).
     payment_no = models.CharField(max_length=50, unique=True)

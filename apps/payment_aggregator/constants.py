@@ -19,3 +19,7 @@ PROVIDER_CLASSES = {
 # Classping via the payment callback. After that the invoice is open for
 # manual payment again.
 PAYMENT_DEADLINE_MINUTES = 60
+
+# Backup to the provider's expiry webhook: a queued job checks the checkout
+# this many minutes after expires_at (the webhook usually arrives first).
+PAYMENT_EXPIRY_CHECK_DELAY_MINUTES = 2
