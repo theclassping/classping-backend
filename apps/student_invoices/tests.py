@@ -14,10 +14,9 @@ from apps.fee_types.models import FeeType
 from .models import StudentInvoice
 from apps.fee_types.models import FeeTypeClass
 from apps.student_invoices.services import generate_recurring_invoices
-from apps.student_invoices.scheduler import SCHEDULED_JOBS, register_jobs
 from django.core.management import call_command
 from io import StringIO
-from unittest.mock import Mock
+from unittest.mock import patch
 
 # Create your tests here.
 
@@ -220,10 +219,36 @@ class StudentInvoiceApiTests(TestCase):
         call_command("send_invoice_reminders", stdout=output)
         self.assertIn(reminder.invoice_no, output.getvalue())
 
-    def test_scheduler_registers_all_invoice_jobs(self):
-        scheduler = Mock()
-        register_jobs(scheduler)
-        self.assertEqual(scheduler.add_job.call_count, len(SCHEDULED_JOBS))
+    def test_celery_beat_schedules_invoice_jobs_at_same_times(self):
+        from config.celery import app
+
+        app.loader.import_default_modules()  # what a worker does at start (autodiscovery)
+        schedule = app.conf.beat_schedule
+        expected = {
+            "generate_recurring_invoices": ("apps.student_invoices.tasks.generate_recurring_invoices_task", {1}, {0}),
+            "mark_overdue_invoices": ("apps.student_invoices.tasks.mark_overdue_invoices_task", {1}, {30}),
+            "send_invoice_reminders": ("apps.student_invoices.tasks.send_invoice_reminders_task", {8}, {0}),
+        }
+        self.assertEqual(set(schedule), set(expected))
+        for name, (task, hours, minutes) in expected.items():
+            self.assertEqual(schedule[name]["task"], task)
+            self.assertEqual(schedule[name]["schedule"].hour, hours)
+            self.assertEqual(schedule[name]["schedule"].minute, minutes)
+            self.assertIn(task, app.tasks)
+
+    def test_invoice_tasks_call_existing_jobs(self):
+        from apps.student_invoices import tasks
+
+        with patch("apps.student_invoices.tasks.generate_recurring_invoices", return_value=3) as generate:
+            self.assertEqual(tasks.generate_recurring_invoices_task.delay().get(), 3)
+            generate.assert_called_once_with()
+        with patch("apps.student_invoices.tasks.call_command") as command:
+            tasks.mark_overdue_invoices_task.delay()
+            tasks.send_invoice_reminders_task.delay()
+            self.assertEqual(
+                [call.args[0] for call in command.call_args_list],
+                ["mark_overdue_invoices", "send_invoice_reminders"],
+            )
 
     def test_invoice_filters_by_student_status_and_fee_type(self):
         response = self.client.get(

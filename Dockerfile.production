@@ -6,7 +6,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 RUN groupadd --system classping && useradd --system --gid classping classping \
-    && mkdir -p /app/staticfiles /app/media \
+    && mkdir -p /app/staticfiles /app/media /app/var/celerybeat \
     && chown -R classping:classping /app
 USER classping
 EXPOSE 8000

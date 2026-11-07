@@ -23,3 +23,5 @@ htmlcov/
 *~
 db.sqlite3
 docker-compose.override.yml
+celerybeat-schedule*
+var/

@@ -2,6 +2,7 @@ from pathlib import Path
 from datetime import timedelta
 import os
 import sys
+from urllib.parse import urlsplit
 from django.core.exceptions import ImproperlyConfigured
 
 try:
@@ -65,7 +66,6 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
     "mptt",
-    "django_apscheduler",
 
     # ClassPing
     "apps.users",
@@ -349,12 +349,46 @@ UPLOAD_METADATA_TTL = int(os.environ.get("UPLOAD_METADATA_TTL", "3600"))
 # Uploads above this size are rejected when they are attached to a record.
 MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_BYTES", str(10 * 1024 * 1024)))
 
+RUNNING_TESTS = len(sys.argv) > 1 and sys.argv[1] == "test"
+
 # Rate-limit counters must be shared by every worker, so use Redis when set.
 # Tests get a no-op cache; throttling tests opt into a local cache.
-if len(sys.argv) > 1 and sys.argv[1] == "test":
+if RUNNING_TESTS:
     CACHES = {"default": {"BACKEND": "django.core.cache.backends.dummy.DummyCache"}}
 elif REDIS_URL:
     CACHES = {"default": {"BACKEND": "django.core.cache.backends.redis.RedisCache", "LOCATION": REDIS_URL}}
+
+# Celery (config/celery.py). The broker is the same Redis as REDIS_URL but
+# database /1, so queues never mix with the Django cache in /0. Empty when
+# REDIS_URL is not set (then tasks are not queued; see payment_gateway).
+CELERY_BROKER_URL = urlsplit(REDIS_URL)._replace(path="/1").geturl() if REDIS_URL else ""
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_TASK_SERIALIZER = "json"
+CELERY_ACCEPT_CONTENT = ["json"]
+# A task is acknowledged only after it finished, so a worker restart puts
+# in-flight and delayed (eta) tasks back on the queue instead of losing them.
+CELERY_TASK_ACKS_LATE = True
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+CELERY_WORKER_HIJACK_ROOT_LOGGER = False
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+CELERY_BROKER_CONNECTION_TIMEOUT = 3
+CELERY_BROKER_TRANSPORT_OPTIONS = {
+    # Must exceed the longest eta delay (payment expiry is ~62 minutes),
+    # otherwise Redis redelivers the delayed task and it runs twice.
+    "visibility_timeout": 2 * 60 * 60,
+    "socket_connect_timeout": 3,
+    "socket_timeout": 5,
+}
+# Publishing from a web request must fail fast instead of blocking it.
+CELERY_TASK_PUBLISH_RETRY_POLICY = {
+    "max_retries": 2,
+    "interval_start": 0,
+    "interval_step": 0.5,
+    "interval_max": 1,
+}
+# Tests run tasks inline and need no broker or worker.
+CELERY_TASK_ALWAYS_EAGER = RUNNING_TESTS
+CELERY_TASK_EAGER_PROPAGATES = RUNNING_TESTS
 
 # Mailjet Configuration
 MAILJET_API_KEY = os.environ.get("MAILJET_API_KEY")

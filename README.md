@@ -17,6 +17,40 @@ the `django-insecure-` prefix are rejected. Generate a random secret, keep it
 outside version control, and provide the same secret to web and scheduler.
 The development fallback is available only with `DJANGO_DEBUG=True`.
 
+## Background jobs (Celery)
+
+Background and periodic jobs run on **Celery**, using the existing Redis
+(`REDIS_URL`, database `/1` as the broker; the Django cache stays on `/0`).
+No extra environment variable is needed.
+
+The `scheduler` service runs the worker and beat in one process:
+
+```bash
+celery -A config worker -B --concurrency=2
+```
+
+* Run **exactly one** `scheduler` instance: beat runs inside it, so a second
+  instance would run every periodic job twice.
+* Periodic jobs are defined in `config/celery.py` (`beat_schedule`):
+  recurring invoices 01:00, overdue invoices 01:30, invoice reminders 08:00,
+  in `DJANGO_TIME_ZONE`.
+* Tasks live in each app's `tasks.py` (e.g. `apps/student_invoices/tasks.py`,
+  `apps/payment_gateway/tasks.py`).
+* In production the beat schedule file is kept in the `celerybeat_data` volume,
+  so a job missed while the container was down runs once on start.
+* Redis runs with `--maxmemory-policy noeviction` so queued tasks are never
+  evicted.
+
+Useful commands (production):
+
+```bash
+docker compose --env-file .env.production -f docker-compose.prod.yml logs --tail 50 scheduler
+docker compose --env-file .env.production -f docker-compose.prod.yml exec scheduler celery -A config inspect ping
+docker compose --env-file .env.production -f docker-compose.prod.yml exec scheduler celery -A config inspect registered
+```
+
+Tests run tasks inline (`CELERY_TASK_ALWAYS_EAGER`) and need no Redis or worker.
+
 ## Tech Stack
 
 * Python 3.9+

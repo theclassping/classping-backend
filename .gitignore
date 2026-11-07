@@ -37,3 +37,6 @@ Thumbs.db
 
 # Payment aggregator keys
 *.pem
+
+# Celery beat schedule (local runs)
+celerybeat-schedule*
