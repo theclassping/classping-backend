@@ -13,15 +13,18 @@ class ClassViewSet(ScopedQuerysetMixin, viewsets.ModelViewSet):
     queryset = Class.objects.select_related(
         "branch",
         "academic_year",
-    ).prefetch_related(
-        "class_students__student",
-        "class_teachers__staff",
     ).all()
 
     serializer_class = ClassSerializer
-    
+
     def get_queryset(self):
         queryset = super().get_queryset()
+        if self.action in ("retrieve", "update", "partial_update"):
+            # Only ClassDetailSerializer renders students and teachers.
+            queryset = queryset.prefetch_related(
+                "class_students__student",
+                "class_teachers__staff",
+            )
         branch_id = self.request.query_params.get("branch_id")
         if branch_id:
             queryset = queryset.filter(branch_id=branch_id)

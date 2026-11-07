@@ -85,6 +85,7 @@ INSTALLED_APPS = [
     "apps.indicators",
     "apps.activities",
     "apps.assessments",
+    "apps.parent_portal",
     "apps.uploads.apps.UploadsConfig",
 
     "apps.core.apps.CoreConfig",
@@ -94,6 +95,8 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    # First, so the reported server time covers every other middleware too.
+    "apps.core.middleware.ServerTimingMiddleware",
     'django.middleware.security.SecurityMiddleware',
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "corsheaders.middleware.CorsMiddleware",
@@ -178,6 +181,13 @@ CORS_ALLOWED_ORIGINS = [
     ).split(",")
     if origin.strip()
 ]
+
+# Let browser clients read the Server-Timing header on cross-origin calls.
+CORS_EXPOSE_HEADERS = ["Server-Timing"]
+
+# Server-Timing header on /api/ responses (server time and DB query usage).
+SERVER_TIMING_ENABLED = os.environ.get("SERVER_TIMING_ENABLED", "True") == "True"
+SERVER_TIMING_PATH_PREFIX = "/api/"
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/4.2/howto/static-files/

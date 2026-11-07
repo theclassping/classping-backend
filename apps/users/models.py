@@ -13,6 +13,7 @@ API_MODULE_CHOICES = (
     ("fee_types", "Fee types"),
     ("guardians", "Guardians"),
     ("locations", "Locations"),
+    ("parent_portal", "Parent portal"),
     ("payments", "Payments"),
     ("schools", "Schools"),
     ("staffs", "Staff"),
