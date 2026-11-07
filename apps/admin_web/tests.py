@@ -549,3 +549,44 @@ class AdminModulePageTests(TestCase):
 			with self.subTest(section=section):
 				response = self.client.get(f"/admin-web/settings/{section}/add/")
 				self.assertEqual(response.status_code, 200)
+
+
+class PaymentGatewayAdminWebTests(TestCase):
+	def setUp(self):
+		admin = User.objects.create_superuser(
+			email="gateway-admin@example.com",
+			password="StrongPassword123!",
+			first_name="Gateway",
+			last_name="Admin",
+		)
+		self.client.force_login(admin)
+		self.location = Location.objects.create(name="GW Admin Province", code="GWA", location_type="PROVINCE")
+		self.school = School.objects.create(name="GW Admin School", register_number="GWA-001")
+		self.branch = Branch.objects.create(school=self.school, name="Main", code="MAIN", location=self.location)
+
+	def edit_branch(self, **extra):
+		data = {"name": "Main", "code": "MAIN", "location_id": self.location.id, "is_active": "on"}
+		data.update(extra)
+		return self.client.post(reverse("admin_web:branch_edit", args=[self.school.pk, self.branch.pk]), data)
+
+	def test_branch_edit_toggles_payment_gateway(self):
+		response = self.edit_branch(is_payment_gateway_enabled="on")
+		self.assertEqual(response.status_code, 302)
+		self.branch.refresh_from_db()
+		self.assertTrue(self.branch.is_payment_gateway_enabled)
+
+		self.edit_branch()
+		self.branch.refresh_from_db()
+		self.assertFalse(self.branch.is_payment_gateway_enabled)
+
+	def test_branch_pages_show_payment_gateway_state(self):
+		form = self.client.get(reverse("admin_web:branch_edit", args=[self.school.pk, self.branch.pk]))
+		self.assertContains(form, 'name="is_payment_gateway_enabled"')
+		detail = self.client.get(reverse("admin_web:branch_detail", args=[self.school.pk, self.branch.pk]))
+		self.assertContains(detail, "Payment Gateway")
+
+	def test_manual_payment_form_offers_only_manual_methods(self):
+		from apps.admin_web.forms import PaymentForm
+
+		values = [value for value, _ in PaymentForm().fields["payment_method"].choices if value]
+		self.assertEqual(values, ["bank_transfer", "cash"])

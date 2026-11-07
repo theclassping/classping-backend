@@ -27,6 +27,9 @@ def scope_queryset(queryset, user):
             "studentinvoice": Q(class_student__student__student_guardians__guardian__user_id=user.pk),
             "payment": Q(student_invoice__class_student__student__student_guardians__guardian__user_id=user.pk),
             "paymentproof": Q(payment__student_invoice__class_student__student__student_guardians__guardian__user_id=user.pk),
+            # Every guardian of the student can see the student's gateway checkouts.
+            "gatewaypayment": Q(student__student_guardians__guardian__user_id=user.pk),
+            "gatewaypaymentitem": Q(gateway_payment__student__student_guardians__guardian__user_id=user.pk),
             "class": Q(class_students__student__student_guardians__guardian__user_id=user.pk),
             "classstudent": Q(student__student_guardians__guardian__user_id=user.pk),
             "classteacher": Q(class_obj__class_students__student__student_guardians__guardian__user_id=user.pk),
@@ -105,6 +108,8 @@ def scope_queryset(queryset, user):
         "studentinvoice": Q(class_student__class_obj__branch_id=branch_id),
         "payment": Q(student_invoice__class_student__class_obj__branch_id=branch_id),
         "paymentproof": Q(payment__student_invoice__class_student__class_obj__branch_id=branch_id),
+        "gatewaypayment": Q(branch_id=branch_id),
+        "gatewaypaymentitem": Q(gateway_payment__branch_id=branch_id),
         "activity": Q(class_obj__branch_id=branch_id),
         "activityimage": Q(activity__class_obj__branch_id=branch_id),
         "activitystudent": Q(activity__class_obj__branch_id=branch_id),

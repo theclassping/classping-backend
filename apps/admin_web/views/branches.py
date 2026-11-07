@@ -72,6 +72,9 @@ def branch_create(request, school_pk):
         phone = request.POST.get("phone", "").strip()
         email = request.POST.get("email", "").strip()
         is_active = request.POST.get("is_active") == "on"
+        is_payment_gateway_enabled = (
+            request.POST.get("is_payment_gateway_enabled") == "on"
+        )
 
         # -----------------------------------------------------
         # Get selected location
@@ -152,6 +155,7 @@ def branch_create(request, school_pk):
                     "phone": phone,
                     "email": email,
                     "is_active": is_active,
+                    "is_payment_gateway_enabled": is_payment_gateway_enabled,
                 },
             )
 
@@ -168,6 +172,7 @@ def branch_create(request, school_pk):
             email=email,
             location=location,
             is_active=is_active,
+            is_payment_gateway_enabled=is_payment_gateway_enabled,
         )
 
         # -----------------------------------------------------
@@ -341,6 +346,10 @@ def branch_edit(request, school_pk, pk):
             request.POST.get("is_active") == "on"
         )
 
+        is_payment_gateway_enabled = (
+            request.POST.get("is_payment_gateway_enabled") == "on"
+        )
+
         location_id = request.POST.get(
             "location_id",
             "",
@@ -461,6 +470,7 @@ def branch_edit(request, school_pk, pk):
                     "phone": phone,
                     "email": email,
                     "is_active": is_active,
+                    "is_payment_gateway_enabled": is_payment_gateway_enabled,
 
                     "location_id": location_id,
 
@@ -491,6 +501,7 @@ def branch_edit(request, school_pk, pk):
         branch.email = email
         branch.location = location
         branch.is_active = is_active
+        branch.is_payment_gateway_enabled = is_payment_gateway_enabled
 
         branch.save()
 
@@ -531,6 +542,7 @@ def branch_edit(request, school_pk, pk):
             "phone": branch.phone,
             "email": branch.email,
             "is_active": branch.is_active,
+            "is_payment_gateway_enabled": branch.is_payment_gateway_enabled,
 
             "location_id": (
                 branch.location_id

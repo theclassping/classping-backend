@@ -42,6 +42,8 @@ class Branch(models.Model):
     phone = models.CharField(max_length=50, blank=True)
     email = models.EmailField(blank=True)
     is_active = models.BooleanField(default=True)
+    # Paid opt-in feature; toggled only from admin web.
+    is_payment_gateway_enabled = models.BooleanField(default=False)
     location = models.ForeignKey(
         Location,
         on_delete=models.PROTECT,

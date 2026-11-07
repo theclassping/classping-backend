@@ -95,6 +95,17 @@ class PaymentSerializer(serializers.ModelSerializer):
 
     student_name = serializers.SerializerMethodField()
 
+    # Writes accept only manual methods; gateway rows are created by services.
+    payment_method = serializers.ChoiceField(
+        choices=[
+            (value, label)
+            for value, label in Payment.PaymentMethod.choices
+            if value in Payment.MANUAL_PAYMENT_METHODS
+        ],
+    )
+
+    gateway_payment_id = serializers.IntegerField(read_only=True)
+
     class Meta:
         model = Payment
 
@@ -105,6 +116,8 @@ class PaymentSerializer(serializers.ModelSerializer):
             "student_name",
             "amount",
             "payment_method",
+            "payment_channel",
+            "gateway_payment_id",
             "status",
             "submitted_at",
             "paid_at",
@@ -121,6 +134,7 @@ class PaymentSerializer(serializers.ModelSerializer):
             "id",
             "invoice_no",
             "student_name",
+            "payment_channel",
             "submitted_at",
             "paid_at",
             "verified_at",
@@ -279,12 +293,15 @@ class PaymentSummarySerializer(serializers.ModelSerializer):
             "id",
             "amount",
             "payment_method",
+            "payment_channel",
+            "gateway_payment_id",
             "status",
             "submitted_at",
             "paid_at",
             "verified_at",
             "rejection_reason",
         ]
+        read_only_fields = fields
 
 
 class PaymentDetailSerializer(PaymentSerializer):

@@ -139,6 +139,39 @@ class PaymentApiTests(TestCase):
         self.assertEqual(response.status_code, 400)
 
     @patch("apps.payments.serializers.Mailer")
+    def test_gateway_payment_methods_rejected_on_create(self, mailer):
+        client = APIClient()
+        client.force_authenticate(user=self.user)
+        for method in ("virtual_account", "credit_card", "e_commerce"):
+            response = client.post("/api/payments/", {
+                "student_invoice_id": self.invoice.id,
+                "amount": "100000.00",
+                "payment_method": method,
+            }, format="json")
+            self.assertEqual(response.status_code, 400, msg=method)
+            self.assertIn("payment_method", response.data)
+        self.assertFalse(Payment.objects.filter(student_invoice=self.invoice).exists())
+
+    @patch("apps.payments.serializers.Mailer")
+    def test_payment_response_includes_channel_fields(self, mailer):
+        client = APIClient()
+        client.force_authenticate(user=self.user)
+        response = client.post("/api/payments/", {
+            "student_invoice_id": self.invoice.id,
+            "amount": "100000.00",
+            "payment_method": "bank_transfer",
+            # Read-only: ignored even if sent.
+            "payment_channel": "payment_gateway",
+        }, format="json")
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["payment_channel"], "manual")
+        self.assertIsNone(response.data["gateway_payment_id"])
+
+        detail = client.get(f"/api/payments/{response.data['id']}/")
+        self.assertEqual(detail.data["payment_channel"], "manual")
+        self.assertIn("gateway_payment_id", detail.data)
+
+    @patch("apps.payments.serializers.Mailer")
     def test_staff_can_complete_payment_and_mark_invoice_paid(self, mailer):
         payment = Payment.objects.create(
             student_invoice=self.invoice, amount=Decimal("100000"),

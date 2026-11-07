@@ -383,6 +383,12 @@ class PaymentForm(forms.ModelForm):
                 pk=self.instance.student_invoice_id
             )
         self.fields["student_invoice"].queryset = invoices.order_by("invoice_date", "pk")
+        # Gateway methods are set only by the payment gateway, never by hand.
+        self.fields["payment_method"].choices = [
+            (value, label)
+            for value, label in Payment.PaymentMethod.choices
+            if value in Payment.MANUAL_PAYMENT_METHODS
+        ]
 
     def clean(self):
         cleaned_data = super().clean()

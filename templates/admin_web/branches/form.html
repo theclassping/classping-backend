@@ -337,6 +337,18 @@
             </label>
         </div>
 
+        <div class="form-group checkbox-group">
+
+            <label>
+                <input
+                    type="checkbox"
+                    name="is_payment_gateway_enabled"
+                    {% if is_payment_gateway_enabled %}checked{% endif %}
+                >
+                Enable payment gateway (paid feature; parents can pay invoices online)
+            </label>
+        </div>
+
     </div>
 
 

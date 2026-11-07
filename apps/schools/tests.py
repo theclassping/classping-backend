@@ -38,6 +38,24 @@ class SchoolBranchCrudApiTests(TestCase):
         invalid = self.client.post("/api/branches/", {"school": 999999, "name": "Bad", "code": "BAD", "location_id": self.location.id}, format="json")
         self.assertEqual(invalid.status_code, 400)
 
+    def test_branch_exposes_read_only_payment_gateway_flag(self):
+        school = School.objects.create(name="Gateway School", register_number="GW-001")
+        branch = Branch.objects.create(school=school, name="Main", code="MAIN", location=self.location)
+
+        detail = self.client.get(f"/api/branches/{branch.id}/")
+        self.assertEqual(detail.status_code, 200)
+        self.assertFalse(detail.data["is_payment_gateway_enabled"])
+
+        update = self.client.patch(f"/api/branches/{branch.id}/", {"is_payment_gateway_enabled": True}, format="json")
+        self.assertEqual(update.status_code, 200)
+        branch.refresh_from_db()
+        self.assertFalse(branch.is_payment_gateway_enabled)
+
+        branch.is_payment_gateway_enabled = True
+        branch.save(update_fields=["is_payment_gateway_enabled"])
+        school_detail = self.client.get(f"/api/schools/{school.id}/")
+        self.assertTrue(school_detail.data["branches"][0]["is_payment_gateway_enabled"])
+
     def test_duplicate_branch_code_per_school_fails(self):
         school = School.objects.create(name="Duplicate Branch School", register_number="BR-002")
         Branch.objects.create(school=school, name="Existing", code="SAME", location=self.location)

@@ -80,6 +80,7 @@ INSTALLED_APPS = [
     "apps.student_invoices",
     "apps.payments",
     "apps.payment_aggregator.apps.PaymentAggregatorConfig",
+    "apps.payment_gateway.apps.PaymentGatewayConfig",
     "apps.report_layouts",
     "apps.report_sections",
     "apps.score_settings",

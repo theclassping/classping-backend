@@ -23,6 +23,7 @@
     <div class="detail-row"><div class="detail-label">Email</div><div>{{ branch.email|default:"-" }}</div></div>
     <div class="detail-row"><div class="detail-label">Location</div><div>{{ location_path }}</div></div>
     <div class="detail-row"><div class="detail-label">Status</div><div>{% if branch.is_active %}Active{% else %}Inactive{% endif %}</div></div>
+    <div class="detail-row"><div class="detail-label">Payment Gateway</div><div>{% if branch.is_payment_gateway_enabled %}Enabled{% else %}Disabled{% endif %}</div></div>
     <div class="detail-row"><div class="detail-label">Created / Updated</div><div>{{ branch.created_at|date:"d M Y H:i" }} / {{ branch.updated_at|date:"d M Y H:i" }}</div></div>
     <div class="detail-section"><h3>Academic years</h3>
         {% for year in branch.academic_years.all %}<p>{{ year.name }} · {{ year.start_date|date:"d M Y" }} to {{ year.end_date|date:"d M Y" }}{% if year.is_current %} · Current{% endif %}</p>
