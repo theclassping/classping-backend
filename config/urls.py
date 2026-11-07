@@ -82,6 +82,7 @@ urlpatterns = [
     path("api/", include("apps.fee_types.urls")),
     path("api/", include("apps.student_invoices.urls")),
     path("api/", include("apps.payments.urls")),
+    path("api/", include("apps.payment_gateway.urls")),
     path("api/", include("apps.activities.urls")),
     path("api/media/", include("apps.uploads.urls")),
     path("api/parent/", include("apps.parent_portal.urls")),

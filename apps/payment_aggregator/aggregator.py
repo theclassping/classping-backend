@@ -50,6 +50,11 @@ class PaymentAggregator:
     # --- configuration ---------------------------------------------------
 
     @classmethod
+    def provider_name(cls):
+        """Stored on each gateway payment (GatewayPayment.provider)."""
+        return get_provider().name
+
+    @classmethod
     def get_banks(cls):
         return get_provider().get_banks()
 

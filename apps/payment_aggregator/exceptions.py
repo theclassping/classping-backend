@@ -76,6 +76,12 @@ class TransferAmountOutOfRange(ProviderRejected):
     code = "TRANSFER_AMOUNT_OUT_OF_RANGE"
 
 
+class InvalidPayerPhone(PaymentAggregatorError):
+    """The payer phone does not meet the provider's format (checked before sending)."""
+
+    code = "PAYER_PHONE_INVALID"
+
+
 class InvalidCallback(PaymentAggregatorError):
     """Callback signature / token / body could not be verified."""
 

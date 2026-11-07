@@ -25,15 +25,20 @@ def ensure_payment_is_manual(payment):
         raise GatewayPaymentReadOnly()
 
 
+def invoice_locked_error(checkout):
+    """InvoiceLocked for an invoice held by ``checkout`` (shows its end time)."""
+    until = timezone.localtime(checkout.expires_at).strftime("%H:%M")
+    return InvoiceLocked(
+        "Invoice sedang dalam pembayaran online sampai {} WIB. "
+        "Batalkan checkout pembayaran online untuk mencatat pembayaran manual.".format(until)
+    )
+
+
 def ensure_invoice_open_for_manual_payment(invoice):
     """Reject manual payment while the invoice is locked by a gateway checkout."""
     checkout = get_active_checkout_for_invoice(getattr(invoice, "pk", invoice))
     if checkout is not None:
-        until = timezone.localtime(checkout.expires_at).strftime("%H:%M")
-        raise InvoiceLocked(
-            "Invoice sedang dalam pembayaran online sampai {} WIB. "
-            "Batalkan checkout pembayaran online untuk mencatat pembayaran manual.".format(until)
-        )
+        raise invoice_locked_error(checkout)
 
 
 def lock_invoice_for_manual_payment(invoice):

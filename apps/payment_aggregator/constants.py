@@ -23,3 +23,6 @@ PAYMENT_DEADLINE_MINUTES = 60
 # Backup to the provider's expiry webhook: a queued job checks the checkout
 # this many minutes after expires_at (the webhook usually arrives first).
 PAYMENT_EXPIRY_CHECK_DELAY_MINUTES = 2
+
+# One checkout pays 1..N invoices of one student.
+MAX_INVOICES_PER_CHECKOUT = 5

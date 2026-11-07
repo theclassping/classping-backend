@@ -228,6 +228,7 @@ REST_FRAMEWORK = {
         "password_forgot_email": "3/hour",
         "password_reset": "20/hour",
         "password_change": "5/min",
+        "gateway_checkout": "10/min",
     },
     # Ignore X-Forwarded-For unless production trusts its proxy.
     "NUM_PROXIES": 0,

@@ -6,6 +6,7 @@ and status codes.
 """
 
 import datetime
+import re
 from decimal import Decimal, InvalidOperation
 
 from apps.payment_aggregator.base import (
@@ -23,6 +24,7 @@ from apps.payment_aggregator.exceptions import (
     InsufficientProviderBalance,
     InvalidAmount,
     InvalidDestinationAccount,
+    InvalidPayerPhone,
     ProviderRejected,
     ProviderUnavailable,
     TransferAmountOutOfRange,
@@ -90,6 +92,8 @@ def billing_payload(request, payer_email):
     """``payer_email`` replaces request.payer_email so Rintisan never emails payers."""
     if request.expires_at.tzinfo is None:
         raise ValueError("BillingRequest.expires_at must be timezone-aware")
+    if not re.match(c.PAYER_PHONE_PATTERN, request.payer_phone or ""):
+        raise InvalidPayerPhone("Rintisan requires an Indonesian phone number (62...)")
     expires_at_wib = request.expires_at.astimezone(PROVIDER_TZ)
     payload = {
         "partner_trx_id": request.reference_no,

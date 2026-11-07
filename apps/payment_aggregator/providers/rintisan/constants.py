@@ -128,6 +128,10 @@ CHANNELS = {
 # Overridable with env RINTISAN_PAYER_EMAIL.
 PAYER_EMAIL = "no-reply@hamanto.com"
 
+# to_phone must be an Indonesian number, "62" + digits (Rintisan OpenAPI).
+# Callers pass a number already normalized by apps.core.phone.
+PAYER_PHONE_PATTERN = r"^62[1-9][0-9]{6,20}$"
+
 # Billing expiry. Rintisan expires the billing at the requested time and sends
 # the expiry to the payment callback URL; /querypayment then returns EXPIRED.
 # Field name / format in /create are NOT in the OpenAPI v1.0.0 yet: set

@@ -15,13 +15,17 @@ class GatewayPayment(models.Model):
         PAID = "paid", "Paid"
         EXPIRED = "expired", "Expired"
         CANCELLED = "cancelled", "Cancelled"
+        # The provider billing could not be created; the payer never got
+        # payment instructions.
+        FAILED = "failed", "Failed"
 
     # Allowed status changes. PAID is final; a payment confirmed after the
-    # checkout expired / was cancelled still moves it to PAID (late payment).
+    # checkout was closed still moves it to PAID (late payment, never lost).
     TRANSITIONS = {
-        Status.PENDING: {Status.PAID, Status.EXPIRED, Status.CANCELLED},
+        Status.PENDING: {Status.PAID, Status.EXPIRED, Status.CANCELLED, Status.FAILED},
         Status.EXPIRED: {Status.PAID},
         Status.CANCELLED: {Status.PAID},
+        Status.FAILED: {Status.PAID},
         Status.PAID: set(),
     }
 
@@ -120,6 +124,17 @@ class GatewayPayment(models.Model):
 
     def __str__(self):
         return self.payment_no
+
+    @property
+    def channel_name(self):
+        """Display name of the channel (falls back to the code if retired)."""
+        from apps.payment_aggregator import PaymentAggregator
+        from apps.payment_aggregator.exceptions import ChannelNotAvailable
+
+        try:
+            return PaymentAggregator.get_channel(self.channel_code).name
+        except ChannelNotAvailable:
+            return self.channel_code
 
 
 class GatewayPaymentItem(models.Model):
