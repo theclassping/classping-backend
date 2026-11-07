@@ -86,7 +86,8 @@ def _status_code(body):
 # --- pay-in ---------------------------------------------------------------
 
 
-def billing_payload(request):
+def billing_payload(request, payer_email):
+    """``payer_email`` replaces request.payer_email so Rintisan never emails payers."""
     return {
         "partner_trx_id": request.reference_no,
         "partner_identifier_id": request.identifier or request.reference_no,
@@ -95,7 +96,7 @@ def billing_payload(request):
         "to_name": request.payer_name,
         "to_address": request.payer_address or "",
         "to_phone": request.payer_phone,
-        "to_email": request.payer_email,
+        "to_email": payer_email,
         "note": request.note or "",
         "payment_method": request.channel_code,
         "amount": to_idr_int(request.amount),

@@ -93,8 +93,9 @@ class BillingRequest:
     invoice_date: datetime.date
     deadline_date: datetime.date
     payer_name: str
-    payer_email: str
     payer_phone: str
+    # Providers may ignore this (Rintisan always sends its own PAYER_EMAIL).
+    payer_email: str = ""
     identifier: str = ""
     payer_address: str = ""
     note: str = ""

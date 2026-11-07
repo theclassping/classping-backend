@@ -87,7 +87,9 @@ class RintisanProvider(BaseProvider):
     # --- pay-in ----------------------------------------------------------
 
     def create_billing(self, request):
-        body = self.client.post(PATH_CREATE, mapper.billing_payload(request))
+        body = self.client.post(
+            PATH_CREATE, mapper.billing_payload(request, self.config.payer_email)
+        )
         mapper.raise_for_billing_response(body)
         return mapper.billing_result(body, reference_no=request.reference_no)
 

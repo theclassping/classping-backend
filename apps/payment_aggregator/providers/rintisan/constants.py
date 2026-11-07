@@ -126,6 +126,11 @@ CHANNELS = {
 
 # --- Pay-in rules ---------------------------------------------------------
 
+# Sent as to_email on every billing instead of the guardian's email, so payers
+# never receive emails from Rintisan (all emails come from Classping).
+# Overridable with env RINTISAN_PAYER_EMAIL.
+PAYER_EMAIL = "no-reply@hamanto.com"
+
 # Rintisan has no cancel API, so keep the payment window short:
 # deadline_date = today + N days (valid until end of that day, WIB).
 PAYMENT_DEADLINE_DAYS = 1

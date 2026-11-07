@@ -8,6 +8,7 @@ RINTISAN_API_KEY          x-api-key
 RINTISAN_PRIVATE_KEY_PATH Classping RSA private key (PEM) used to sign requests
 RINTISAN_PUBLIC_KEY_PATH  Rintisan RSA public key (PEM) used to verify callbacks
 RINTISAN_CALLBACK_TOKEN   static x-callback-token expected on callbacks
+RINTISAN_PAYER_EMAIL      to_email sent on every billing (default: constants.PAYER_EMAIL)
 RINTISAN_REQUIRE_TRANSFER_CALLBACK_SIGNATURE
                           true | false (default: true). Disbursement callback
                           signing is optional per account at Rintisan.
@@ -35,6 +36,7 @@ class RintisanConfig:
     private_key_path: str
     public_key_path: str
     callback_token: str
+    payer_email: str = constants.PAYER_EMAIL
     require_transfer_callback_signature: bool = True
     timeout: int = constants.REQUEST_TIMEOUT_SECONDS
 
@@ -53,6 +55,7 @@ class RintisanConfig:
             private_key_path=os.environ.get("RINTISAN_PRIVATE_KEY_PATH", ""),
             public_key_path=os.environ.get("RINTISAN_PUBLIC_KEY_PATH", ""),
             callback_token=os.environ.get("RINTISAN_CALLBACK_TOKEN", ""),
+            payer_email=os.environ.get("RINTISAN_PAYER_EMAIL") or constants.PAYER_EMAIL,
             require_transfer_callback_signature=_env_bool(
                 "RINTISAN_REQUIRE_TRANSFER_CALLBACK_SIGNATURE", True
             ),

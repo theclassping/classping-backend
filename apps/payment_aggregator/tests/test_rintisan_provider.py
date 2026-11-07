@@ -121,7 +121,8 @@ class RequestSigningTests(SimpleTestCase):
                 "to_name": "Ibu Sari",
                 "to_address": "",
                 "to_phone": "6281234567890",
-                "to_email": "sari@example.com",
+                # Guardian email is never sent; Rintisan gets Classping's no-reply.
+                "to_email": "no-reply@hamanto.com",
                 "note": "INV-11, INV-12",
                 "payment_method": "VABNI",
                 "amount": 154000,
@@ -391,3 +392,11 @@ class ConfigTests(SimpleTestCase):
         with mock.patch.dict("os.environ", {"RINTISAN_ENV": "production"}, clear=False):
             config = RintisanConfig.from_env()
         self.assertEqual(config.base_url, "https://api.rintisan.co.id/api/v1/billing/payin/partner")
+
+    def test_payer_email_default_and_override(self):
+        from unittest import mock
+
+        with mock.patch.dict("os.environ", {"RINTISAN_PAYER_EMAIL": ""}, clear=False):
+            self.assertEqual(RintisanConfig.from_env().payer_email, "no-reply@hamanto.com")
+        with mock.patch.dict("os.environ", {"RINTISAN_PAYER_EMAIL": "x@classping.com"}, clear=False):
+            self.assertEqual(RintisanConfig.from_env().payer_email, "x@classping.com")
