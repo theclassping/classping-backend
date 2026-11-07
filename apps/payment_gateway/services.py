@@ -72,6 +72,11 @@ def mark_gateway_payment_failed(gateway_payment_id):
     return _close_gateway_payment(gateway_payment_id, GatewayPayment.Status.FAILED)
 
 
+def payment_expires_at(now=None):
+    """End of the payment window for a checkout made at ``now``."""
+    return (now or timezone.now()) + datetime.timedelta(minutes=PAYMENT_DEADLINE_MINUTES)
+
+
 def expiry_check_time(gateway_payment):
     return gateway_payment.expires_at + datetime.timedelta(minutes=PAYMENT_EXPIRY_CHECK_DELAY_MINUTES)
 
@@ -171,6 +176,8 @@ class CheckoutQuote:
     invoices: List[StudentInvoice]
     invoice_total: Decimal
     channels: Sequence[FeeBreakdown]
+    # Deadline if the payer checks out now (the checkout fixes the real one).
+    expires_at: datetime.datetime
     payment_window_minutes: int = PAYMENT_DEADLINE_MINUTES
 
 
@@ -260,6 +267,7 @@ def get_checkout_quote(user, invoice_ids):
         invoices=invoices,
         invoice_total=invoice_total,
         channels=PaymentAggregator.get_channels(invoice_total),
+        expires_at=payment_expires_at(),
     )
 
 
@@ -393,7 +401,7 @@ def create_gateway_checkout(user, invoice_ids, channel_code, idempotency_key):
             "Channel {} is not available for this amount.".format(channel_code)
         )
 
-    expires_at = timezone.now() + datetime.timedelta(minutes=PAYMENT_DEADLINE_MINUTES)
+    expires_at = payment_expires_at()
     try:
         gateway_payment = _create_pending_checkout(guardian, quote, fee, idempotency_key, expires_at)
     except IntegrityError:

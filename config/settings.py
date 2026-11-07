@@ -3,6 +3,7 @@ from datetime import timedelta
 import os
 import sys
 from urllib.parse import urlsplit
+from corsheaders.defaults import default_headers as default_cors_headers
 from django.core.exceptions import ImproperlyConfigured
 
 try:
@@ -183,6 +184,8 @@ CORS_ALLOWED_ORIGINS = [
     ).split(",")
     if origin.strip()
 ]
+# Browsers must be allowed to send Idempotency-Key (gateway checkout).
+CORS_ALLOW_HEADERS = (*default_cors_headers, "idempotency-key")
 
 # Let browser clients read the Server-Timing header on cross-origin calls.
 CORS_EXPOSE_HEADERS = ["Server-Timing"]

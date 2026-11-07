@@ -84,6 +84,7 @@ class CheckoutQuoteSerializer(serializers.Serializer):
     invoice_ids = serializers.SerializerMethodField()
     invoice_total = serializers.DecimalField(max_digits=14, decimal_places=2)
     payment_window_minutes = serializers.IntegerField()
+    expires_at = serializers.DateTimeField()
     channels = ChannelSerializer(many=True)
 
     def get_invoice_ids(self, quote):

@@ -1,5 +1,5 @@
 import threading
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from unittest import mock
 
@@ -165,6 +165,15 @@ class InvoiceAndChannelApiTests(CheckoutFixtureMixin, TestCase):
         codes = [channel["code"] for channel in response.data["channels"]]
         self.assertIn("VABCA", codes)
         self.assertNotIn("QRIS", codes)
+
+    def test_channels_show_payment_deadline(self):
+        before = timezone.now()
+        response = self.parent.get(f"/api/gateway/channels/?invoice_ids={self.invoice.pk}")
+        self.assertEqual(response.data["payment_window_minutes"], 60)
+        # ISO 8601 with the WIB offset, e.g. "2026-11-07T10:45:00.123456+07:00"
+        self.assertTrue(response.data["expires_at"].endswith("+07:00"), response.data["expires_at"])
+        expires_at = datetime.fromisoformat(response.data["expires_at"])
+        self.assertAlmostEqual((expires_at - before).total_seconds(), 3600, delta=5)
 
     def test_channels_validation(self):
         self.assertCode(self.parent.get("/api/gateway/channels/?invoice_ids="), 400, "INVALID_INVOICE_IDS")
@@ -417,3 +426,16 @@ class CheckoutRaceTests(CheckoutFixtureMixin, TransactionTestCase):
 
         self.assertEqual(sorted(kind for kind, _ in outcomes), ["locked", "ok"], outcomes)
         self.assertEqual(GatewayPayment.objects.filter(items__student_invoice=self.invoice, items__is_active=True).count(), 1)
+
+
+class CorsTests(TestCase):
+    def test_browser_may_send_idempotency_key(self):
+        response = self.client.options(
+            "/api/gateway/checkout/",
+            HTTP_ORIGIN="http://localhost:3000",
+            HTTP_ACCESS_CONTROL_REQUEST_METHOD="POST",
+            HTTP_ACCESS_CONTROL_REQUEST_HEADERS="authorization,content-type,idempotency-key",
+        )
+        allowed = response["access-control-allow-headers"].lower()
+        self.assertIn("idempotency-key", allowed)
+        self.assertIn("authorization", allowed)
