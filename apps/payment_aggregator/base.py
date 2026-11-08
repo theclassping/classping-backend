@@ -24,9 +24,10 @@ class FeeType:
 
 
 class BillingStatus:
+    # Provider view of a billing. Expiry is a Classping rule (the provider
+    # keeps reporting an unpaid billing as PENDING), not a provider status.
     PENDING = "pending"
     PAID = "paid"
-    EXPIRED = "expired"
 
 
 class SettlementStatus:

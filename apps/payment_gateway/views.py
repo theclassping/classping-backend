@@ -4,6 +4,7 @@ Thin views: access check -> service call -> render. No business rules here.
 
 from django.db.models import Q
 from rest_framework import status, viewsets
+from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.throttling import UserRateThrottle
 from rest_framework.views import APIView
@@ -15,6 +16,7 @@ from . import services
 from .exceptions import IdempotencyKeyRequired, StudentRequired
 from .selectors import gateway_payment_queryset
 from .serializers import (
+    CancelRequestSerializer,
     CheckoutQuoteSerializer,
     CheckoutRequestSerializer,
     GatewayPaymentDetailSerializer,
@@ -87,6 +89,8 @@ class GatewayPaymentViewSet(ScopedQuerysetMixin, viewsets.ReadOnlyModelViewSet):
         params = self.request.query_params
         if params.get("status"):
             queryset = queryset.filter(status=params["status"])
+        if params.get("needs_refund") == "true":
+            queryset = queryset.filter(needs_refund=True)
         if params.get("student_id", "").isdigit():
             queryset = queryset.filter(student_id=params["student_id"])
         search = params.get("search")
@@ -99,6 +103,15 @@ class GatewayPaymentViewSet(ScopedQuerysetMixin, viewsets.ReadOnlyModelViewSet):
         return queryset
 
     def get_serializer_class(self):
-        if self.action == "retrieve":
-            return GatewayPaymentDetailSerializer
-        return GatewayPaymentSummarySerializer
+        if self.action == "list":
+            return GatewayPaymentSummarySerializer
+        return GatewayPaymentDetailSerializer
+
+    @action(detail=True, methods=["post"])
+    def cancel(self, request, pk=None):
+        """B5 / C1b POST gateway/payments/{id}/cancel/ {"reason": "..."}"""
+        payload = CancelRequestSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        services.cancel_gateway_payment(request.user, pk, payload.validated_data["reason"])
+        gateway_payment = self.get_queryset().get(pk=pk)
+        return Response(GatewayPaymentDetailSerializer(gateway_payment).data)

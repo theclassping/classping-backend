@@ -82,6 +82,7 @@ INSTALLED_APPS = [
     "apps.payments",
     "apps.payment_aggregator.apps.PaymentAggregatorConfig",
     "apps.payment_gateway.apps.PaymentGatewayConfig",
+    "apps.wallets.apps.WalletsConfig",
     "apps.report_layouts",
     "apps.report_sections",
     "apps.score_settings",

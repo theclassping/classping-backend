@@ -26,3 +26,6 @@ PAYMENT_EXPIRY_CHECK_DELAY_MINUTES = 2
 
 # One checkout pays 1..N invoices of one student.
 MAX_INVOICES_PER_CHECKOUT = 5
+
+# Classping takes no fee of its own: the payer pays the provider's
+# transaction fee on top, and the branch receives the full invoice total.

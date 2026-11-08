@@ -72,18 +72,13 @@ class ExpireGatewayPaymentTests(ExpiryFixtureMixin, TestCase):
         get_status.assert_called_once_with("PPI-1")
         self.assertExpired(payment)
 
-    def test_expired_at_provider_is_expired(self):
-        payment = self.checkout()
-        with mock.patch(GET_STATUS, return_value=billing(BillingStatus.EXPIRED)):
-            services.expire_gateway_payment(payment.pk)
-        self.assertExpired(payment)
-
-    def test_paid_at_provider_is_never_expired(self):
+    def test_paid_at_provider_is_settled_not_expired(self):
         payment = self.checkout()
         with mock.patch(GET_STATUS, return_value=billing(BillingStatus.PAID)):
             services.expire_gateway_payment(payment.pk)
-        self.assertUnchanged(payment)
-        self.assertTrue(payment.items.filter(is_active=True).exists())
+        self.assertUnchanged(payment, GatewayPayment.Status.PAID)
+        self.invoice.refresh_from_db()
+        self.assertEqual(self.invoice.status, "paid")
 
     def test_billing_never_created_is_expired_without_query(self):
         payment = self.checkout(provider_trx_id=None)

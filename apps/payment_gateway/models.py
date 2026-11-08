@@ -69,7 +69,6 @@ class GatewayPayment(models.Model):
     # amount = invoice_total + transaction_fee (what the payer pays).
     invoice_total = models.DecimalField(max_digits=14, decimal_places=2)
     transaction_fee = models.DecimalField(max_digits=14, decimal_places=2, default=0)
-    platform_fee = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     amount = models.DecimalField(max_digits=14, decimal_places=2)
 
     idempotency_key = models.CharField(max_length=100)
@@ -86,6 +85,16 @@ class GatewayPayment(models.Model):
     expires_at = models.DateTimeField()
     paid_at = models.DateTimeField(blank=True, null=True)
     settled_at = models.DateTimeField(blank=True, null=True)
+
+    cancelled_by = models.ForeignKey(
+        "users.User",
+        on_delete=models.SET_NULL,
+        related_name="cancelled_gateway_payments",
+        blank=True,
+        null=True,
+    )
+    cancelled_at = models.DateTimeField(blank=True, null=True)
+    cancel_reason = models.TextField(blank=True, default="")
 
     # Ops flags: paid after the invoice was already settled elsewhere, or a
     # callback/query did not match (e.g. amount mismatch).
@@ -109,8 +118,8 @@ class GatewayPayment(models.Model):
                 name="gateway_payment_invoice_total_positive",
             ),
             models.CheckConstraint(
-                check=Q(transaction_fee__gte=0) & Q(platform_fee__gte=0),
-                name="gateway_payment_fees_non_negative",
+                check=Q(transaction_fee__gte=0),
+                name="gateway_payment_fee_non_negative",
             ),
             models.CheckConstraint(
                 check=Q(amount=F("invoice_total") + F("transaction_fee")),

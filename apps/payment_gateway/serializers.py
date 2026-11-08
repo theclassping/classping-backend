@@ -36,6 +36,10 @@ class CheckoutRequestSerializer(serializers.Serializer):
         return parse_invoice_ids(value)
 
 
+class CancelRequestSerializer(serializers.Serializer):
+    reason = serializers.CharField(max_length=500, required=False, allow_blank=True, default="")
+
+
 # --- Output ---------------------------------------------------------------
 
 
@@ -116,6 +120,9 @@ SUMMARY_FIELDS = [
     "expires_at",
     "paid_at",
     "created_at",
+    # Paid after the invoice was already paid another way: the school must
+    # refund the payer manually (cash). See review_note on the detail.
+    "needs_refund",
 ]
 
 
@@ -146,6 +153,9 @@ class GatewayPaymentDetailSerializer(serializers.ModelSerializer):
             "payment_code",
             "payment_link",
             "billing_url",
+            "cancelled_at",
+            "cancel_reason",
+            "review_note",
             "items",
         ]
         read_only_fields = fields

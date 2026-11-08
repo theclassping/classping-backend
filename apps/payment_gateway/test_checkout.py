@@ -364,6 +364,8 @@ class GatewayPaymentApiTests(CheckoutFixtureMixin, TestCase):
         self.assertEqual([row["id"] for row in response.data], [self.paid.pk])
         response = self.parent.get(f"/api/gateway/payments/?student_id={self.sibling.pk}")
         self.assertEqual(response.data, [])
+        self.assertEqual(self.parent.get("/api/gateway/payments/?needs_refund=true").data, [])
+        self.assertFalse(self.parent.get("/api/gateway/payments/").data[0]["needs_refund"])
 
     def test_scope(self):
         self.assertEqual(self.client_for(self.other_parent_user).get("/api/gateway/payments/").data, [])

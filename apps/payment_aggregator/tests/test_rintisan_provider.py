@@ -138,18 +138,6 @@ class RequestSigningTests(SimpleTestCase):
         provider.create_billing(BillingRequest(**{**BILLING_REQUEST.__dict__, "expires_at": expires_at}))
         self.assertEqual(session.last_json()["deadline_date"], "2026-11-08")
 
-    def test_expiry_time_sent_once_field_is_configured(self):
-        from unittest import mock
-
-        provider, session = make_provider(FakeResponse(body=CREATE_VA_OK))
-        provider.create_billing(BILLING_REQUEST)
-        self.assertNotIn("expired_at", session.last_json())
-
-        provider, session = make_provider(FakeResponse(body=CREATE_VA_OK))
-        with mock.patch("apps.payment_aggregator.providers.rintisan.constants.BILLING_EXPIRY_FIELD", "expired_at"):
-            provider.create_billing(BILLING_REQUEST)
-        self.assertEqual(session.last_json()["expired_at"], "2026-11-08 10:45:00")
-
     def test_naive_expires_at_rejected(self):
         provider, session = make_provider()
         request = BillingRequest(**{**BILLING_REQUEST.__dict__, "expires_at": datetime.datetime(2026, 11, 8, 10, 45)})
@@ -253,10 +241,6 @@ class BillingResponseTests(SimpleTestCase):
         result = provider.get_billing_status("PPI-1")
         self.assertEqual(result.status, BillingStatus.PENDING)
         self.assertEqual(result.settlement_status, SettlementStatus.NOT_SETTLED)
-
-    def test_query_expired(self):
-        provider, _ = make_provider(FakeResponse(body={**CREATE_VA_OK, "payment_status": "EXPIRED"}))
-        self.assertEqual(provider.get_billing_status("PPI-1").status, BillingStatus.EXPIRED)
 
     def test_query_not_found(self):
         provider, _ = make_provider(FakeResponse(body={"response_code": "400", "message": "Transaction not found."}))
@@ -390,15 +374,16 @@ class CallbackTests(SimpleTestCase):
         with self.assertRaises(InvalidCallback):
             provider.parse_billing_callback(raw, self.headers(raw))
 
-    def test_expired_callback(self):
+    def test_non_paid_callback_is_pending(self):
+        # Rintisan only calls back for paid billings; anything else is not a payment.
         provider, _ = make_provider()
         raw = (
             b'{"timestamp":"2026-11-07 11:45:00","partner_trx_id":"PAY-20261107-000501",'
             b'"trx_id":"PPI-261107-1234567ABCDEF","total_amount":154000,'
-            b'"status":{"code":"400","message":"expired"}}'
+            b'"status":{"code":"400","message":"failed"}}'
         )
         result = provider.parse_billing_callback(raw, self.headers(raw))
-        self.assertEqual(result.status, BillingStatus.EXPIRED)
+        self.assertEqual(result.status, BillingStatus.PENDING)
         self.assertEqual(result.reference_no, "PAY-20261107-000501")
 
     def test_transfer_callback_failed(self):

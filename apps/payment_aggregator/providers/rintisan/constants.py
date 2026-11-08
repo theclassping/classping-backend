@@ -132,13 +132,11 @@ PAYER_EMAIL = "no-reply@hamanto.com"
 # Callers pass a number already normalized by apps.core.phone.
 PAYER_PHONE_PATTERN = r"^62[1-9][0-9]{6,20}$"
 
-# Billing expiry. Rintisan expires the billing at the requested time and sends
-# the expiry to the payment callback URL; /querypayment then returns EXPIRED.
-# Field name / format in /create are NOT in the OpenAPI v1.0.0 yet: set
-# BILLING_EXPIRY_FIELD once Rintisan confirms them (None = not sent; only
-# deadline_date, the WIB date of expires_at, is sent).
-BILLING_EXPIRY_FIELD = None
-BILLING_EXPIRY_FORMAT = "%Y-%m-%d %H:%M:%S"  # WIB
+# Billing expiry (confirmed by Rintisan): only deadline_date (a date) is sent;
+# no expiry time. Rintisan sends no expiry callback and /querypayment keeps
+# returning UNPAID, so Classping's expiry job closes the checkout after the
+# 60-minute window. The VA stays payable at Rintisan until the end of
+# deadline_date; such late payments are handled by mark_gateway_payment_paid.
 
 # --- Payout limits --------------------------------------------------------
 
@@ -195,11 +193,6 @@ RESPONSE_CODE_SUCCESS = "200"
 RESPONSE_CODE_DUPLICATE = "409"
 
 PAYMENT_STATUS_PAID = "PAID"
-PAYMENT_STATUS_EXPIRED = "EXPIRED"
-# Expiry callback: same URL as payments. status.code to be confirmed by
-# Rintisan; status.message "expired" is matched meanwhile.
-CALLBACK_STATUS_EXPIRED_CODES = ()
-CALLBACK_STATUS_EXPIRED_MESSAGE = "expired"
 DISBURSE_STATUS_DISBURSED = "DISBURSED"
 
 # Payment callback status.code

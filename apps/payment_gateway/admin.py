@@ -1,19 +1,8 @@
 from django.contrib import admin
 
+from apps.core.admin import ReadOnlyAdmin
+
 from .models import GatewayPayment, GatewayPaymentItem
-
-
-class ReadOnlyAdmin(admin.ModelAdmin):
-    """Gateway records change only through payment_gateway services."""
-
-    def has_add_permission(self, request):
-        return False
-
-    def has_change_permission(self, request, obj=None):
-        return False
-
-    def has_delete_permission(self, request, obj=None):
-        return False
 
 
 class GatewayPaymentItemInline(admin.TabularInline):

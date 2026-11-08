@@ -94,13 +94,12 @@ def billing_payload(request, payer_email):
         raise ValueError("BillingRequest.expires_at must be timezone-aware")
     if not re.match(c.PAYER_PHONE_PATTERN, request.payer_phone or ""):
         raise InvalidPayerPhone("Rintisan requires an Indonesian phone number (62...)")
-    expires_at_wib = request.expires_at.astimezone(PROVIDER_TZ)
-    payload = {
+    return {
         "partner_trx_id": request.reference_no,
         "partner_identifier_id": request.identifier or request.reference_no,
         "invoice_date": request.invoice_date.isoformat(),
         # Rintisan's due date is a date: the WIB date of expires_at.
-        "deadline_date": expires_at_wib.date().isoformat(),
+        "deadline_date": request.expires_at.astimezone(PROVIDER_TZ).date().isoformat(),
         "to_name": request.payer_name,
         "to_address": request.payer_address or "",
         "to_phone": request.payer_phone,
@@ -109,20 +108,6 @@ def billing_payload(request, payer_email):
         "payment_method": request.channel_code,
         "amount": to_idr_int(request.amount),
     }
-    if c.BILLING_EXPIRY_FIELD:
-        payload[c.BILLING_EXPIRY_FIELD] = expires_at_wib.strftime(c.BILLING_EXPIRY_FORMAT)
-    return payload
-
-
-def _is_expired(payment_status, body):
-    if payment_status == c.PAYMENT_STATUS_EXPIRED:
-        return True
-    status = body.get("status")
-    if not isinstance(status, dict):
-        return False
-    if str(status.get("code") or "") in c.CALLBACK_STATUS_EXPIRED_CODES:
-        return True
-    return str(status.get("message") or "").strip().lower() == c.CALLBACK_STATUS_EXPIRED_MESSAGE
 
 
 def raise_for_billing_response(body):
@@ -148,10 +133,9 @@ def billing_result(body, reference_no=""):
     """Build a BillingResult from a /create, /querypayment or callback body."""
     payment_status = str(body.get("payment_status") or "").upper()
     callback_code = _status_code(body)
+    # Rintisan only reports PAID / UNPAID; expiry is decided by Classping.
     if payment_status == c.PAYMENT_STATUS_PAID or callback_code == c.CALLBACK_STATUS_SUCCESS:
         status = BillingStatus.PAID
-    elif _is_expired(payment_status, body):
-        status = BillingStatus.EXPIRED
     else:
         status = BillingStatus.PENDING
 

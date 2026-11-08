@@ -32,4 +32,8 @@ app.conf.beat_schedule = {
         "task": "apps.student_invoices.tasks.send_invoice_reminders_task",
         "schedule": crontab(hour=8, minute=0),
     },
+    "reconcile_gateway_settlements": {
+        "task": "apps.payment_gateway.tasks.reconcile_settlements_task",
+        "schedule": crontab(minute=15),  # hourly
+    },
 }

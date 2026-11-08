@@ -13,6 +13,9 @@ from .payments import (
     payment_delete, payment_detail, payment_form, payment_list, payment_review,
     student_invoice_detail, student_invoice_list,
 )
+from .gateway_payments import (
+    gateway_payment_cancel, gateway_payment_detail, gateway_payment_list, gateway_payment_sync,
+)
 from .settings import (
     role_permissions, settings_delete, settings_detail, settings_form, settings_list,
 )

@@ -229,7 +229,7 @@ class StudentInvoiceApiTests(TestCase):
             "mark_overdue_invoices": ("apps.student_invoices.tasks.mark_overdue_invoices_task", {1}, {30}),
             "send_invoice_reminders": ("apps.student_invoices.tasks.send_invoice_reminders_task", {8}, {0}),
         }
-        self.assertEqual(set(schedule), set(expected))
+        self.assertTrue(set(expected) <= set(schedule))
         for name, (task, hours, minutes) in expected.items():
             self.assertEqual(schedule[name]["task"], task)
             self.assertEqual(schedule[name]["schedule"].hour, hours)

@@ -14,7 +14,7 @@ from apps.users.models import User
 PROOF = {"object_key": "proofs/test.png", "filename": "test.png"}
 
 
-@patch("apps.payments.serializers.Mailer")
+@patch("apps.payments.notifications.Mailer")
 class PaymentGatewayGuardApiTests(GatewayFixtureMixin, TestCase):
     def setUp(self):
         super().setUp()

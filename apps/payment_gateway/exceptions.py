@@ -78,3 +78,15 @@ class ProviderRejected(CodedAPIException):
     status_code = status.HTTP_400_BAD_REQUEST
     error_code = "PROVIDER_REJECTED"
     default_detail = "Payment provider rejected the billing."
+
+
+class CancelForbidden(CodedAPIException):
+    status_code = status.HTTP_403_FORBIDDEN
+    error_code = "CANCEL_FORBIDDEN"
+    default_detail = "You cannot cancel this online payment."
+
+
+class GatewayPaymentNotPending(CodedAPIException):
+    status_code = status.HTTP_409_CONFLICT
+    error_code = "GATEWAY_PAYMENT_NOT_PENDING"
+    default_detail = "Only a pending online payment can be cancelled."
