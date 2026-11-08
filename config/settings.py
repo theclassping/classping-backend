@@ -410,5 +410,5 @@ MAILJET_TEMPLATES = {
     # Withdrawals (branch email). Without withdrawal_otp no withdrawal can be
     # made (OTP_NOT_SENT); without withdrawal_status the email is skipped.
     "withdrawal_otp": 8507159,
-    "withdrawal_status": None,
+    "withdrawal_status": 8507188,
 }
