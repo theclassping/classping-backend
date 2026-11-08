@@ -195,6 +195,10 @@ class MediaService:
         else:
             cls._pending_uploads[file_key] = upload_info
 
+        # After the pending entry, so a Redis outage leaves no row behind.
+        from apps.uploads.tracking import record_presigned
+        record_presigned(file_key, location, size, content_type, user_id)
+
         return {
             'file_key': file_key,
             'presigned_url': presigned_url,

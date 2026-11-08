@@ -316,6 +316,10 @@ class PaymentApiTests(TestCase):
         right = create(f"branch_{class_obj.branch_id}/class_{class_obj.pk}/payments/x.jpg")
         self.assertEqual(right.status_code, 201, right.data)
         self.assertEqual(PaymentProof.objects.count(), 1)
+        # bulk_create skips signals; the proof must still be tracked.
+        from apps.uploads.models import MediaObject
+        tracked = MediaObject.objects.get(file_key=f"branch_{class_obj.branch_id}/class_{class_obj.pk}/payments/x.jpg")
+        self.assertEqual(tracked.status, MediaObject.Status.ATTACHED)
 
     @patch("apps.payments.serializers.Mailer")
     def test_new_proof_resubmits_rejected_payment(self, mailer):

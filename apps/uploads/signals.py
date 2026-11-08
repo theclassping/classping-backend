@@ -9,6 +9,7 @@ from apps.uploads.services.media import MediaService
 from apps.uploads.utils import MediaFieldMixin
 from apps.uploads.paths import check_media_location
 from apps.uploads.references import MEDIA_MODELS, is_media_referenced
+from apps.uploads.tracking import record_attached, record_deleted
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,7 @@ def _delete(key):
     try:
         if not is_media_referenced(key):
             MediaService.delete_object(key)
+            record_deleted(key)
     except Exception:
         # Storage cleanup must not turn a successful database deletion into a 500.
         logger.exception("Unable to delete media object %s", key)
@@ -60,7 +62,11 @@ for label in MEDIA_MODELS:
     @receiver(post_save, sender=model, weak=False)
     def delete_replaced_media(sender, instance, **kwargs):
         old_key = getattr(instance, "_old_media_key", None)
-        new_key = _key(getattr(instance, "image_data", None))
+        image_data = getattr(instance, "image_data", None)
+        new_key = _key(image_data)
+        if new_key and new_key != old_key:
+            # Same transaction as the record, so a rollback undoes both.
+            record_attached(instance, new_key, MediaFieldMixin._parse_media_data(image_data))
         if new_key:
             def mark_attached(key=new_key):
                 try:

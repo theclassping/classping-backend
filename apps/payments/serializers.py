@@ -3,6 +3,7 @@ from django.utils import timezone
 
 from apps.student_invoices.models import StudentInvoice
 from apps.uploads.paths import check_media_location
+from apps.uploads.tracking import record_attached
 from apps.uploads.services.media import MediaService
 from apps.uploads.serializers import resolve_image_input
 from apps.mailer.services import Mailer
@@ -187,6 +188,10 @@ class PaymentSerializer(serializers.ModelSerializer):
                 check_media_location(proof, key)
         payment.save(force_insert=True)
         PaymentProof.objects.bulk_create(proofs)
+        for proof in proofs:
+            key = (proof.image_data or {}).get("id") or (proof.image_data or {}).get("object_key")
+            if key:
+                record_attached(proof, key, proof.image_data)
 
         self._send_status_email(payment)
 
