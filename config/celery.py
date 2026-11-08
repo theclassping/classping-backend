@@ -40,4 +40,8 @@ app.conf.beat_schedule = {
         "task": "apps.wallets.tasks.poll_processing_withdrawals_task",
         "schedule": crontab(minute="*/5"),
     },
+    "check_branch_balances": {
+        "task": "apps.wallets.tasks.check_branch_balances_task",
+        "schedule": crontab(hour=23, minute=0),
+    },
 }

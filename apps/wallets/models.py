@@ -193,6 +193,10 @@ class LedgerEntry(models.Model):
     branch = models.ForeignKey("schools.Branch", on_delete=models.PROTECT, related_name="ledger_entries")
     entry_type = models.CharField(max_length=30, choices=EntryType.choices)
     amount = models.DecimalField(max_digits=14, decimal_places=2)
+    # Branch total (available + pending) right after this entry, written with
+    # the entry under the wallet lock. Settlement moves money from pending to
+    # available, so it never changes this total.
+    balance_after = models.DecimalField(max_digits=14, decimal_places=2)
     gateway_payment = models.ForeignKey(
         "payment_gateway.GatewayPayment",
         on_delete=models.PROTECT,

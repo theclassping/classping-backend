@@ -663,3 +663,22 @@ class PayoutAccountForm(forms.ModelForm):
         if duplicate.exists():
             raise ValidationError("This branch already has this bank account.")
         return cleaned_data
+
+
+class BalanceAdjustmentForm(forms.Form):
+    """Correct a branch's available balance (+ adds, - deducts)."""
+
+    amount = forms.DecimalField(max_digits=14, decimal_places=2, help_text="Use a minus sign to deduct.")
+    note = forms.CharField(widget=forms.Textarea(attrs={"rows": 3}), max_length=2000)
+
+    def clean_amount(self):
+        amount = self.cleaned_data["amount"]
+        if amount == 0:
+            raise ValidationError("Amount cannot be zero.")
+        return amount
+
+
+class WithdrawalResolveForm(forms.Form):
+    """Close a stuck withdrawal after checking the provider dashboard."""
+
+    note = forms.CharField(widget=forms.Textarea(attrs={"rows": 3}), max_length=2000)

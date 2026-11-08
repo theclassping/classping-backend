@@ -69,7 +69,9 @@
                 <a href="{% url 'admin_web:guardian_list' %}">Guardians</a>
                 <a href="{% url 'admin_web:activity_list' %}">Activities</a>
                 <a href="{% url 'admin_web:payment_list' %}">Payments</a>
-                {% if request.user.is_superuser %}<a href="{% url 'admin_web:gateway_payment_list' %}">Online Payments</a>{% endif %}
+                {% if request.user.is_superuser %}<a href="{% url 'admin_web:gateway_payment_list' %}">Online Payments</a>
+                <a href="{% url 'admin_web:wallet_list' %}">Wallets</a>
+                <a href="{% url 'admin_web:withdrawal_list' %}">Withdrawals</a>{% endif %}
                 <a href="{% url 'admin_web:student_invoice_list' %}">Student Invoices</a>
                 <details class="sidebar-group" {% if request.resolver_match.url_name == 'settings_list' or request.resolver_match.url_name == 'settings_create' or request.resolver_match.url_name == 'settings_edit' %}open{% endif %}>
                     <summary>Settings</summary>

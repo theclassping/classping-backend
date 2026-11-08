@@ -3,6 +3,8 @@ Input shape validation and output rendering only. Business rules and all
 calculations live in services.py / payment_aggregator.
 """
 
+from typing import List
+
 from rest_framework import serializers
 
 from apps.payment_aggregator.constants import MAX_INVOICES_PER_CHECKOUT
@@ -91,7 +93,7 @@ class CheckoutQuoteSerializer(serializers.Serializer):
     expires_at = serializers.DateTimeField()
     channels = ChannelSerializer(many=True)
 
-    def get_invoice_ids(self, quote):
+    def get_invoice_ids(self, quote) -> List[int]:
         return [invoice.pk for invoice in quote.invoices]
 
 

@@ -5,6 +5,8 @@ calculations live in services.py / payment_aggregator.
 
 from rest_framework import serializers
 
+from apps.payment_gateway.serializers import GatewayPaymentDetailSerializer
+
 from .models import LedgerEntry, PayoutAccount, Withdrawal
 
 # --- Input ----------------------------------------------------------------
@@ -39,26 +41,32 @@ class WalletSerializer(serializers.Serializer):
     branch_id = serializers.IntegerField()
     available_balance = serializers.DecimalField(max_digits=14, decimal_places=2)
     pending_balance = serializers.DecimalField(max_digits=14, decimal_places=2)
+    pending_count = serializers.IntegerField()
+    withdrawn_total = serializers.DecimalField(max_digits=14, decimal_places=2)
+    withdrawn_count = serializers.IntegerField()
     withdrawal_fee = serializers.DecimalField(max_digits=14, decimal_places=2)
 
 
+LEDGER_FIELDS = [
+    "id",
+    "created_at",
+    "entry_type",
+    "amount",
+    "balance_after",
+    "settlement_status",
+    "settled_at",
+    "gateway_payment_id",
+    "withdrawal_id",
+    "note",
+]
+
+
 class LedgerEntrySerializer(serializers.ModelSerializer):
-    withdrawal_no = serializers.CharField(source="withdrawal.withdrawal_no", default=None)
-    payment_no = serializers.CharField(source="gateway_payment.payment_no", default=None)
+    """C3 list: ledger columns only (no joins)."""
 
     class Meta:
         model = LedgerEntry
-        fields = [
-            "id",
-            "entry_type",
-            "amount",
-            "settlement_status",
-            "settled_at",
-            "payment_no",
-            "withdrawal_no",
-            "note",
-            "created_at",
-        ]
+        fields = LEDGER_FIELDS
         read_only_fields = fields
 
 
@@ -112,4 +120,17 @@ class WithdrawalSerializer(serializers.ModelSerializer):
             "created_at",
             "completed_at",
         ]
+        read_only_fields = fields
+
+
+class LedgerEntryDetailSerializer(serializers.ModelSerializer):
+    """C3b detail: the entry with its gateway payment or withdrawal nested
+    (the same serializers as gateway/payments/{id}/ and withdrawals/{id}/)."""
+
+    gateway_payment = GatewayPaymentDetailSerializer(read_only=True)
+    withdrawal = WithdrawalSerializer(read_only=True)
+
+    class Meta:
+        model = LedgerEntry
+        fields = LEDGER_FIELDS + ["gateway_payment", "withdrawal"]
         read_only_fields = fields

@@ -18,9 +18,11 @@ import secrets
 import uuid
 from dataclasses import dataclass
 from decimal import Decimal
+from typing import Optional
 
 from django.conf import settings
 from django.db import transaction
+from django.db.models import Count, Q, Sum
 from django.utils import timezone
 
 from apps.core.access import get_finance_staff
@@ -30,8 +32,15 @@ from apps.core.webhooks import InvalidWebhook
 from apps.mailer.services import Mailer
 from apps.payment_aggregator import PaymentAggregator
 from apps.payment_aggregator import exceptions as provider_errors
-from apps.payment_aggregator.base import TransferRequest, TransferResult, TransferStatus, WithdrawalBreakdown
+from apps.payment_aggregator.base import (
+    ProviderBalance,
+    TransferRequest,
+    TransferResult,
+    TransferStatus,
+    WithdrawalBreakdown,
+)
 from apps.payment_aggregator.constants import (
+    OPS_ALERT_EMAIL,
     WITHDRAWAL_OTP_LENGTH,
     WITHDRAWAL_OTP_MAX_ATTEMPTS,
     WITHDRAWAL_OTP_TTL_MINUTES,
@@ -43,13 +52,29 @@ from .models import BranchWallet, LedgerEntry, PayoutAccount, Withdrawal, Withdr
 logger = logging.getLogger(__name__)
 
 
-
 # --- Wallet & ledger ------------------------------------------------------
 
 
 def lock_wallet(branch_id):
     BranchWallet.objects.get_or_create(branch_id=branch_id)
     return BranchWallet.objects.select_for_update().get(branch_id=branch_id)
+
+
+def _post_entry(wallet, entry_type, amount, pending=False, **fields):
+    """The only writer of ledger entries: move the LOCKED wallet by ``amount``
+    (pending or available) and record the entry with the new total."""
+    if pending:
+        wallet.pending_balance += amount
+    else:
+        wallet.available_balance += amount
+    wallet.save(update_fields=["available_balance", "pending_balance", "updated_at"])
+    return LedgerEntry.objects.create(
+        branch_id=wallet.branch_id,
+        entry_type=entry_type,
+        amount=amount,
+        balance_after=wallet.available_balance + wallet.pending_balance,
+        **fields,
+    )
 
 
 def post_payment_credit(gateway_payment):
@@ -60,17 +85,15 @@ def post_payment_credit(gateway_payment):
     needs_refund: the money did arrive, and the school refunds the payer
     itself (manually, in cash). Classping takes no fee of its own.
     """
-    wallet = lock_wallet(gateway_payment.branch_id)
-    LedgerEntry.objects.create(
-        branch_id=gateway_payment.branch_id,
-        entry_type=LedgerEntry.EntryType.PAYMENT_CREDIT,
-        amount=gateway_payment.invoice_total,
+    _post_entry(
+        lock_wallet(gateway_payment.branch_id),
+        LedgerEntry.EntryType.PAYMENT_CREDIT,
+        gateway_payment.invoice_total,
+        pending=True,
         gateway_payment=gateway_payment,
         settlement_status=LedgerEntry.SettlementStatus.PENDING_SETTLEMENT,
         note=gateway_payment.payment_no,
     )
-    wallet.pending_balance += gateway_payment.invoice_total
-    wallet.save(update_fields=["pending_balance", "updated_at"])
 
 
 def mark_payment_settled(gateway_payment, settled_at=None):
@@ -100,15 +123,7 @@ def mark_payment_settled(gateway_payment, settled_at=None):
 def _post_withdrawal_entries(wallet, withdrawal, entries):
     """``entries``: [(entry_type, signed amount)]; the wallet must be locked."""
     for entry_type, amount in entries:
-        LedgerEntry.objects.create(
-            branch_id=withdrawal.branch_id,
-            entry_type=entry_type,
-            amount=amount,
-            withdrawal=withdrawal,
-            note=withdrawal.withdrawal_no,
-        )
-        wallet.available_balance += amount
-    wallet.save(update_fields=["available_balance", "updated_at"])
+        _post_entry(wallet, entry_type, amount, withdrawal=withdrawal, note=withdrawal.withdrawal_no)
 
 
 def _post_withdrawal_debit(wallet, withdrawal):
@@ -123,6 +138,18 @@ def _post_withdrawal_reversal(withdrawal):
         (LedgerEntry.EntryType.WITHDRAWAL_REVERSAL, withdrawal.transfer_amount),
         (LedgerEntry.EntryType.WITHDRAWAL_FEE_REVERSAL, withdrawal.fee),
     ])
+
+
+def adjust_balance(user, branch_id, amount, note):
+    """Admin correction of a branch's available balance (+/-, note required).
+    Rejected when it would make the balance negative."""
+    with transaction.atomic():
+        wallet = lock_wallet(branch_id)
+        if wallet.available_balance + amount < 0:
+            raise errors.InsufficientBalance("The correction would make the available balance negative.")
+        return _post_entry(
+            wallet, LedgerEntry.EntryType.ADJUSTMENT, amount, created_by=user, note=note
+        )
 
 
 # --- Access & reads -------------------------------------------------------
@@ -141,22 +168,40 @@ class WalletSummary:
     branch_id: int
     available_balance: Decimal
     pending_balance: Decimal
+    pending_count: int
+    withdrawn_total: Decimal
+    withdrawn_count: int
     withdrawal_fee: Decimal
 
 
 def get_wallet_summary(user):
     branch = get_withdrawal_branch(user)
     wallet = BranchWallet.objects.filter(branch=branch).first() or BranchWallet(branch=branch)
+    withdrawn = Withdrawal.objects.filter(branch=branch, status=Withdrawal.Status.SUCCESS).aggregate(
+        total=Sum("amount"), count=Count("pk")
+    )
     return WalletSummary(
         branch_id=branch.pk,
         available_balance=wallet.available_balance,
         pending_balance=wallet.pending_balance,
+        pending_count=LedgerEntry.objects.filter(
+            branch=branch, settlement_status=LedgerEntry.SettlementStatus.PENDING_SETTLEMENT
+        ).count(),
+        withdrawn_total=withdrawn["total"] or Decimal("0"),
+        withdrawn_count=withdrawn["count"],
         withdrawal_fee=PaymentAggregator.get_withdrawal_rules().fee,
     )
 
 
 def ledger_queryset(user):
     return LedgerEntry.objects.filter(branch=get_withdrawal_branch(user))
+
+
+def ledger_detail_queryset(queryset):
+    """Ledger entries with their gateway payment (student, items) or withdrawal."""
+    return queryset.select_related("gateway_payment__student", "withdrawal").prefetch_related(
+        "gateway_payment__items__student_invoice__fee_type"
+    )
 
 
 def payout_account_queryset(user):
@@ -534,3 +579,110 @@ def poll_processing_withdrawals():
         except provider_errors.PaymentAggregatorError:
             logger.exception("Status check failed for withdrawal %s", withdrawal_id)
     return synced
+
+
+# --- Ops (admin web) ------------------------------------------------------
+
+
+def _ensure_stuck(withdrawal):
+    """Only a processing withdrawal without a provider id can be resent or
+    resolved by hand (one with an id is settled by Sync / callback)."""
+    if withdrawal.status != Withdrawal.Status.PROCESSING or withdrawal.provider_disbursement_id:
+        raise errors.WithdrawalNotStuck()
+
+
+def resend_withdrawal(withdrawal_id):
+    """Send a stuck withdrawal again with the same reference_id: accepted ->
+    it gets its provider id; duplicate -> it exists at the provider (flagged
+    for a dashboard check); rejected -> failed and the balance returned."""
+    withdrawal = Withdrawal.objects.get(pk=withdrawal_id)
+    _ensure_stuck(withdrawal)
+    return _send_to_provider(withdrawal)
+
+
+def resolve_withdrawal(user, withdrawal_id, succeeded, note):
+    """Close a stuck withdrawal after checking the provider dashboard."""
+    withdrawal = Withdrawal.objects.get(pk=withdrawal_id)
+    _ensure_stuck(withdrawal)
+    withdrawal = apply_transfer_result(
+        withdrawal.pk,
+        TransferResult(
+            reference_no=withdrawal.withdrawal_no,
+            provider_transfer_id="",
+            status=TransferStatus.SUCCESS if succeeded else TransferStatus.FAILED,
+            provider_message="" if succeeded else note,
+        ),
+    )
+    withdrawal.needs_review = False
+    withdrawal.review_note = append_note(
+        withdrawal.review_note, "Resolved as {} by {}: {}".format(withdrawal.status, user.email, note)
+    )
+    withdrawal.save(update_fields=["needs_review", "review_note", "updated_at"])
+    return withdrawal
+
+
+@dataclass(frozen=True)
+class PlatformBalance:
+    branches_available: Decimal
+    branches_pending: Decimal
+    provider: Optional[ProviderBalance]  # None when the provider could not be asked
+    provider_error: str
+
+
+def get_platform_balance():
+    """Sum of all branch balances vs Classping's partner balance at the provider."""
+    totals = BranchWallet.objects.aggregate(available=Sum("available_balance"), pending=Sum("pending_balance"))
+    try:
+        provider, provider_error = PaymentAggregator.get_balance(), ""
+    except provider_errors.PaymentAggregatorError as error:
+        provider, provider_error = None, error.provider_message or error.message
+    return PlatformBalance(
+        branches_available=totals["available"] or Decimal("0"),
+        branches_pending=totals["pending"] or Decimal("0"),
+        provider=provider,
+        provider_error=provider_error,
+    )
+
+
+def check_branch_balances(day=None):
+    """Nightly: for branches whose ledger changed on ``day`` (default today),
+    the wallet must match the ledger: total = balance_after of the last entry,
+    pending = sum of entries still pending settlement. Mismatches are logged
+    and emailed to Classping ops. Returns the mismatch lines."""
+    day = day or timezone.localdate()
+    branch_ids = (
+        LedgerEntry.objects.filter(Q(created_at__date=day) | Q(settled_at__date=day))
+        .values_list("branch_id", flat=True)
+        .distinct()
+    )
+    mismatches = []
+    for wallet in BranchWallet.objects.filter(branch_id__in=branch_ids).select_related("branch"):
+        entries = LedgerEntry.objects.filter(branch_id=wallet.branch_id)
+        ledger_total = entries.order_by("-pk").values_list("balance_after", flat=True).first()
+        ledger_pending = entries.filter(
+            settlement_status=LedgerEntry.SettlementStatus.PENDING_SETTLEMENT
+        ).aggregate(total=Sum("amount"))["total"] or Decimal("0")
+        wallet_total = wallet.available_balance + wallet.pending_balance
+        if wallet_total != ledger_total or wallet.pending_balance != ledger_pending:
+            mismatches.append(
+                "{} (branch {}): wallet total {} / pending {}, ledger total {} / pending {}".format(
+                    wallet.branch.name, wallet.branch_id, wallet_total, wallet.pending_balance,
+                    ledger_total, ledger_pending,
+                )
+            )
+    if not mismatches:
+        return mismatches
+
+    logger.error("Branch balance mismatch on %s:\n%s", day, "\n".join(mismatches))
+    template_id = settings.MAILJET_TEMPLATES.get("balance_alert")
+    if template_id:
+        try:
+            Mailer().send_template(
+                to_email=OPS_ALERT_EMAIL,
+                to_name="Classping Ops",
+                template_id=template_id,
+                variables={"date": day.isoformat(), "count": len(mismatches), "details": "\n".join(mismatches)},
+            )
+        except Exception:
+            logger.exception("Balance alert email failed")
+    return mismatches

@@ -97,3 +97,9 @@ class ProviderBalanceInsufficient(CodedAPIException):
     status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     error_code = "PROVIDER_BALANCE_INSUFFICIENT"
     default_detail = "Withdrawals are temporarily unavailable; the balance was returned."
+
+
+class WithdrawalNotStuck(CodedAPIException):
+    status_code = status.HTTP_409_CONFLICT
+    error_code = "WITHDRAWAL_NOT_STUCK"
+    default_detail = "Only a processing withdrawal without a provider id can be resent or resolved."

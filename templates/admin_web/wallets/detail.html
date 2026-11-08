@@ -1,0 +1,65 @@
+{% extends "admin_web/base.html" %}
+
+{% block title %}Wallet {{ branch.name }} - ClassPing Admin{% endblock %}
+{% block page_title %}<h1>Wallet</h1>{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div><h2>{{ branch.school.name }} - {{ branch.name }}</h2><p class="text-muted">Available {{ wallet.available_balance|default:"0" }} · Pending {{ wallet.pending_balance|default:"0" }}</p></div>
+    <a href="{% url 'admin_web:wallet_list' %}" class="btn">Back to wallets</a>
+</div>
+
+<div class="card form-card">
+    <h3>Correct the balance</h3>
+    <form method="post">
+        {% csrf_token %}
+        {% for field in form %}
+            <div class="form-group">
+                {{ field.label_tag }}
+                {{ field }}
+                {% if field.help_text %}<small class="help-text">{{ field.help_text }}</small>{% endif %}
+                {% if field.errors %}<ul class="field-errors">{% for error in field.errors %}<li>{{ error }}</li>{% endfor %}</ul>{% endif %}
+            </div>
+        {% endfor %}
+        <div class="form-actions"><button type="submit" class="btn btn-primary" onclick="return confirm('Post this correction to the branch ledger?');">Post correction</button></div>
+    </form>
+</div>
+
+<form method="get" class="filter-bar">
+    <div class="form-group">
+        <label for="entry-type">Entry type</label>
+        <select id="entry-type" name="entry_type">
+            <option value="">All entries</option>
+            {% for value, label in entry_types %}<option value="{{ value }}" {% if entry_type == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+    </div>
+    <button class="btn" type="submit">Filter</button>
+</form>
+<div class="card">
+    {% if page_obj.object_list %}
+        <table class="data-table">
+            <thead><tr><th>Date</th><th>Entry</th><th>Reference</th><th>Amount</th><th>Balance after</th><th>Settlement</th><th>Note</th></tr></thead>
+            <tbody>
+                {% for entry in page_obj %}
+                    <tr>
+                        <td>{{ entry.created_at|date:"Y-m-d H:i" }}</td>
+                        <td>{{ entry.get_entry_type_display }}</td>
+                        <td>
+                            {% if entry.gateway_payment %}<a href="{% url 'admin_web:gateway_payment_detail' entry.gateway_payment_id %}">{{ entry.gateway_payment.payment_no }}</a>
+                            {% elif entry.withdrawal %}<a href="{% url 'admin_web:withdrawal_detail' entry.withdrawal_id %}">{{ entry.withdrawal.withdrawal_no }}</a>
+                            {% else %}-{% endif %}
+                        </td>
+                        <td>{{ entry.amount }}</td>
+                        <td>{{ entry.balance_after }}</td>
+                        <td>{{ entry.get_settlement_status_display|default:"-" }}{% if entry.settled_at %} · {{ entry.settled_at|date:"Y-m-d" }}{% endif %}</td>
+                        <td>{% if entry.entry_type == "adjustment" %}{{ entry.note }} ({{ entry.created_by.email|default:"-" }}){% endif %}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <div class="empty-state"><h3>No ledger entries</h3></div>
+    {% endif %}
+</div>
+{% include "admin_web/includes/pagination.html" %}
+{% endblock %}

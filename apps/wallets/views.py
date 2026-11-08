@@ -3,14 +3,19 @@ Thin views: access check -> service call -> render. No business rules here.
 Every endpoint is limited to the branch principal / officer.
 """
 
+from drf_spectacular.utils import extend_schema
 from rest_framework import mixins, status, viewsets
 from rest_framework.response import Response
 from rest_framework.throttling import UserRateThrottle
 from rest_framework.views import APIView
 
+from apps.core.pagination import LIST_FILTER_BACKENDS
+
 from . import services
+from .models import LedgerEntry, PayoutAccount, Withdrawal
 from .permissions import WithdrawalAccessPermission
 from .serializers import (
+    LedgerEntryDetailSerializer,
     LedgerEntrySerializer,
     OtpResendRequestSerializer,
     PayoutAccountSerializer,
@@ -31,18 +36,38 @@ class WalletView(APIView):
 
     permission_classes = [WithdrawalAccessPermission]
 
+    @extend_schema(responses=WalletSerializer)
     def get(self, request):
         return Response(WalletSerializer(services.get_wallet_summary(request.user)).data)
 
 
-class LedgerEntryViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
-    """C3 GET wallet/ledger/"""
+class LedgerEntryViewSet(viewsets.ReadOnlyModelViewSet):
+    """C3 GET wallet/ledger/ (ledger columns only) · C3b GET wallet/ledger/{id}/
+    (with the gateway payment or withdrawal nested)"""
 
     permission_classes = [WithdrawalAccessPermission]
-    serializer_class = LedgerEntrySerializer
+    filter_backends = LIST_FILTER_BACKENDS
+    filter_fields = {"entry_type": "entry_type", "settlement_status": "settlement_status"}
+    date_filter_field = "created_at"
+    search_fields = [
+        "note",
+        "gateway_payment__student__first_name",
+        "gateway_payment__student__last_name",
+        "gateway_payment__items__student_invoice__invoice_no",
+    ]
+    ordering_fields = ["created_at", "amount"]
+    ordering = ["-created_at", "-pk"]
 
     def get_queryset(self):
-        return services.ledger_queryset(self.request.user).select_related("gateway_payment", "withdrawal")
+        if getattr(self, "swagger_fake_view", False):  # OpenAPI generation
+            return LedgerEntry.objects.none()
+        queryset = services.ledger_queryset(self.request.user)
+        if self.action == "retrieve":
+            queryset = services.ledger_detail_queryset(queryset)
+        return queryset
+
+    def get_serializer_class(self):
+        return LedgerEntryDetailSerializer if self.action == "retrieve" else LedgerEntrySerializer
 
 
 class PayoutAccountViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
@@ -50,8 +75,15 @@ class PayoutAccountViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
 
     permission_classes = [WithdrawalAccessPermission]
     serializer_class = PayoutAccountSerializer
+    filter_backends = LIST_FILTER_BACKENDS
+    filter_fields = {"bank_code": "bank_code"}
+    search_fields = ["account_number", "account_holder_name"]
+    ordering_fields = ["updated_at", "created_at"]
+    ordering = ["-updated_at"]
 
     def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):  # OpenAPI generation
+            return PayoutAccount.objects.none()
         return services.payout_account_queryset(self.request.user)
 
 
@@ -61,6 +93,7 @@ class WithdrawalPreviewView(APIView):
     permission_classes = [WithdrawalAccessPermission]
     throttle_classes = [WithdrawalOtpThrottle]
 
+    @extend_schema(request=WithdrawalPreviewRequestSerializer, responses=WithdrawalPreviewSerializer)
     def post(self, request):
         payload = WithdrawalPreviewRequestSerializer(data=request.data)
         payload.is_valid(raise_exception=True)
@@ -74,6 +107,7 @@ class WithdrawalOtpResendView(APIView):
     permission_classes = [WithdrawalAccessPermission]
     throttle_classes = [WithdrawalOtpThrottle]
 
+    @extend_schema(request=OtpResendRequestSerializer, responses=WithdrawalPreviewSerializer)
     def post(self, request):
         payload = OtpResendRequestSerializer(data=request.data)
         payload.is_valid(raise_exception=True)
@@ -88,13 +122,19 @@ class WithdrawalViewSet(
 
     permission_classes = [WithdrawalAccessPermission]
     serializer_class = WithdrawalSerializer
+    filter_backends = LIST_FILTER_BACKENDS
+    filter_fields = {"status": "status", "needs_review": "needs_review"}
+    date_filter_field = "created_at"
+    search_fields = ["withdrawal_no", "account_holder_name"]
+    ordering_fields = ["created_at", "amount", "status"]
+    ordering = ["-created_at"]
 
     def get_queryset(self):
-        queryset = services.withdrawal_queryset(self.request.user)
-        if self.request.query_params.get("status"):
-            queryset = queryset.filter(status=self.request.query_params["status"])
-        return queryset
+        if getattr(self, "swagger_fake_view", False):  # OpenAPI generation
+            return Withdrawal.objects.none()
+        return services.withdrawal_queryset(self.request.user)
 
+    @extend_schema(request=WithdrawalRequestSerializer, responses={201: WithdrawalSerializer})
     def create(self, request, *args, **kwargs):
         payload = WithdrawalRequestSerializer(data=request.data)
         payload.is_valid(raise_exception=True)

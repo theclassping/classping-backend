@@ -411,4 +411,6 @@ MAILJET_TEMPLATES = {
     # made (OTP_NOT_SENT); without withdrawal_status the email is skipped.
     "withdrawal_otp": 8507159,
     "withdrawal_status": 8507188,
+    # Nightly branch balance mismatch alert to OPS_ALERT_EMAIL.
+    "balance_alert": 8507233,
 }

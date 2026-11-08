@@ -19,6 +19,12 @@ class CodedAPIException(APIException):
         self.detail.update(extra)
 
 
+class InvalidFilter(CodedAPIException):
+    status_code = 400
+    error_code = "INVALID_FILTER"
+    default_detail = "Invalid filter value."
+
+
 class ProviderUnavailable(CodedAPIException):
     """The payment provider could not be reached or refused the request."""
 
