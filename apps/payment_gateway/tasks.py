@@ -16,7 +16,7 @@ from .models import GatewayPayment
     max_retries=5,
 )
 def expire_gateway_payment_task(self, gateway_payment_id):
-    """Queued at checkout for expires_at + delay (backup to the expiry webhook)."""
+    """Queued at checkout for expires_at + delay (the provider sends no expiry callback)."""
     try:
         gateway_payment = services.expire_gateway_payment(gateway_payment_id)
     except GatewayPayment.DoesNotExist:

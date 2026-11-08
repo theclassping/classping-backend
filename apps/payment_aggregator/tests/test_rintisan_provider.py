@@ -23,7 +23,6 @@ from apps.payment_aggregator.exceptions import (
     ProviderNotConfigured,
     ProviderRejected,
     ProviderUnavailable,
-    TransferAmountOutOfRange,
     TransferNotFound,
 )
 from apps.payment_aggregator.providers.rintisan import signing
@@ -284,8 +283,6 @@ class TransferTests(SimpleTestCase):
             "Duplicate reference ID.": DuplicateTransfer,
             "Invalid account number.": InvalidDestinationAccount,
             "Invalid bank code.": InvalidDestinationAccount,
-            "Minimum disbursement amount is 20000": TransferAmountOutOfRange,
-            "Maximum disbursement amount is 250000000": TransferAmountOutOfRange,
             "Something else": ProviderRejected,
         }
         for message, exc in cases.items():

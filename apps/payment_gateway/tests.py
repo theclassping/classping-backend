@@ -1,5 +1,6 @@
 from datetime import date, datetime, timezone
 from decimal import Decimal
+from unittest import mock
 
 from django.db import IntegrityError, transaction
 from django.test import TestCase
@@ -20,6 +21,18 @@ from apps.users.models import User
 from .models import GatewayPayment, GatewayPaymentItem
 
 PASSWORD = "StrongPassword123!"
+
+
+class NoMailjetMixin:
+    """For TransactionTestCase: it really commits, so on_commit emails
+    (welcome email, payment_completed) would call Mailjet. Put first in the
+    bases."""
+
+    def setUp(self):
+        patcher = mock.patch("apps.mailer.services.Client")
+        patcher.start().return_value.send.create.return_value.status_code = 200
+        self.addCleanup(patcher.stop)
+        super().setUp()
 
 
 def make_branch(school, location, code):

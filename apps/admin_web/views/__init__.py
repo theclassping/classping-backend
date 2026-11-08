@@ -30,5 +30,6 @@ from .users import (
 from .staff import staff_detail, staff_list
 from .staff_mutations import staff_activate, staff_create, staff_deactivate, staff_edit
 from .branches import branch_detail, branch_create, branch_edit, branch_deactivate, branch_set_active
+from .payout_accounts import payout_account_delete, payout_account_edit
 
 __all__ = [name for name in globals() if not name.startswith("_")]

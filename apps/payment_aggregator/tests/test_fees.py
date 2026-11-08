@@ -5,7 +5,6 @@ from django.test import SimpleTestCase
 from apps.payment_aggregator import fees
 from apps.payment_aggregator.base import Channel, FeeType, PaymentMethod, WithdrawalRules
 from apps.payment_aggregator.exceptions import (
-    AmountAboveMaximum,
     AmountBelowMinimum,
     ChannelNotAvailable,
     InvalidAmount,
@@ -28,11 +27,7 @@ CC = Channel(
     min_amount=Decimal("10000"),
     max_amount=Decimal("100000000"),
 )
-RULES = WithdrawalRules(
-    fee=Decimal("2500"),
-    min_amount=Decimal("22500"),
-    max_amount=Decimal("250002500"),
-)
+RULES = WithdrawalRules(fee=Decimal("2500"))
 
 
 class TransactionFeeTests(SimpleTestCase):
@@ -110,21 +105,20 @@ class WithdrawalTests(SimpleTestCase):
         self.assertEqual(result.fee, Decimal("2500.00"))
         self.assertEqual(result.transfer_amount, Decimal("1497500.00"))
 
-    def test_minimum_boundary(self):
+    def test_amount_must_exceed_fee(self):
         self.assertEqual(
-            fees.calculate_withdrawal(RULES, Decimal("22500")).transfer_amount,
-            Decimal("20000.00"),
+            fees.calculate_withdrawal(RULES, Decimal("2501")).transfer_amount,
+            Decimal("1.00"),
         )
-        with self.assertRaises(AmountBelowMinimum):
-            fees.calculate_withdrawal(RULES, Decimal("22499"))
+        for value in ("2500", "1000"):
+            with self.assertRaises(AmountBelowMinimum, msg=value):
+                fees.calculate_withdrawal(RULES, Decimal(value))
 
-    def test_maximum_boundary(self):
+    def test_no_maximum(self):
         self.assertEqual(
-            fees.calculate_withdrawal(RULES, Decimal("250002500")).transfer_amount,
-            Decimal("250000000.00"),
+            fees.calculate_withdrawal(RULES, Decimal("1000000000")).transfer_amount,
+            Decimal("999997500.00"),
         )
-        with self.assertRaises(AmountAboveMaximum):
-            fees.calculate_withdrawal(RULES, Decimal("250002501"))
 
     def test_amount_must_be_positive_whole_rupiah(self):
         for value in ("0", "-1", "50000.50", "abc"):

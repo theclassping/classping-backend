@@ -72,11 +72,7 @@ class RintisanProvider(BaseProvider):
         ]
 
     def get_withdrawal_rules(self):
-        return WithdrawalRules(
-            fee=constants.WITHDRAWAL_FEE,
-            min_amount=constants.WITHDRAWAL_MIN_AMOUNT,
-            max_amount=constants.WITHDRAWAL_MAX_AMOUNT,
-        )
+        return WithdrawalRules(fee=constants.DISBURSEMENT_FEE)
 
     def get_banks(self):
         return dict(constants.BANK_CODES)

@@ -72,10 +72,6 @@ class InvalidDestinationAccount(ProviderRejected):
     code = "PAYOUT_ACCOUNT_INVALID"
 
 
-class TransferAmountOutOfRange(ProviderRejected):
-    code = "TRANSFER_AMOUNT_OUT_OF_RANGE"
-
-
 class InvalidPayerPhone(PaymentAggregatorError):
     """The payer phone does not meet the provider's format (checked before sending)."""
 
@@ -101,7 +97,3 @@ class InvalidAmount(PaymentAggregatorError):
 
 class AmountBelowMinimum(PaymentAggregatorError):
     code = "AMOUNT_BELOW_MINIMUM"
-
-
-class AmountAboveMaximum(PaymentAggregatorError):
-    code = "AMOUNT_ABOVE_MAXIMUM"

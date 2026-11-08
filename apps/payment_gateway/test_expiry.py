@@ -12,7 +12,7 @@ from apps.payment_aggregator.exceptions import BillingNotFound, ProviderUnavaila
 from . import services
 from .models import GatewayPayment, GatewayPaymentItem
 from .tasks import expire_gateway_payment_task
-from .tests import GatewayFixtureMixin
+from .tests import GatewayFixtureMixin, NoMailjetMixin
 
 GET_STATUS = "apps.payment_gateway.services.PaymentAggregator.get_billing_status"
 
@@ -185,7 +185,41 @@ class ScheduleExpiryTests(ExpiryFixtureMixin, TestCase):
                     services.schedule_gateway_payment_expiry(payment)
 
 
-class ExpiryRaceTests(ExpiryFixtureMixin, TransactionTestCase):
+class ExpireOnReadTests(ExpiryFixtureMixin, TestCase):
+    """Fallback when the expiry job never ran (staging has no broker)."""
+
+    def overdue_checkout(self):
+        payment = self.checkout()
+        GatewayPayment.objects.filter(pk=payment.pk).update(
+            expires_at=timezone.now() - datetime.timedelta(minutes=3)
+        )
+        return payment
+
+    def test_overdue_checkout_released_when_invoice_is_read(self):
+        payment = self.overdue_checkout()
+        with mock.patch(GET_STATUS, return_value=billing(BillingStatus.PENDING)):
+            payability = services.get_invoice_payability(self.invoice)
+        self.assertNotEqual(payability.reason, services.NotPayableReason.INVOICE_LOCKED)
+        self.assertExpired(payment)
+
+    def test_within_check_delay_stays_locked(self):
+        payment = self.checkout()  # expired 1 minute ago, check delay is 2
+        with mock.patch(GET_STATUS) as get_status:
+            payability = services.get_invoice_payability(self.invoice)
+        get_status.assert_not_called()
+        self.assertEqual(payability.reason, services.NotPayableReason.INVOICE_LOCKED)
+        self.assertUnchanged(payment)
+
+    def test_provider_down_keeps_lock(self):
+        payment = self.overdue_checkout()
+        with mock.patch(GET_STATUS, side_effect=ProviderUnavailable("down")):
+            with self.assertLogs("apps.payment_gateway.services", "ERROR"):
+                payability = services.get_invoice_payability(self.invoice)
+        self.assertEqual(payability.reason, services.NotPayableReason.INVOICE_LOCKED)
+        self.assertUnchanged(payment)
+
+
+class ExpiryRaceTests(NoMailjetMixin, ExpiryFixtureMixin, TransactionTestCase):
     """Real row locks on Postgres: concurrent updates never overwrite each other."""
 
     def run_concurrently(self, holder, waiter):

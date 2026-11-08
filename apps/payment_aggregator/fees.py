@@ -14,7 +14,6 @@ from apps.payment_aggregator.base import (
     WithdrawalBreakdown,
 )
 from apps.payment_aggregator.exceptions import (
-    AmountAboveMaximum,
     AmountBelowMinimum,
     ChannelNotAvailable,
     InvalidAmount,
@@ -99,18 +98,17 @@ def available_channels(channels, invoice_total):
 
 
 def calculate_withdrawal(rules, amount):
-    """Split a withdrawal into fee and the amount actually transferred."""
+    """Split a withdrawal into the fee (deducted by the provider) and the
+    amount the bank account receives."""
     amount = _to_decimal(amount)
     if amount <= 0:
         raise InvalidAmount("Amount must be greater than zero")
     if amount != amount.to_integral_value():
         raise InvalidAmount("Amount must be whole rupiah")
-    if amount < rules.min_amount:
-        raise AmountBelowMinimum("Amount below the minimum withdrawal")
-    if amount > rules.max_amount:
-        raise AmountAboveMaximum("Amount above the maximum withdrawal")
-
     fee = _to_decimal(rules.fee)
+    if amount <= fee:
+        raise AmountBelowMinimum("Amount must be greater than the withdrawal fee")
+
     return WithdrawalBreakdown(
         amount=amount.quantize(CENT),
         fee=fee.quantize(CENT),

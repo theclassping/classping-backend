@@ -159,6 +159,22 @@ class ScopedQuerysetMixin:
                 self._scope_related_fields(field)
 
 
+def get_finance_staff(user):
+    """The Staff profile when ``user`` is a branch principal / officer
+    (cancel checkouts, branch wallet, withdrawals), otherwise None."""
+    from apps.payment_aggregator.constants import BRANCH_FINANCE_STAFF_TYPES
+
+    staff = getattr(user, "staff", None)
+    if (
+        str(getattr(user, "role", "")).upper() != "STAFF"
+        or staff is None
+        or staff.staff_type not in BRANCH_FINANCE_STAFF_TYPES
+        or staff.branch_id is None
+    ):
+        return None
+    return staff
+
+
 def user_can_access_media(user, file_key):
     """Return whether a file key is referenced by a record visible to user."""
     from apps.activities.models import ActivityImage

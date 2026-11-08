@@ -141,6 +141,16 @@ urlpatterns = [
         name="branch_activate",
         kwargs={"active": True},
     ),
+    path(
+        "schools/<int:school_pk>/branches/<int:branch_pk>/payout-accounts/<int:pk>/edit/",
+        views.payout_account_edit,
+        name="payout_account_edit",
+    ),
+    path(
+        "schools/<int:school_pk>/branches/<int:branch_pk>/payout-accounts/<int:pk>/delete/",
+        views.payout_account_delete,
+        name="payout_account_delete",
+    ),
     
     # ---------------------------------------------------------
     # Admin Web Location API

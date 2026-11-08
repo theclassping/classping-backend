@@ -85,6 +85,7 @@ urlpatterns = [
     path("api/", include("apps.student_invoices.urls")),
     path("api/", include("apps.payments.urls")),
     path("api/", include("apps.payment_gateway.urls")),
+    path("api/", include("apps.wallets.urls")),
     path("api/webhooks/<str:source>/<str:event>/", webhook, name="webhook"),
     path("api/", include("apps.activities.urls")),
     path("api/media/", include("apps.uploads.urls")),

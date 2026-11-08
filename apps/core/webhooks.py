@@ -14,7 +14,7 @@ from django.views.decorators.http import require_POST
 
 WEBHOOK_HANDLERS = {
     ("rintisan", "payment"): "apps.payment_gateway.services.handle_payment_callback",
-    # Step 6: ("rintisan", "disbursement"): "apps.wallets.services.handle_disbursement_callback",
+    ("rintisan", "disbursement"): "apps.wallets.services.handle_disbursement_callback",
 }
 
 

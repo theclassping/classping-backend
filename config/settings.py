@@ -233,6 +233,7 @@ REST_FRAMEWORK = {
         "password_reset": "20/hour",
         "password_change": "5/min",
         "gateway_checkout": "10/min",
+        "withdrawal_otp": "5/min",
     },
     # Ignore X-Forwarded-For unless production trusts its proxy.
     "NUM_PROXIES": 0,
@@ -406,4 +407,8 @@ MAILJET_TEMPLATES = {
     "payment_completed": 8345508,
     "payment_rejected": 8345509,
     "welcome_email": 8388105,
+    # Withdrawals (branch email). Without withdrawal_otp no withdrawal can be
+    # made (OTP_NOT_SENT); without withdrawal_status the email is skipped.
+    "withdrawal_otp": 8507159,
+    "withdrawal_status": None,
 }

@@ -4,7 +4,7 @@ def branch_detail(request, school_pk, pk):
     school = get_object_or_404(School, pk=school_pk)
     branch = get_object_or_404(
         Branch.objects.select_related("location__parent").prefetch_related(
-            "academic_years", "classes", "staffs"
+            "academic_years", "classes", "staffs", "payout_accounts"
         ),
         pk=pk,
         school=school,

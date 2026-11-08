@@ -56,9 +56,7 @@ class PaymentAggregatorFacadeTests(SimpleTestCase):
         result = PaymentAggregator.calculate_withdrawal(Decimal("150000"))
         self.assertEqual(result.fee, Decimal("2500.00"))
         self.assertEqual(result.transfer_amount, Decimal("147500.00"))
-        rules = PaymentAggregator.get_withdrawal_rules()
-        self.assertEqual(rules.min_amount, Decimal("22500"))
-        self.assertEqual(rules.max_amount, Decimal("250002500"))
+        self.assertEqual(PaymentAggregator.get_withdrawal_rules().fee, Decimal("2500"))
 
     def test_bank_codes_exclude_ewallets(self):
         self.assertTrue(PaymentAggregator.is_supported_bank("BCA"))

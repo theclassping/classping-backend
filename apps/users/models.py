@@ -22,6 +22,7 @@ API_MODULE_CHOICES = (
     ("students", "Students"),
     ("uploads", "Media uploads"),
     ("users", "Users"),
+    ("wallets", "Wallets & withdrawals"),
 )
 
 

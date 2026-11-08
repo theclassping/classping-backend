@@ -24,7 +24,9 @@ from django.db import IntegrityError, transaction
 from django.utils import timezone
 from rest_framework.exceptions import NotFound
 
-from apps.core.access import scope_queryset
+from apps.core.access import get_finance_staff, scope_queryset
+from apps.core.exceptions import ProviderUnavailable
+from apps.core.notes import append_note
 from apps.core.phone import InvalidPhoneNumber, normalize_phone
 from apps.core.webhooks import InvalidWebhook
 from apps.payment_aggregator import PaymentAggregator
@@ -42,7 +44,6 @@ from apps.payment_aggregator.constants import (
 from apps.payments.models import Payment
 from apps.payments.services import invoice_locked_error
 from apps.student_invoices.models import StudentInvoice
-from apps.staffs.models import Staff
 from apps.students.models import Student, StudentGuardian
 from apps.users.models import User
 
@@ -52,8 +53,6 @@ from .selectors import get_active_checkout_for_invoice
 
 logger = logging.getLogger(__name__)
 
-# Branch staff who may cancel a checkout (e.g. the parent paid cash).
-CANCEL_STAFF_TYPES = (Staff.StaffType.OFFICER, Staff.StaffType.PRINCIPAL)
 
 
 # --- Status changes -------------------------------------------------------
@@ -155,7 +154,7 @@ def mark_gateway_payment_paid(gateway_payment_id, paid_at=None):
         update_fields = ["status", "paid_at", "updated_at"]
         if refund_invoice_nos:
             gateway_payment.needs_refund = True
-            gateway_payment.review_note = _append_note(
+            gateway_payment.review_note = append_note(
                 gateway_payment.review_note,
                 "Refund to the payer (school, manual cash): these invoices were already "
                 "paid another way: " + ", ".join(refund_invoice_nos),
@@ -204,28 +203,17 @@ def _can_cancel(user, gateway_payment):
         return guardian is not None and StudentGuardian.objects.filter(
             student_id=gateway_payment.student_id, guardian=guardian
         ).exists()
-    staff = getattr(user, "staff", None)
-    return (
-        role == User.Role.STAFF
-        and staff is not None
-        and staff.branch_id == gateway_payment.branch_id
-        and staff.staff_type in CANCEL_STAFF_TYPES
-    )
+    staff = get_finance_staff(user)
+    return staff is not None and staff.branch_id == gateway_payment.branch_id
 
 
 def flag_gateway_payment_for_review(gateway_payment_id, note):
     with transaction.atomic():
         gateway_payment = _lock(gateway_payment_id)
         gateway_payment.needs_review = True
-        gateway_payment.review_note = _append_note(gateway_payment.review_note, note)
+        gateway_payment.review_note = append_note(gateway_payment.review_note, note)
         gateway_payment.save(update_fields=["needs_review", "review_note", "updated_at"])
     return gateway_payment
-
-
-def _append_note(existing, note):
-    stamp = timezone.localtime().strftime("%Y-%m-%d %H:%M")
-    line = "[{}] {}".format(stamp, note)
-    return "{}\n{}".format(existing, line).strip()
 
 
 def apply_billing_result(gateway_payment, billing):
@@ -322,19 +310,28 @@ def reconcile_settlements():
     return settled
 
 
+def _broker_configured():
+    return bool(settings.CELERY_BROKER_URL) or settings.CELERY_TASK_ALWAYS_EAGER
+
+
 def _send_payment_emails_after_commit(payment_ids):
+    """Queued (one task per invoice, retried) when a broker is configured;
+    otherwise (e.g. staging without Redis) sent directly."""
     if not payment_ids:
         return
     from .tasks import send_payment_completed_email_task
 
-    def enqueue():
+    def send():
         for payment_id in payment_ids:
             try:
-                send_payment_completed_email_task.delay(payment_id)
+                if _broker_configured():
+                    send_payment_completed_email_task.delay(payment_id)
+                else:
+                    send_payment_completed_email_task(payment_id)  # runs in this process
             except Exception:
-                logger.exception("Could not queue payment email for payment %s", payment_id)
+                logger.exception("Could not send payment email for payment %s", payment_id)
 
-    transaction.on_commit(enqueue)
+    transaction.on_commit(send)
 
 
 def mark_gateway_payment_failed(gateway_payment_id):
@@ -375,13 +372,32 @@ def expire_gateway_payment(gateway_payment_id, now=None):
     return mark_gateway_payment_expired(gateway_payment.pk)
 
 
+def expire_if_overdue(checkout):
+    """Fallback when the expiry job did not run (no broker, or the job was
+    lost): expire an overdue pending checkout on read. Returns the checkout
+    that still locks its invoices, or None."""
+    if (
+        checkout is None
+        or checkout.status != GatewayPayment.Status.PENDING
+        or timezone.now() < expiry_check_time(checkout)
+    ):
+        return checkout
+    try:
+        checkout = expire_gateway_payment(checkout.pk)
+    except provider_errors.PaymentAggregatorError:
+        logger.exception("Overdue checkout %s could not be checked", checkout.payment_no)
+        return checkout
+    return checkout if checkout.status in (GatewayPayment.Status.PENDING, GatewayPayment.Status.PAID) else None
+
+
 def schedule_gateway_payment_expiry(gateway_payment):
     """Queue the expiry job for after the payment window (after commit).
 
     Never fails the caller: without a broker (e.g. staging without Redis) or
-    when publishing fails, the provider's expiry webhook still applies.
+    when publishing fails, expire_if_overdue() expires the checkout the next
+    time its invoices are read.
     """
-    if not settings.CELERY_BROKER_URL and not settings.CELERY_TASK_ALWAYS_EAGER:
+    if not _broker_configured():
         logger.warning(
             "No Celery broker configured; expiry job for %s not queued",
             gateway_payment.payment_no,
@@ -475,7 +491,7 @@ def get_invoice_payability(invoice):
         return InvoicePayability(invoice, NotPayableReason.MANUAL_PAYMENT_SUBMITTED)
     if invoice.status not in PAYABLE_INVOICE_STATUSES:
         return InvoicePayability(invoice, NotPayableReason.INVOICE_PAID)
-    checkout = get_active_checkout_for_invoice(invoice.pk)
+    checkout = expire_if_overdue(get_active_checkout_for_invoice(invoice.pk))
     if checkout is not None:
         return InvoicePayability(invoice, NotPayableReason.INVOICE_LOCKED, checkout)
     if not invoice.class_student.class_obj.branch.is_payment_gateway_enabled:
@@ -630,7 +646,7 @@ def _create_provider_billing(gateway_payment, guardian, payer_phone, quote):
     except provider_errors.PaymentAggregatorError:
         logger.exception("Billing %s could not be created", gateway_payment.payment_no)
         mark_gateway_payment_failed(gateway_payment.pk)
-        raise errors.ProviderUnavailable(gateway_payment_id=gateway_payment.pk)
+        raise ProviderUnavailable(gateway_payment_id=gateway_payment.pk)
 
     with transaction.atomic():
         GatewayPayment.objects.filter(pk=gateway_payment.pk).update(

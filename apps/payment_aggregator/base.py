@@ -58,9 +58,8 @@ class Channel:
 
 @dataclass(frozen=True)
 class WithdrawalRules:
+    # Deducted from the withdrawn amount (no min/max amount).
     fee: Decimal
-    min_amount: Decimal
-    max_amount: Decimal
 
 
 # --- Calculation results --------------------------------------------------
@@ -78,9 +77,9 @@ class FeeBreakdown:
 
 @dataclass(frozen=True)
 class WithdrawalBreakdown:
-    amount: Decimal  # debited from the branch balance
-    fee: Decimal
-    transfer_amount: Decimal  # sent to the bank account = amount - fee
+    amount: Decimal  # debited from the branch balance and sent to the provider
+    fee: Decimal  # deducted by the provider
+    transfer_amount: Decimal  # received by the bank account = amount - fee
 
 
 # --- Provider requests / results ------------------------------------------
@@ -136,6 +135,7 @@ class TransferResult:
     provider_transfer_id: str
     status: str
     provider_status_code: str = ""
+    provider_message: str = ""
     needs_review: bool = False
     amount_requested: Optional[Decimal] = None
     fee: Optional[Decimal] = None

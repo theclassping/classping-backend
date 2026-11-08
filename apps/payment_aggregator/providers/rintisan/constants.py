@@ -29,12 +29,10 @@ MDR_TOKOPEDIA_CC = Decimal("1.75")
 MDR_TOKOPEDIA_NON_CC = Decimal("0.5")
 MDR_BLIBLI_CC = Decimal("1.75")
 
-# Rintisan's own fee per disbursement (incl. bank validator).
+# Rintisan fee per disbursement (incl. bank validator), borne by the school.
+# Rintisan deducts it from the sent amount: withdraw 100.000 -> the bank
+# account receives 97.500. There is no min/max disbursement amount.
 DISBURSEMENT_FEE = Decimal("2500")
-
-# Fee Classping charges the branch per withdrawal, deducted from the
-# withdrawn amount. Covers DISBURSEMENT_FEE.
-WITHDRAWAL_FEE = Decimal("2500")
 
 # --- Pay-in channels ------------------------------------------------------
 # QRIS is intentionally not offered (BI forbids charging QRIS MDR to the payer).
@@ -138,16 +136,7 @@ PAYER_PHONE_PATTERN = r"^62[1-9][0-9]{6,20}$"
 # 60-minute window. The VA stays payable at Rintisan until the end of
 # deadline_date; such late payments are handled by mark_gateway_payment_paid.
 
-# --- Payout limits --------------------------------------------------------
-
-# Per-disbursement limits from Rintisan (apply to the transferred amount).
-DISBURSEMENT_MIN_AMOUNT = Decimal("20000")
-DISBURSEMENT_MAX_AMOUNT = Decimal("250000000")
-
-# Limits on the amount the branch withdraws (before WITHDRAWAL_FEE is
-# deducted), so that transfer_amount stays within the disbursement limits.
-WITHDRAWAL_MIN_AMOUNT = DISBURSEMENT_MIN_AMOUNT + WITHDRAWAL_FEE  # 22.500
-WITHDRAWAL_MAX_AMOUNT = DISBURSEMENT_MAX_AMOUNT + WITHDRAWAL_FEE  # 250.002.500
+# --- Payout ---------------------------------------------------------------
 
 # Bank codes accepted for payout accounts (banks only; Rintisan e-wallet codes
 # GOPAY/OVO/DANA/SHOPEEPAY/LINKAJA are intentionally excluded).
@@ -209,8 +198,6 @@ MESSAGE_INSUFFICIENT_BALANCE = "insufficient balance"
 MESSAGE_DUPLICATE_REFERENCE = "duplicate reference id"
 MESSAGE_INVALID_ACCOUNT = "invalid account number"
 MESSAGE_INVALID_BANK = "invalid bank code"
-MESSAGE_MIN_AMOUNT = "minimum disbursement amount"
-MESSAGE_MAX_AMOUNT = "maximum disbursement amount"
 MESSAGE_TRANSACTION_NOT_FOUND = "transaction not found"
 MESSAGE_DISBURSEMENT_NOT_FOUND = "disbursement not found"
 

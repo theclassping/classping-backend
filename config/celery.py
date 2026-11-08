@@ -36,4 +36,8 @@ app.conf.beat_schedule = {
         "task": "apps.payment_gateway.tasks.reconcile_settlements_task",
         "schedule": crontab(minute=15),  # hourly
     },
+    "poll_processing_withdrawals": {
+        "task": "apps.wallets.tasks.poll_processing_withdrawals_task",
+        "schedule": crontab(minute="*/5"),
+    },
 }

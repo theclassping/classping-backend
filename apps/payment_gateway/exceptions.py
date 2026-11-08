@@ -68,12 +68,6 @@ class IdempotencyKeyReused(CodedAPIException):
     default_detail = "This Idempotency-Key was used for a different checkout."
 
 
-class ProviderUnavailable(CodedAPIException):
-    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
-    error_code = "PROVIDER_UNAVAILABLE"
-    default_detail = "Payment provider is unavailable, please try again."
-
-
 class ProviderRejected(CodedAPIException):
     status_code = status.HTTP_400_BAD_REQUEST
     error_code = "PROVIDER_REJECTED"

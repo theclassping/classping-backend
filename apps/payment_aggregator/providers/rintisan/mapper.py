@@ -27,7 +27,6 @@ from apps.payment_aggregator.exceptions import (
     InvalidPayerPhone,
     ProviderRejected,
     ProviderUnavailable,
-    TransferAmountOutOfRange,
     TransferNotFound,
 )
 from apps.payment_aggregator.providers.rintisan import constants as c
@@ -83,6 +82,11 @@ def _status_code(body):
     if isinstance(status, dict) and status.get("code") is not None:
         return str(status.get("code"))
     return ""
+
+
+def _status_message(body):
+    status = body.get("status")
+    return str(status.get("message") or "") if isinstance(status, dict) else ""
 
 
 # --- pay-in ---------------------------------------------------------------
@@ -199,10 +203,6 @@ def raise_for_transfer_response(body):
         raise InvalidDestinationAccount(
             "Destination account rejected", provider_message=message, raw=body
         )
-    if c.MESSAGE_MIN_AMOUNT in lowered or c.MESSAGE_MAX_AMOUNT in lowered:
-        raise TransferAmountOutOfRange(
-            "Transfer amount out of range", provider_message=message, raw=body
-        )
     raise ProviderRejected("Rintisan rejected the transfer", provider_message=message, raw=body)
 
 
@@ -245,6 +245,7 @@ def transfer_result(body, reference_no=""):
         provider_transfer_id=str(body.get("disbursement_id") or ""),
         status=status,
         provider_status_code=status_code,
+        provider_message=_status_message(body),
         needs_review=needs_review,
         amount_requested=to_decimal(body.get("amount_request")),
         fee=to_decimal(body.get("disburse_fee")),

@@ -24,7 +24,7 @@ from apps.classes.models import ClassStudent
 from . import services
 from .models import GatewayPayment
 from .tasks import expire_gateway_payment_task
-from .tests import GatewayFixtureMixin, make_parent
+from .tests import GatewayFixtureMixin, NoMailjetMixin
 
 CREATE_BILLING = "apps.payment_gateway.services.PaymentAggregator.create_billing"
 GET_STATUS = "apps.payment_gateway.services.PaymentAggregator.get_billing_status"
@@ -395,7 +395,7 @@ class GatewayPaymentApiTests(CheckoutFixtureMixin, TestCase):
 # --- Concurrency ------------------------------------------------------------
 
 
-class CheckoutRaceTests(CheckoutFixtureMixin, TransactionTestCase):
+class CheckoutRaceTests(NoMailjetMixin, CheckoutFixtureMixin, TransactionTestCase):
     def test_two_checkouts_for_the_same_invoice(self):
         self.second_guardian.phone_number = "081298765432"
         self.second_guardian.save(update_fields=["phone_number"])

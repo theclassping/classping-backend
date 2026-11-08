@@ -5,7 +5,7 @@ from decimal import Decimal
 from unittest import mock
 
 from django.db import connection
-from django.test import TestCase, TransactionTestCase
+from django.test import TestCase, TransactionTestCase, override_settings
 from django.urls import reverse
 from rest_framework.test import APIClient
 
@@ -22,6 +22,7 @@ from . import services
 from .models import GatewayPayment
 from .tasks import send_payment_completed_email_task
 from .test_checkout import CheckoutFixtureMixin
+from .tests import NoMailjetMixin
 
 WEBHOOK_URL = "/api/webhooks/rintisan/payment/"
 EMAIL_TASK = "apps.payment_gateway.tasks.send_payment_completed_email_task.delay"
@@ -281,6 +282,14 @@ class SettlementRulesTests(PaymentFlowMixin, TestCase):
         self.assertEqual(checkout.status, GatewayPayment.Status.EXPIRED)
         self.assertFalse(checkout.items.filter(is_active=True).exists())
 
+    @override_settings(CELERY_BROKER_URL="", CELERY_TASK_ALWAYS_EAGER=False)
+    def test_without_broker_emails_are_sent_directly(self):
+        with mock.patch(EMAIL_TASK) as queue, mock.patch("apps.payments.notifications.Mailer") as mailer:
+            with self.captureOnCommitCallbacks(execute=True):
+                services.mark_gateway_payment_paid(self.checkout_row.pk)
+        queue.assert_not_called()
+        self.assertEqual(mailer.return_value.send_template.call_count, 2)  # one per invoice
+
     def test_email_task_uses_shared_notification(self):
         services.mark_gateway_payment_paid(self.checkout_row.pk)
         payment = Payment.objects.filter(gateway_payment=self.checkout_row).first()
@@ -353,7 +362,7 @@ class GatewayAdminWebTests(PaymentFlowMixin, TestCase):
         self.assertNotEqual(response.status_code, 200)
 
 
-class PaymentRaceTests(PaymentFlowMixin, TransactionTestCase):
+class PaymentRaceTests(NoMailjetMixin, PaymentFlowMixin, TransactionTestCase):
     def run_together(self, *functions):
         barrier = threading.Barrier(len(functions))
         errors = []

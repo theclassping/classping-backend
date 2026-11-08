@@ -9,6 +9,7 @@ from apps.classes.models import Class, ClassTeacher
 from apps.fee_types.models import FeeType, FeeTypeClass
 from apps.guardians.models import Guardian
 from apps.locations.models import Location
+from apps.payment_aggregator import PaymentAggregator
 from apps.payment_gateway.selectors import locked_invoice_ids
 from apps.payments.exceptions import InvoiceLocked
 from apps.payments.models import Payment, PaymentProof
@@ -20,6 +21,7 @@ from apps.students.models import Student, StudentGuardian
 from apps.staffs.models import Staff
 from apps.users.models import User
 from apps.users.managers import generate_temporary_password
+from apps.wallets.models import PayoutAccount
 from apps.admin_web.media import process_uploaded_image
 
 
@@ -635,3 +637,29 @@ class GuardianForm(SearchableImageUploadMixin, forms.ModelForm):
         else:
             eligible_users = eligible_users.filter(guardian__isnull=True)
         self.fields["user"].queryset = eligible_users.order_by("email")
+
+
+class PayoutAccountForm(forms.ModelForm):
+    """Edit a branch payout account (accounts are created by withdrawals)."""
+
+    bank_code = forms.ChoiceField(label="Bank")
+    account_number = forms.RegexField(regex=r"^[0-9]{5,30}$", max_length=30)
+
+    class Meta:
+        model = PayoutAccount
+        fields = ["bank_code", "account_number", "account_holder_name"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["bank_code"].choices = sorted(PaymentAggregator.get_banks().items(), key=lambda item: item[1])
+
+    def clean(self):
+        cleaned_data = super().clean()
+        duplicate = PayoutAccount.objects.filter(
+            branch_id=self.instance.branch_id,
+            bank_code=cleaned_data.get("bank_code"),
+            account_number=cleaned_data.get("account_number"),
+        ).exclude(pk=self.instance.pk)
+        if duplicate.exists():
+            raise ValidationError("This branch already has this bank account.")
+        return cleaned_data
