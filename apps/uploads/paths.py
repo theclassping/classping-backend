@@ -212,17 +212,23 @@ def check_media_location(instance, key: str) -> None:
         raise MediaLocationMismatch()
 
 
-def media_key_for_instance(instance, extension: str = "") -> Optional[str]:
+def instance_media_location(instance) -> Optional[MediaLocation]:
     """
-    Build a key for a server-side upload (admin web) onto instance, or None
-    when the record can't name its branch yet.
+    Where a server-side upload (admin web) onto instance belongs, or None
+    while the record can't name its branch (a school without branches, a
+    guardian without children, a student without a branch or class).
     """
     try:
         expected = expected_location(instance)
     except ObjectDoesNotExist:
-        # Parent record not linked yet; fall back to a legacy key.
+        # Parent record not linked yet.
         return None
     if expected is None or not expected.branch_ids:
         return None
-    location =MediaLocation(min(expected.branch_ids), expected.class_id, expected.category)
-    return build_key_for_location(location, extension)
+    return MediaLocation(min(expected.branch_ids), expected.class_id, expected.category)
+
+
+def media_key_for_instance(instance, extension: str = "") -> Optional[str]:
+    """Build a key for a server-side upload onto instance, or None if it has no branch yet."""
+    location = instance_media_location(instance)
+    return build_key_for_location(location, extension) if location else None

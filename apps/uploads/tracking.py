@@ -15,13 +15,13 @@ from apps.uploads.paths import MediaLocation, expected_location, parse_media_key
 logger = logging.getLogger(__name__)
 
 
-def record_presigned(file_key: str, location: Optional[MediaLocation], size: int, content_type: str, user_id) -> None:
+def record_presigned(file_key: str, location: MediaLocation, size: int, content_type: str, user_id) -> None:
     """A presigned upload counts against its branch from the moment it is signed."""
     MediaObject.objects.create(
         file_key=file_key,
-        branch_id=location.branch_id if location else None,
-        class_obj_id=location.class_id if location else None,
-        category=location.category if location else "",
+        branch_id=location.branch_id,
+        class_obj_id=location.class_id,
+        category=location.category,
         size_bytes=size,
         content_type=content_type,
         status=MediaObject.Status.PENDING,

@@ -51,14 +51,13 @@ class PresignUrlView(APIView):
     branch_{id}/class_{id}/{category}/... or branch_{id}/{category}/...
     For student/guardian/general, the branch is branch_id if sent, else the
     uploader's staff branch, else the only branch they can see.
-    Without purpose, the legacy {yyyy}/{mm}/{dd}/... key is used.
 
     The client must PUT the file to presigned_url with exactly this
     Content-Type header and byte size, or the upload is rejected.
     
     Response:
     {
-        "file_key": "2025/01/15/abc123def456.png",
+        "file_key": "branch_3/class_12/activities/abc123def456.png",
         "presigned_url": "https://...",
         "expires_in": 3600,
         "content_type": "image/png"
@@ -72,19 +71,17 @@ class PresignUrlView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
         data = serializer.validated_data
-        location = None
-        if data.get('purpose'):
-            try:
-                location = resolve_upload_location(
-                    request.user,
-                    data['purpose'],
-                    class_id=data.get('class_id'),
-                    branch_id=data.get('branch_id'),
-                )
-            except UploadTargetNotFound as error:
-                return Response({'error': str(error)}, status=status.HTTP_404_NOT_FOUND)
-            except MediaInputError as error:
-                return Response({'error': str(error)}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            location = resolve_upload_location(
+                request.user,
+                data['purpose'],
+                class_id=data.get('class_id'),
+                branch_id=data.get('branch_id'),
+            )
+        except UploadTargetNotFound as error:
+            return Response({'error': str(error)}, status=status.HTTP_404_NOT_FOUND)
+        except MediaInputError as error:
+            return Response({'error': str(error)}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             result = MediaService.generate_presign_url(
@@ -92,8 +89,8 @@ class PresignUrlView(APIView):
                 content_type=data['content_type'],
                 size=data['size'],
                 user_id=request.user.pk,
-                expires_in=data.get('expires_in', 3600),
                 location=location,
+                expires_in=data.get('expires_in', 3600),
             )
             
             response_serializer = PresignUrlResponseSerializer(result)

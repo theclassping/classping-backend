@@ -11,6 +11,7 @@ from unittest.mock import patch
 from apps.users.models import User
 from apps.students.models import Student
 
+from apps.uploads.paths import MediaLocation
 from apps.uploads.storage import LocalStorage, make_upload_token
 
 
@@ -60,25 +61,38 @@ class MediaApiTests(TestCase):
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
 
+    @patch("apps.uploads.views.resolve_upload_location")
     @patch("apps.uploads.views.MediaService.generate_presign_url")
-    def test_presign_success(self, generate):
+    def test_presign_success(self, generate, resolve):
+        location = MediaLocation(3, None, "general")
+        resolve.return_value = location
         generate.return_value = {
-            "file_key": "2026/10/photo.jpg",
-            "presigned_url": "http://testserver/api/media/upload/2026/10/photo.jpg?method=PUT",
+            "file_key": "branch_3/general/photo.jpg",
+            "presigned_url": "http://testserver/api/media/upload/branch_3/general/photo.jpg?method=PUT",
             "expires_in": 3600,
             "content_type": "image/jpeg",
         }
         response = self.client.post(
             "/api/media/presign/",
-            {"filename": "photo.jpg", "content_type": "image/jpeg", "size": 1234},
+            {"filename": "photo.jpg", "content_type": "image/jpeg", "size": 1234, "purpose": "general", "branch_id": 3},
             format="json",
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["content_type"], "image/jpeg")
+        resolve.assert_called_once_with(self.user, "general", class_id=None, branch_id=3)
         generate.assert_called_once_with(
             filename="photo.jpg", content_type="image/jpeg", size=1234,
-            user_id=self.user.pk, expires_in=3600, location=None,
+            user_id=self.user.pk, location=location, expires_in=3600,
         )
+
+    def test_presign_requires_purpose(self):
+        response = self.client.post(
+            "/api/media/presign/",
+            {"filename": "photo.jpg", "content_type": "image/jpeg", "size": 1234},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("purpose", response.data)
 
     def test_presign_rejects_invalid_expiration(self):
         response = self.client.post(
@@ -118,11 +132,13 @@ class MediaApiTests(TestCase):
     def test_presign_key_extension_comes_from_content_type(self):
         from apps.uploads.services.media import MediaService
         with override_settings(SITE_URL="http://testserver"), \
-                patch.object(MediaService, "_redis", return_value=None):
+                patch.object(MediaService, "_redis", return_value=None), \
+                patch("apps.uploads.tracking.record_presigned"):
             result = MediaService.generate_presign_url(
                 "evil.html", "image/png", size=10, user_id=self.user.pk,
+                location=MediaLocation(3, None, "general"),
             )
-        self.assertTrue(result["file_key"].endswith(".png"))
+        self.assertRegex(result["file_key"], r"^branch_3/general/[0-9a-f]{32}\.png$")
         MediaService._pending_uploads.pop(result["file_key"], None)
 
     def test_upload_without_signed_token_is_rejected(self):
@@ -457,6 +473,7 @@ class ImageOwnershipTests(TestCase):
 
 
 @override_settings(STORAGE_TYPE="r2")
+@patch("apps.admin_web.media.media_key_for_instance", lambda instance, ext: f"branch_3/general/abc{ext}")
 class AdminWebImageUploadTests(SimpleTestCase):
     def upload(self, name, size, fmt, content_type, noise=True):
         import io
@@ -474,13 +491,13 @@ class AdminWebImageUploadTests(SimpleTestCase):
         storage.return_value.bucket_name = "bucket"
         storage.return_value.client.put_object.side_effect = lambda **kw: stored.update(kw, body=kw["Body"].read())
 
-        metadata = process_uploaded_image(self.upload("photo.png", (2400, 1200), "PNG", "image/png"))
+        metadata = process_uploaded_image(self.upload("photo.png", (2400, 1200), "PNG", "image/png"), object())
 
         self.assertEqual((metadata["width"], metadata["height"]), (1600, 800))
         self.assertEqual(metadata["filename"], "photo.jpg")
         self.assertEqual(metadata["content_type"], "image/jpeg")
         self.assertEqual(metadata["size"], len(stored["body"]))
-        self.assertTrue(stored["Key"].endswith(".jpg"))
+        self.assertEqual(stored["Key"], "branch_3/general/abc.jpg")
         self.assertEqual(stored["ContentType"], "image/jpeg")
         storage.return_value.client.get_object.assert_not_called()
         storage.return_value.client.head_object.assert_not_called()
@@ -491,7 +508,7 @@ class AdminWebImageUploadTests(SimpleTestCase):
         storage.return_value.bucket_name = "bucket"
         upload = self.upload("logo.png", (200, 100), "PNG", "image/png", noise=False)
 
-        metadata = process_uploaded_image(upload)
+        metadata = process_uploaded_image(upload, object())
 
         self.assertEqual((metadata["width"], metadata["height"]), (200, 100))
         self.assertEqual(metadata["filename"], "logo.png")
@@ -614,7 +631,9 @@ class RedisClientTests(SimpleTestCase):
         with patch.object(self.MediaService, "_redis", return_value=self.down_client()), \
                 override_settings(SITE_URL="http://testserver"):
             with self.assertRaises(UploadStoreUnavailable):
-                self.MediaService.generate_presign_url("a.jpg", "image/jpeg", size=10, user_id=1)
+                self.MediaService.generate_presign_url(
+                    "a.jpg", "image/jpeg", size=10, user_id=1, location=MediaLocation(3, None, "general"),
+                )
         self.assertEqual(self.MediaService._pending_uploads, {})
 
     def test_attach_returns_503_when_redis_is_down(self):
@@ -637,10 +656,11 @@ class PresignRedisOutageTests(TestCase):
         client.force_authenticate(user=user)
         down = mock.Mock()
         down.pipeline.return_value.execute.side_effect = redis.ConnectionError("down")
-        with patch.object(MediaService, "_redis", return_value=down):
+        with patch.object(MediaService, "_redis", return_value=down), \
+                patch("apps.uploads.views.resolve_upload_location", return_value=MediaLocation(3, None, "general")):
             response = client.post(
                 "/api/media/presign/",
-                {"filename": "a.jpg", "content_type": "image/jpeg", "size": 10},
+                {"filename": "a.jpg", "content_type": "image/jpeg", "size": 10, "purpose": "general"},
                 format="json",
             )
         self.assertEqual(response.status_code, 503)

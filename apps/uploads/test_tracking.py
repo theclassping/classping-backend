@@ -190,3 +190,102 @@ class BackfillTests(TrackingTestCase):
             self.run_backfill("--fetch-missing-sizes")
         get_size.assert_called_once_with("2026/01/01/logo.png")
         self.assertEqual(self.row("2026/01/01/logo.png").size_bytes, 1234)
+
+
+class ReconcileTests(TrackingTestCase):
+    """--reconcile compares each branch_{id}/ folder with media_objects."""
+
+    def setUp(self):
+        super().setUp()
+        from tempfile import TemporaryDirectory
+        tmp = TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.media_root = tmp.name
+        override = override_settings(STORAGE_TYPE="local", MEDIA_ROOT=self.media_root)
+        override.enable()
+        self.addCleanup(override.disable)
+        StorageFactory.reset()
+        self.addCleanup(StorageFactory.reset)
+
+    def store(self, key, size=10, age=timedelta(days=1)):
+        import os
+        path = os.path.join(self.media_root, key)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "wb") as handle:
+            handle.write(b"x" * size)
+        stamp = (timezone.now() - age).timestamp()
+        os.utime(path, (stamp, stamp))
+        return path
+
+    def reconcile(self, *args):
+        out = StringIO()
+        call_command("cleanup_orphaned_uploads", "--reconcile", *args, stdout=out)
+        return out.getvalue()
+
+    def test_lists_branch_folder(self):
+        self.store(f"branch_{self.branch_a.pk}/students/a.jpg", size=7)
+        self.store(f"branch_{self.branch_a.pk}/class_{self.class_a.pk}/activities/b.jpg", size=9)
+        self.store(f"branch_{self.branch_b.pk}/students/c.jpg")
+        listed = sorted((o.key, o.size) for o in StorageFactory.get_storage().list_objects(f"branch_{self.branch_a.pk}/"))
+        self.assertEqual(listed, [
+            (f"branch_{self.branch_a.pk}/class_{self.class_a.pk}/activities/b.jpg", 9),
+            (f"branch_{self.branch_a.pk}/students/a.jpg", 7),
+        ])
+
+    def test_unreferenced_untracked_file_is_deleted(self):
+        import os
+        path = self.store(f"branch_{self.branch_a.pk}/students/orphan.jpg", size=40)
+        output = self.reconcile()
+        self.assertFalse(os.path.exists(path))
+        row = self.row(f"branch_{self.branch_a.pk}/students/orphan.jpg")
+        self.assertEqual((row.status, row.size_bytes, row.branch_id), (Status.DELETED, 40, self.branch_a.pk))
+        self.assertIn("1 orphan(s) deleted", output)
+
+    def test_recent_untracked_file_is_left_alone(self):
+        import os
+        path = self.store(f"branch_{self.branch_a.pk}/students/new.jpg", age=timedelta(minutes=1))
+        self.reconcile()
+        self.assertTrue(os.path.exists(path))
+        self.assertFalse(MediaObject.objects.exists())
+
+    def test_referenced_untracked_file_is_adopted(self):
+        key = self.class_key()
+        ActivityImage.objects.create(activity=self.activity, image_data={"id": key})
+        MediaObject.objects.all().delete()
+        self.store(key, size=55)
+        self.reconcile()
+        row = self.row(key)
+        self.assertEqual(
+            (row.status, row.size_bytes, row.branch_id, row.class_obj_id, row.category),
+            (Status.ATTACHED, 55, self.branch_a.pk, self.class_a.pk, "activities"),
+        )
+
+    def test_tracked_size_is_corrected_and_missing_reported(self):
+        key = self.class_key()
+        ActivityImage.objects.create(activity=self.activity, image_data={"id": key, "size": 1})
+        self.store(key, size=99)
+        gone = self.class_key()
+        ActivityImage.objects.create(activity=self.activity, image_data={"id": gone, "size": 5})
+        with self.assertLogs("apps.uploads.management.commands.cleanup_orphaned_uploads", "WARNING"):
+            output = self.reconcile()
+        self.assertEqual(self.row(key).size_bytes, 99)
+        self.assertEqual(self.row(gone).status, Status.ATTACHED)
+        self.assertIn("1 size(s) corrected, 1 tracked file(s) missing", output)
+
+    def test_dry_run_and_branch_filter_change_nothing_elsewhere(self):
+        import os
+        a = self.store(f"branch_{self.branch_a.pk}/students/a.jpg")
+        b = self.store(f"branch_{self.branch_b.pk}/students/b.jpg")
+        output = self.reconcile("--dry-run")
+        self.assertIn("Would reconcile: 0 untracked file(s) adopted, 2 orphan(s) deleted", output)
+        self.assertTrue(os.path.exists(a) and os.path.exists(b))
+        self.assertFalse(MediaObject.objects.exists())
+
+        self.reconcile("--branch", str(self.branch_b.pk))
+        self.assertTrue(os.path.exists(a))
+        self.assertFalse(os.path.exists(b))
+
+    def test_branch_and_dry_run_need_reconcile(self):
+        from django.core.management.base import CommandError
+        with self.assertRaises(CommandError):
+            call_command("cleanup_orphaned_uploads", "--dry-run", stdout=StringIO())

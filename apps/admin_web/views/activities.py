@@ -61,7 +61,9 @@ def activity_form(request, pk=None):
     image_formset = ActivityImageFormSet(
         request.POST or None,
         request.FILES or None,
-        instance=activity,
+        # form.instance, not activity: images on a new activity need its class
+        # (and so its class folder) once the activity form is validated.
+        instance=form.instance,
         prefix="images",
     )
     if (

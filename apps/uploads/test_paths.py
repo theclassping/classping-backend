@@ -184,10 +184,10 @@ class PresignLocationTests(BranchFixture, TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.data["file_key"].startswith(f"branch_{self.branch_a.pk}/guardians/"))
 
-    def test_without_purpose_the_legacy_key_is_used(self):
+    def test_purpose_is_required(self):
         response = self.presign(self.admin)
-        self.assertEqual(response.status_code, 200)
-        self.assertRegex(response.data["file_key"], r"^\d{4}/\d{2}/\d{2}/[0-9a-f]{32}\.jpg$")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("purpose", response.data)
 
     def test_unknown_purpose_rejected(self):
         self.assertEqual(self.presign(self.admin, purpose="documents").status_code, 400)
@@ -292,3 +292,35 @@ class AttachLocationTests(BranchFixture, TestCase):
         self.assertIsNone(media_key_for_instance(AssessmentImage(), ".jpg"))
         # The generated key passes the attach check.
         check_media_location(image, media_key_for_instance(image, ".jpg"))
+
+
+class AdminWebNoBranchTests(BranchFixture, TestCase):
+    """Admin web stores images only under a branch folder."""
+
+    def setUp(self):
+        self.make_fixture()
+
+    def form(self, instance=None):
+        from apps.admin_web.forms import SchoolForm
+        from apps.admin_web.tests import make_png_upload
+        return SchoolForm(
+            data={"name": "New School", "register_number": "NEW-001", "is_active": "on"},
+            files={"image_file": make_png_upload("logo.png")},
+            instance=instance,
+        )
+
+    def test_school_without_branch_cannot_take_a_logo(self):
+        form = self.form()
+        self.assertFalse(form.is_valid())
+        self.assertIn("linked to a branch", str(form.errors["image_file"]))
+
+    @override_settings(STORAGE_TYPE="local")
+    def test_school_with_branch_stores_logo_in_its_general_folder(self):
+        from tempfile import TemporaryDirectory
+        StorageFactory.reset()
+        self.addCleanup(StorageFactory.reset)
+        with TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
+            form = self.form(instance=self.school)
+            self.assertTrue(form.is_valid(), form.errors)
+            school = form.save()
+        self.assertRegex(school.image_data["id"], rf"^branch_{min(self.branch_a.pk, self.branch_b.pk)}/general/")

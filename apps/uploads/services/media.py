@@ -18,7 +18,7 @@ from django.conf import settings
 from django.core.cache import cache
 
 from apps.uploads.paths import MediaLocation, build_key_for_location
-from apps.uploads.storage import get_storage, generate_file_key, validate_file_key
+from apps.uploads.storage import get_storage, validate_file_key
 
 logger = logging.getLogger(__name__)
 
@@ -121,8 +121,8 @@ class MediaService:
         content_type: str,
         size: int,
         user_id: Any,
+        location: MediaLocation,
         expires_in: int = 3600,
-        location: Optional[MediaLocation] = None,
     ) -> Dict[str, Any]:
         """
         Generate a presigned URL for client to upload file.
@@ -133,7 +133,7 @@ class MediaService:
 
         Returns:
             {
-                "file_key": "2025/01/15/abc123def456.jpg",
+                "file_key": "branch_3/class_12/activities/abc123def456.jpg",
                 "presigned_url": "https://...",
                 "expires_in": 3600,
                 "content_type": "image/jpeg"
@@ -145,11 +145,7 @@ class MediaService:
 
         storage = get_storage()
         extension = ALLOWED_IMAGE_TYPES[content_type]
-        if location is not None:
-            file_key = build_key_for_location(location, extension)
-        else:
-            # Legacy date-based key for clients that don't send a purpose yet.
-            file_key = generate_file_key(filename, extension=extension)
+        file_key = build_key_for_location(location, extension)
 
         # The pending entry is what lets the user attach the file, so the URL
         # must not outlive it.
@@ -168,14 +164,11 @@ class MediaService:
             'user_id': str(user_id),
             'file_key': file_key,
             'created_at': datetime.now().isoformat(),
-            'status': 'pending'
+            'status': 'pending',
+            'branch_id': location.branch_id,
+            'class_id': location.class_id,
+            'category': location.category,
         }
-        if location is not None:
-            upload_info.update(
-                branch_id=location.branch_id,
-                class_id=location.class_id,
-                category=location.category,
-            )
         if cls._redis():
             def save_pending(client):
                 # MULTI/EXEC: the metadata and the cleanup entry are written
@@ -525,7 +518,7 @@ class MediaService:
         file_path: str,
         filename: str,
         content_type: Optional[str],
-        object_key: Optional[str] = None,
+        object_key: str,
     ) -> Dict[str, Any]:
         """
         Copy a server-side file into local media storage.
@@ -538,7 +531,7 @@ class MediaService:
         file_size = os.path.getsize(file_path)
         cls._check_file_size(file_size)
 
-        object_key = validate_file_key(object_key) if object_key else generate_file_key(filename)
+        object_key = validate_file_key(object_key)
         dest_path = os.path.join(settings.MEDIA_ROOT, object_key)
         os.makedirs(os.path.dirname(dest_path), exist_ok=True)
         shutil.copy2(file_path, dest_path)

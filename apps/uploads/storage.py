@@ -4,11 +4,12 @@ Supports both local storage and Cloudflare R2.
 """
 import os
 import time
-import uuid
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import PurePosixPath
 from urllib.parse import quote
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Iterator
 import boto3
 from django.conf import settings
 from django.core import signing
@@ -73,6 +74,18 @@ def is_valid_upload_token(token: Optional[str], file_key: str) -> bool:
     return read_upload_token(token, file_key) is not None
 
 
+@dataclass(frozen=True)
+class StoredObject:
+    key: str
+    size: int
+    last_modified: datetime  # timezone-aware
+
+
+def validate_prefix(prefix: str) -> str:
+    """A folder prefix such as "branch_3/"; same traversal rules as a key."""
+    return validate_file_key(prefix) + "/"
+
+
 class StorageBackend(ABC):
     """Abstract base class for storage backends."""
     
@@ -113,6 +126,11 @@ class StorageBackend(ABC):
         expires_in: int = 3600,
     ) -> str:
         """Generate a presigned URL for downloading/viewing a file."""
+        pass
+
+    @abstractmethod
+    def list_objects(self, prefix: str) -> Iterator[StoredObject]:
+        """Every object whose key starts with the folder prefix (e.g. "branch_3/")."""
         pass
 
 
@@ -170,6 +188,12 @@ class R2Storage(StorageBackend):
 
     def delete_object(self, file_key: str) -> None:
         self.client.delete_object(Bucket=self.bucket_name, Key=validate_file_key(file_key))
+
+    def list_objects(self, prefix: str) -> Iterator[StoredObject]:
+        paginator = self.client.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=self.bucket_name, Prefix=validate_prefix(prefix)):
+            for item in page.get("Contents", []):
+                yield StoredObject(item["Key"], int(item["Size"]), item["LastModified"])
 
     def generate_presigned_download_url(
         self,
@@ -245,6 +269,19 @@ class LocalStorage(StorageBackend):
             raise ValueError("Invalid file_key path")
         if os.path.isfile(file_path):
             os.remove(file_path)
+
+    def list_objects(self, prefix: str) -> Iterator[StoredObject]:
+        media_root = os.path.abspath(self.media_root)
+        folder = os.path.join(media_root, validate_prefix(prefix))
+        for directory, _, filenames in os.walk(folder):
+            for filename in filenames:
+                path = os.path.join(directory, filename)
+                stat = os.stat(path)
+                yield StoredObject(
+                    os.path.relpath(path, media_root).replace(os.sep, "/"),
+                    stat.st_size,
+                    datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc),
+                )
     
     def generate_presigned_download_url(
         self,
@@ -289,22 +326,3 @@ def get_storage() -> StorageBackend:
     """Convenience function to get storage backend."""
     return StorageFactory.get_storage()
 
-
-def generate_file_key(original_filename: str, extension: Optional[str] = None) -> str:
-    """
-    Generate a unique file key with directory structure.
-    Format: {year}/{month}/{day}/{uuid}{ext}
-
-    Pass extension to choose it from a checked content type instead of
-    trusting the extension in original_filename.
-    """
-    from datetime import datetime
-    
-    now = datetime.now()
-    
-    file_ext = extension if extension is not None else os.path.splitext(original_filename)[1]
-    unique_id = f"{uuid.uuid4().hex}"
-    
-    # Build path
-    path = f"{now.year}/{now.month:02d}/{now.day:02d}/{unique_id}{file_ext}"
-    return path

@@ -81,8 +81,7 @@ class PresignUrlSerializer(serializers.Serializer):
     size = serializers.IntegerField(min_value=1)
     expires_in = serializers.IntegerField(default=3600, min_value=60, max_value=86400)
     # What the image is for; the server picks the branch/class folder from it.
-    # Optional only while older clients still presign without it.
-    purpose = serializers.ChoiceField(choices=sorted(PURPOSE_CATEGORIES), required=False)
+    purpose = serializers.ChoiceField(choices=sorted(PURPOSE_CATEGORIES))
     class_id = serializers.IntegerField(min_value=1, required=False)
     branch_id = serializers.IntegerField(min_value=1, required=False)
 
