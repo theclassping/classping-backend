@@ -1,4 +1,52 @@
+from decimal import Decimal, InvalidOperation
+
+from django.conf import settings
+
+from apps.uploads.usage import branch_storage_report, branches_by_usage
+
 from ..views_common import *
+
+GIB = 1024 ** 3
+MAX_CAPACITY_GB = 1_000_000  # 1 PB; keeps the value well inside a bigint
+
+
+def _parse_capacity_gb(raw):
+    """Form value in GB -> (bytes or None for the default, error message or None)."""
+    raw = (raw or "").strip()
+    if not raw:
+        return None, None
+    try:
+        gigabytes = Decimal(raw)
+    except InvalidOperation:
+        return None, "Storage capacity must be a number of GB."
+    if not gigabytes.is_finite() or gigabytes <= 0:
+        return None, "Storage capacity must be greater than 0 GB."
+    if gigabytes > MAX_CAPACITY_GB:
+        return None, f"Storage capacity must be at most {MAX_CAPACITY_GB:,} GB."
+    return int(gigabytes * GIB), None
+
+
+def _capacity_gb(capacity_bytes):
+    if capacity_bytes is None:
+        return ""
+    return f"{Decimal(capacity_bytes) / GIB:.2f}".rstrip("0").rstrip(".")
+
+
+def _capacity_context(raw=""):
+    return {
+        "storage_capacity_gb": raw,
+        "default_storage_gb": _capacity_gb(settings.DEFAULT_BRANCH_STORAGE_BYTES),
+    }
+
+
+def storage_overview(request):
+    """Every branch's media storage, fullest first."""
+    branches = Branch.objects.select_related("school")
+    names = {branch.pk: branch.school.name for branch in branches}
+    rows = branches_by_usage(branches)
+    for row in rows:
+        row["school_name"] = names.get(row["branch_id"], "")
+    return render(request, "admin_web/branches/storage.html", {"rows": rows})
 
 def branch_detail(request, school_pk, pk):
     school = get_object_or_404(School, pk=school_pk)
@@ -15,7 +63,12 @@ def branch_detail(request, school_pk, pk):
     return render(
         request,
         "admin_web/schools/branch_detail.html",
-        {"school": school, "branch": branch, "location_path": location_path},
+        {
+            "school": school,
+            "branch": branch,
+            "location_path": location_path,
+            "storage": branch_storage_report(branch),
+        },
     )
 
 
@@ -72,6 +125,8 @@ def branch_create(request, school_pk):
         phone = request.POST.get("phone", "").strip()
         email = request.POST.get("email", "").strip()
         is_active = request.POST.get("is_active") == "on"
+        storage_capacity_raw = request.POST.get("storage_capacity_gb", "")
+        storage_capacity_bytes, capacity_error = _parse_capacity_gb(storage_capacity_raw)
 
         # -----------------------------------------------------
         # Get selected location
@@ -82,7 +137,7 @@ def branch_create(request, school_pk):
         #
         location_id = request.POST.get("location_id", "").strip()
 
-        errors = []
+        errors = [capacity_error] if capacity_error else []
         location = None
 
         # -----------------------------------------------------
@@ -152,6 +207,7 @@ def branch_create(request, school_pk):
                     "phone": phone,
                     "email": email,
                     "is_active": is_active,
+                    **_capacity_context(storage_capacity_raw),
                 },
             )
 
@@ -168,6 +224,7 @@ def branch_create(request, school_pk):
             email=email,
             location=location,
             is_active=is_active,
+            storage_capacity_bytes=storage_capacity_bytes,
         )
 
         # -----------------------------------------------------
@@ -190,6 +247,7 @@ def branch_create(request, school_pk):
             "school": school,
             "provinces": provinces,
             "is_active": True,
+            **_capacity_context(),
         },
     )
 
@@ -341,6 +399,13 @@ def branch_edit(request, school_pk, pk):
             request.POST.get("is_active") == "on"
         )
 
+        storage_capacity_raw = request.POST.get("storage_capacity_gb", "")
+        if storage_capacity_raw.strip() == _capacity_gb(branch.storage_capacity_bytes):
+            # Unchanged in the form: keep the exact bytes (the form shows a rounded GB value).
+            storage_capacity_bytes, capacity_error = branch.storage_capacity_bytes, None
+        else:
+            storage_capacity_bytes, capacity_error = _parse_capacity_gb(storage_capacity_raw)
+
         location_id = request.POST.get(
             "location_id",
             "",
@@ -373,7 +438,7 @@ def branch_edit(request, school_pk, pk):
             "",
         )
 
-        errors = []
+        errors = [capacity_error] if capacity_error else []
         location = None
 
         # -----------------------------------------------------
@@ -464,6 +529,8 @@ def branch_edit(request, school_pk, pk):
 
                     "location_id": location_id,
 
+                    **_capacity_context(storage_capacity_raw),
+
                     "selected_province_id":
                         selected_province_id,
 
@@ -491,6 +558,7 @@ def branch_edit(request, school_pk, pk):
         branch.email = email
         branch.location = location
         branch.is_active = is_active
+        branch.storage_capacity_bytes = storage_capacity_bytes
 
         branch.save()
 
@@ -531,6 +599,8 @@ def branch_edit(request, school_pk, pk):
             "phone": branch.phone,
             "email": branch.email,
             "is_active": branch.is_active,
+
+            **_capacity_context(_capacity_gb(branch.storage_capacity_bytes)),
 
             "location_id": (
                 branch.location_id

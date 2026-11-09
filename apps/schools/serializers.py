@@ -1,6 +1,7 @@
 import logging
 
 from rest_framework import serializers
+from rest_framework.exceptions import PermissionDenied
 
 from apps.locations.models import Location
 from apps.locations.serializers import (
@@ -33,6 +34,7 @@ class BranchSerializer(serializers.ModelSerializer):
             "phone",
             "email",
             "is_active",
+            "storage_capacity_bytes",
             "location_id",
             "location",
             "created_at",
@@ -44,6 +46,13 @@ class BranchSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         list_serializer_class = LocationPreloadListSerializer
+
+    def validate_storage_capacity_bytes(self, value):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if user is not None and not (user.is_superuser or str(user.role).upper() == "ADMIN"):
+            raise PermissionDenied("Only admins can change a branch's storage capacity.")
+        return value
 
     def get_location(self, obj):
         if not obj.location_id:

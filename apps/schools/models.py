@@ -44,6 +44,9 @@ class Branch(models.Model):
     phone = models.CharField(max_length=50, blank=True)
     email = models.EmailField(blank=True)
     is_active = models.BooleanField(default=True)
+    # Media storage this branch is expected to stay within. Null uses
+    # settings.DEFAULT_BRANCH_STORAGE_BYTES. Monitored, not enforced.
+    storage_capacity_bytes = models.PositiveBigIntegerField(null=True, blank=True)
     location = models.ForeignKey(
         Location,
         on_delete=models.PROTECT,
