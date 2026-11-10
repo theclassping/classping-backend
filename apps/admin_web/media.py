@@ -6,8 +6,14 @@ import tempfile
 from django.conf import settings
 from PIL import Image, ImageOps
 
-from apps.uploads.services.media import MediaService
-from apps.uploads.storage import get_storage, generate_file_key
+from apps.uploads.services.media import MediaInputError, MediaService
+from apps.uploads.paths import media_key_for_instance
+from apps.uploads.storage import get_storage
+
+NO_BRANCH_MESSAGE = (
+    "Upload the image after this record is linked to a branch: "
+    "add a branch to the school, a child to the guardian, or a branch or class to the student."
+)
 
 # Same limits the school frontend applies before uploading (lib/imageResize.ts).
 MAX_IMAGE_EDGE = 1600
@@ -56,8 +62,12 @@ def _shrink_image(path):
     return output_path, width, height
 
 
-def process_uploaded_image(uploaded_file):
-    """Convert an uploaded file into the same metadata shape used by the API."""
+def process_uploaded_image(uploaded_file, instance):
+    """Convert an uploaded file into the same metadata shape used by the API.
+
+    The file is stored under instance's branch folder; forms check that the
+    record has a branch first (see SearchableImageUploadMixin).
+    """
     if not uploaded_file:
         return None
 
@@ -77,9 +87,13 @@ def process_uploaded_image(uploaded_file):
             filename = uploaded_file.name
             content_type = uploaded_file.content_type
 
+        extension = os.path.splitext(filename)[1].lower()
+        file_key = media_key_for_instance(instance, extension)
+        if file_key is None:
+            raise MediaInputError(NO_BRANCH_MESSAGE)
+
         if getattr(settings, "STORAGE_TYPE", "local") == "r2":
             content_type = content_type or "application/octet-stream"
-            file_key = generate_file_key(filename)
             storage = get_storage()
             with open(stored_path, "rb") as file_handle:
                 storage.client.put_object(
@@ -99,7 +113,7 @@ def process_uploaded_image(uploaded_file):
                 "height": height,
             }
         else:
-            metadata = MediaService.process_image_data(stored_path)
+            metadata = MediaService.store_local_file(stored_path, filename, content_type, object_key=file_key)
         metadata["filename"] = filename
         metadata["content_type"] = content_type or metadata.get("content_type")
         return metadata

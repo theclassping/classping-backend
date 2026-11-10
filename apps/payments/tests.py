@@ -9,7 +9,7 @@ from rest_framework.test import APIClient
 from datetime import date
 from decimal import Decimal
 
-from apps.payments.models import Payment
+from apps.payments.models import Payment, PaymentProof
 from apps.payments.views import PaymentViewSet
 from apps.users.models import User
 from apps.locations.models import Location
@@ -45,8 +45,22 @@ class PaymentAuthorizationTests(SimpleTestCase):
             view.perform_update(serializer)
 
 
+def accept_image_data_as_sent(test):
+    """These API tests are not about upload ownership (see apps.uploads.tests),
+    so attach whatever image_data they send without touching storage."""
+    from unittest.mock import patch
+    from apps.uploads.services.media import MediaService
+    def resolve(value, user):
+        key = MediaService.extract_key(value)
+        return {"id": key, "object_key": key}
+    patcher = patch.object(MediaService, "resolve_image_data", side_effect=resolve)
+    patcher.start()
+    test.addCleanup(patcher.stop)
+
+
 class PaymentApiTests(TestCase):
     def setUp(self):
+        accept_image_data_as_sent(self)
         self.user = User.objects.create_user(
             email="parent-payment@example.com",
             password="StrongPassword123!",
@@ -280,6 +294,32 @@ class PaymentApiTests(TestCase):
         )
         self.assertEqual(update.status_code, 200)
         self.assertEqual(client.delete(f"/api/payment-proofs/{proof_id}/").status_code, 403)
+
+    @patch("apps.payments.serializers.Mailer")
+    def test_nested_proof_must_be_in_the_invoice_class_folder(self, mailer):
+        class_obj = self.invoice.class_student.class_obj
+        client = APIClient()
+        client.force_authenticate(user=self.user)
+
+        def create(key):
+            return client.post("/api/payments/", {
+                "student_invoice_id": self.invoice.id,
+                "amount": "100000.00",
+                "payment_method": "bank_transfer",
+                "proofs": [{"image_data": {"id": key}}],
+            }, format="json")
+
+        wrong = create(f"branch_{class_obj.branch_id}/class_{class_obj.pk + 1000}/payments/x.jpg")
+        self.assertEqual(wrong.status_code, 400)
+        self.assertFalse(Payment.objects.exists())
+
+        right = create(f"branch_{class_obj.branch_id}/class_{class_obj.pk}/payments/x.jpg")
+        self.assertEqual(right.status_code, 201, right.data)
+        self.assertEqual(PaymentProof.objects.count(), 1)
+        # bulk_create skips signals; the proof must still be tracked.
+        from apps.uploads.models import MediaObject
+        tracked = MediaObject.objects.get(file_key=f"branch_{class_obj.branch_id}/class_{class_obj.pk}/payments/x.jpg")
+        self.assertEqual(tracked.status, MediaObject.Status.ATTACHED)
 
     @patch("apps.payments.serializers.Mailer")
     def test_new_proof_resubmits_rejected_payment(self, mailer):

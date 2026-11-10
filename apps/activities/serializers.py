@@ -5,7 +5,8 @@ from rest_framework import serializers
 
 from apps.classes.models import Class, ClassTeacher
 from apps.students.models import Student
-from apps.uploads.services.media import FileTooLargeError, MediaService
+from apps.uploads.services.media import MediaService
+from apps.uploads.serializers import resolve_image_input
 from apps.uploads.utils import MediaFieldMixin
 
 from .models import (
@@ -88,26 +89,8 @@ class ActivityImageSerializer(serializers.ModelSerializer):
         Validate activity image data:
         - Image data is valid and processable
         """
-        # Process image_data if provided
-        if 'image_data' in attrs and attrs['image_data']:
-            image_data_input = attrs['image_data']
-            # If it's a string (file path or R2 URL), process it
-            if isinstance(image_data_input, str):
-                try:
-                    processed_metadata = MediaService.process_image_data(image_data_input)
-                    # Store processed metadata as dict
-                    attrs['image_data'] = processed_metadata
-                except FileNotFoundError:
-                    raise serializers.ValidationError({
-                        "image_data": f"File not found. Please provide the full file path, e.g. 'C:/Users/audia/Downloads/brownies.jpg'"
-                    })
-                except FileTooLargeError as error:
-                    raise serializers.ValidationError({"image_data": str(error)})
-                except Exception:
-                    logger.exception("Failed to process image_data")
-                    raise serializers.ValidationError({
-                        "image_data": "Error processing image."
-                    })
+        if attrs.get('image_data'):
+            attrs['image_data'] = resolve_image_input(self, attrs['image_data'])
         
         return attrs
 
@@ -186,26 +169,8 @@ class ActivityImageNestedSerializer(serializers.ModelSerializer):
         Validate activity image data:
         - Image data is valid and processable
         """
-        # Process image_data if provided
-        if 'image_data' in attrs and attrs['image_data']:
-            image_data_input = attrs['image_data']
-            # If it's a string (file path or R2 URL), process it
-            if isinstance(image_data_input, str):
-                try:
-                    processed_metadata = MediaService.process_image_data(image_data_input)
-                    # Store processed metadata as dict
-                    attrs['image_data'] = processed_metadata
-                except FileNotFoundError:
-                    raise serializers.ValidationError({
-                        "image_data": f"File not found. Please provide the full file path, e.g. 'C:/Users/audia/Downloads/brownies.jpg'"
-                    })
-                except FileTooLargeError as error:
-                    raise serializers.ValidationError({"image_data": str(error)})
-                except Exception:
-                    logger.exception("Failed to process image_data")
-                    raise serializers.ValidationError({
-                        "image_data": "Error processing image."
-                    })
+        if attrs.get('image_data'):
+            attrs['image_data'] = resolve_image_input(self, attrs['image_data'])
         
         return attrs
 

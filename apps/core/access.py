@@ -162,9 +162,10 @@ def user_can_access_media(user, file_key):
     from apps.payments.models import PaymentProof
     from apps.schools.models import School
     from apps.students.models import Student
+    from apps.uploads.references import media_key_filter
 
     for model in (Student, Guardian, School, ActivityImage, AssessmentImage, PaymentProof):
         visible_records = scope_queryset(model.objects.all(), user)
-        if visible_records.filter(image_data__id=file_key).exists():
+        if visible_records.filter(media_key_filter(file_key)).exists():
             return True
     return False

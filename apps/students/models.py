@@ -3,6 +3,7 @@ from django.db import models
 from apps.guardians.models import Guardian
 from apps.schools.models import Branch
 from apps.uploads.utils import MediaFieldMixin
+from apps.uploads.indexes import media_key_indexes
 
 
 class Student(models.Model, MediaFieldMixin):
@@ -66,6 +67,7 @@ class Student(models.Model, MediaFieldMixin):
 
     class Meta:
         db_table = "students"
+        indexes = media_key_indexes("students")
 
     def __str__(self):
         return f"{self.first_name} {self.last_name}"

@@ -1,0 +1,39 @@
+{% extends "admin_web/base.html" %}
+
+{% block title %}Storage - ClassPing Admin{% endblock %}
+{% block page_title %}<h1>Storage</h1>{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h2>Branch storage</h2>
+        <p class="text-muted">Media stored per branch, fullest first. Warning at 80% of capacity; uploads are not blocked.</p>
+    </div>
+</div>
+<div class="card">
+    <div class="table-wrapper">
+        <table class="data-table">
+            <thead>
+                <tr><th>Branch</th><th>Used</th><th>Capacity</th><th>Usage</th><th>Status</th><th>Actions</th></tr>
+            </thead>
+            <tbody>
+                {% for row in rows %}
+                <tr>
+                    <td><strong>{{ row.branch_name }}</strong><br><small class="text-muted">{{ row.school_name }}</small></td>
+                    <td>{{ row.used_bytes|filesizeformat }}</td>
+                    <td>{{ row.capacity_bytes|filesizeformat }}{% if row.capacity_is_default %} <small class="text-muted">(default)</small>{% endif %}</td>
+                    <td>{% if row.percent is not None %}{{ row.percent }}%{% else %}-{% endif %}</td>
+                    <td><span class="status status-{{ row.status }}">{{ row.status|title }}</span></td>
+                    <td>
+                        <a href="{% url 'admin_web:branch_detail' row.school_id row.branch_id %}" class="btn btn-secondary">Review</a>
+                        <a href="{% url 'admin_web:branch_edit' row.school_id row.branch_id %}" class="btn">Edit capacity</a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6" class="text-muted">No branches yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

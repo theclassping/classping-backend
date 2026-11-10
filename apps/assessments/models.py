@@ -4,6 +4,7 @@ from apps.classes.models import Class, ClassTeacher
 from apps.score_settings.models import LevelScore
 from apps.students.models import Student
 from apps.uploads.utils import MediaFieldMixin
+from apps.uploads.indexes import media_key_indexes
 
 
 class Assessment(models.Model):
@@ -142,6 +143,7 @@ class AssessmentImage(models.Model, MediaFieldMixin):
 
     class Meta:
         db_table = "assessment_images"
+        indexes = media_key_indexes("assessment_images")
 
     def __str__(self):
         return (

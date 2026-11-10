@@ -2,6 +2,7 @@ from django.db import models
 
 from apps.locations.models import Location
 from apps.uploads.utils import MediaFieldMixin
+from apps.uploads.indexes import media_key_indexes
 
 
 class School(models.Model, MediaFieldMixin):
@@ -20,6 +21,7 @@ class School(models.Model, MediaFieldMixin):
 
     class Meta:
         db_table = "schools"
+        indexes = media_key_indexes("schools")
 
     def __str__(self):
         return self.name
@@ -42,6 +44,9 @@ class Branch(models.Model):
     phone = models.CharField(max_length=50, blank=True)
     email = models.EmailField(blank=True)
     is_active = models.BooleanField(default=True)
+    # Media storage this branch is expected to stay within. Null uses
+    # settings.DEFAULT_BRANCH_STORAGE_BYTES. Monitored, not enforced.
+    storage_capacity_bytes = models.PositiveBigIntegerField(null=True, blank=True)
     location = models.ForeignKey(
         Location,
         on_delete=models.PROTECT,

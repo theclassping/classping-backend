@@ -4,11 +4,12 @@ Supports both local storage and Cloudflare R2.
 """
 import os
 import time
-import uuid
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import PurePosixPath
 from urllib.parse import quote
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Iterator
 import boto3
 from django.conf import settings
 from django.core import signing
@@ -36,31 +37,71 @@ def validate_file_key(file_key: str) -> str:
     return safe_key
 
 
-def make_upload_token(file_key: str, expires_in: int) -> str:
-    """Sign a short-lived capability to PUT exactly one local file_key."""
-    return signing.dumps(
-        {"key": validate_file_key(file_key), "exp": int(time.time()) + int(expires_in)},
-        salt=UPLOAD_TOKEN_SALT,
-    )
+def make_upload_token(
+    file_key: str,
+    expires_in: int,
+    content_type: Optional[str] = None,
+    content_length: Optional[int] = None,
+) -> str:
+    """Sign a short-lived capability to PUT exactly one local file_key.
+
+    When content_type/content_length are given, the upload must match them,
+    the same way the signed headers of an R2 presigned URL do.
+    """
+    payload = {"key": validate_file_key(file_key), "exp": int(time.time()) + int(expires_in)}
+    if content_type is not None:
+        payload["ct"] = content_type
+    if content_length is not None:
+        payload["len"] = int(content_length)
+    return signing.dumps(payload, salt=UPLOAD_TOKEN_SALT)
 
 
-def is_valid_upload_token(token: Optional[str], file_key: str) -> bool:
+def read_upload_token(token: Optional[str], file_key: str) -> Optional[Dict[str, Any]]:
+    """Return the token payload if it is valid for file_key, else None."""
     if not token:
-        return False
+        return None
     try:
         payload = signing.loads(token, salt=UPLOAD_TOKEN_SALT)
         safe_key = validate_file_key(file_key)
     except (signing.BadSignature, ValueError):
-        return False
-    return payload.get("key") == safe_key and payload.get("exp", 0) >= time.time()
+        return None
+    if payload.get("key") != safe_key or payload.get("exp", 0) < time.time():
+        return None
+    return payload
+
+
+def is_valid_upload_token(token: Optional[str], file_key: str) -> bool:
+    return read_upload_token(token, file_key) is not None
+
+
+@dataclass(frozen=True)
+class StoredObject:
+    key: str
+    size: int
+    last_modified: datetime  # timezone-aware
+
+
+def validate_prefix(prefix: str) -> str:
+    """A folder prefix such as "branch_3/"; same traversal rules as a key."""
+    return validate_file_key(prefix) + "/"
 
 
 class StorageBackend(ABC):
     """Abstract base class for storage backends."""
     
     @abstractmethod
-    def generate_presigned_url(self, file_key: str, expires_in: int = 3600) -> str:
-        """Generate a presigned URL for uploading a file."""
+    def generate_presigned_url(
+        self,
+        file_key: str,
+        expires_in: int = 3600,
+        content_type: Optional[str] = None,
+        content_length: Optional[int] = None,
+    ) -> str:
+        """Generate a presigned URL for uploading a file.
+
+        content_type/content_length, when given, become part of the signature,
+        so the upload must send exactly those Content-Type/Content-Length headers.
+        """
         pass
     
     @abstractmethod
@@ -87,6 +128,11 @@ class StorageBackend(ABC):
         """Generate a presigned URL for downloading/viewing a file."""
         pass
 
+    @abstractmethod
+    def list_objects(self, prefix: str) -> Iterator[StoredObject]:
+        """Every object whose key starts with the folder prefix (e.g. "branch_3/")."""
+        pass
+
 
 class R2Storage(StorageBackend):
     """Cloudflare R2 storage backend."""
@@ -107,14 +153,24 @@ class R2Storage(StorageBackend):
             region_name=self.region,
         )
     
-    def generate_presigned_url(self, file_key: str, expires_in: int = 3600) -> str:
+    def generate_presigned_url(
+        self,
+        file_key: str,
+        expires_in: int = 3600,
+        content_type: Optional[str] = None,
+        content_length: Optional[int] = None,
+    ) -> str:
         """Generate a presigned PUT URL for uploading to R2."""
-        url = self.client.generate_presigned_url(
+        params = {'Bucket': self.bucket_name, 'Key': file_key}
+        if content_type is not None:
+            params['ContentType'] = content_type
+        if content_length is not None:
+            params['ContentLength'] = int(content_length)
+        return self.client.generate_presigned_url(
             'put_object',
-            Params={'Bucket': self.bucket_name, 'Key': file_key},
+            Params=params,
             ExpiresIn=expires_in,
         )
-        return url
     
     def get_object_url(self, file_key: str) -> str:
         """Get the full public URL for accessing an object in R2."""
@@ -132,6 +188,12 @@ class R2Storage(StorageBackend):
 
     def delete_object(self, file_key: str) -> None:
         self.client.delete_object(Bucket=self.bucket_name, Key=validate_file_key(file_key))
+
+    def list_objects(self, prefix: str) -> Iterator[StoredObject]:
+        paginator = self.client.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=self.bucket_name, Prefix=validate_prefix(prefix)):
+            for item in page.get("Contents", []):
+                yield StoredObject(item["Key"], int(item["Size"]), item["LastModified"])
 
     def generate_presigned_download_url(
         self,
@@ -163,11 +225,20 @@ class LocalStorage(StorageBackend):
         self.media_root = settings.MEDIA_ROOT
         self.media_url = settings.MEDIA_URL
     
-    def generate_presigned_url(self, file_key: str, expires_in: int = 3600) -> str:
+    def generate_presigned_url(
+        self,
+        file_key: str,
+        expires_in: int = 3600,
+        content_type: Optional[str] = None,
+        content_length: Optional[int] = None,
+    ) -> str:
         """For local storage, return the upload endpoint URL with the required PUT method."""
         safe_key = validate_file_key(file_key)
         encoded_key = quote(safe_key, safe='/')
-        token = quote(make_upload_token(safe_key, expires_in), safe='')
+        token = quote(
+            make_upload_token(safe_key, expires_in, content_type, content_length),
+            safe='',
+        )
         return f"{settings.SITE_URL}/api/media/upload/{encoded_key}?method=PUT&token={token}"
     
     def get_object_url(self, file_key: str) -> str:
@@ -198,6 +269,19 @@ class LocalStorage(StorageBackend):
             raise ValueError("Invalid file_key path")
         if os.path.isfile(file_path):
             os.remove(file_path)
+
+    def list_objects(self, prefix: str) -> Iterator[StoredObject]:
+        media_root = os.path.abspath(self.media_root)
+        folder = os.path.join(media_root, validate_prefix(prefix))
+        for directory, _, filenames in os.walk(folder):
+            for filename in filenames:
+                path = os.path.join(directory, filename)
+                stat = os.stat(path)
+                yield StoredObject(
+                    os.path.relpath(path, media_root).replace(os.sep, "/"),
+                    stat.st_size,
+                    datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc),
+                )
     
     def generate_presigned_download_url(
         self,
@@ -242,21 +326,3 @@ def get_storage() -> StorageBackend:
     """Convenience function to get storage backend."""
     return StorageFactory.get_storage()
 
-
-def generate_file_key(original_filename: str) -> str:
-    """
-    Generate a unique file key with directory structure.
-    Format: {year}/{month}/{day}/{uuid}_{filename}
-    """
-    import hashlib
-    from datetime import datetime
-    
-    now = datetime.now()
-    
-    # Create unique ID from UUID and filename hash
-    file_ext = os.path.splitext(original_filename)[1]
-    unique_id = f"{uuid.uuid4().hex}"
-    
-    # Build path
-    path = f"{now.year}/{now.month:02d}/{now.day:02d}/{unique_id}{file_ext}"
-    return path

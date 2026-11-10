@@ -2,6 +2,7 @@ from django.conf import settings
 from django.db import models
 
 from apps.uploads.utils import MediaFieldMixin
+from apps.uploads.indexes import media_key_indexes
 
 
 class Guardian(models.Model, MediaFieldMixin):
@@ -36,6 +37,7 @@ class Guardian(models.Model, MediaFieldMixin):
 
     class Meta:
         db_table = "guardians"
+        indexes = media_key_indexes("guardians")
 
     def __str__(self):
         return self.name

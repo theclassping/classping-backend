@@ -109,6 +109,7 @@ urlpatterns = [
     path("schools/<int:pk>/activate/", views.school_set_active, {"active": True}, name="school_activate"),
     
     # Branches
+    path("storage/", views.storage_overview, name="storage_overview"),
     path(
         "schools/<int:school_pk>/branches/add/",
         views.branch_create,
