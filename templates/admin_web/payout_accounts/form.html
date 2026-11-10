@@ -1,0 +1,29 @@
+{% extends "admin_web/base.html" %}
+
+{% block title %}Edit payout account - ClassPing Admin{% endblock %}
+{% block page_title %}<h1>Payout account</h1>{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div><h2>Edit payout account</h2><p class="text-muted">{{ school.name }} · {{ branch.name }}</p></div>
+    <a href="{% url 'admin_web:branch_detail' school.pk branch.pk %}" class="back-link">Back to Branch</a>
+</div>
+<div class="card form-card">
+    <form method="post">
+        {% csrf_token %}
+        {% for field in form %}
+            <div class="form-group">
+                {{ field.label_tag }}
+                {{ field }}
+                {% if field.errors %}<ul class="field-errors">{% for error in field.errors %}<li>{{ error }}</li>{% endfor %}</ul>{% endif %}
+            </div>
+        {% endfor %}
+        {% if form.non_field_errors %}<ul class="field-errors">{% for error in form.non_field_errors %}<li>{{ error }}</li>{% endfor %}</ul>{% endif %}
+        <p class="help-text">Past withdrawals keep the account they were sent to.</p>
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Save</button>
+            <a href="{% url 'admin_web:branch_detail' school.pk branch.pk %}" class="btn">Cancel</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

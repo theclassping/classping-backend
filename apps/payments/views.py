@@ -12,6 +12,10 @@ from apps.users.models import User
 
 from .models import Payment, PaymentProof
 from .serializers import PaymentDetailSerializer, PaymentProofSerializer, PaymentSerializer
+from .services import (
+    ensure_payment_is_manual,
+    lock_invoice_for_manual_payment,
+)
 
 class PaymentViewSet(ScopedQuerysetMixin, viewsets.ModelViewSet):
 
@@ -68,11 +72,14 @@ class PaymentViewSet(ScopedQuerysetMixin, viewsets.ModelViewSet):
             )
 
         with transaction.atomic():
+            invoice = serializer.validated_data["student_invoice"]
+            lock_invoice_for_manual_payment(invoice)
             payment = serializer.save()
             self._sync_payment_invoice(payment, staff)
 
     def perform_update(self, serializer):
         payment = serializer.instance
+        ensure_payment_is_manual(payment)
         new_status = serializer.validated_data.get("status")
         staff = getattr(self.request.user, "staff", None)
 
@@ -85,9 +92,18 @@ class PaymentViewSet(ScopedQuerysetMixin, viewsets.ModelViewSet):
             )
 
         with transaction.atomic():
+            invoice = serializer.validated_data.get("student_invoice", payment.student_invoice)
+            # Rejecting is always safe; anything else (re-submit, complete,
+            # move to another invoice) must not race a gateway checkout.
+            if (new_status or payment.status) != Payment.Status.REJECTED:
+                lock_invoice_for_manual_payment(invoice)
             payment = serializer.save()
             self._sync_payment_invoice(payment, staff)
         return payment
+
+    def perform_destroy(self, instance):
+        ensure_payment_is_manual(instance)
+        super().perform_destroy(instance)
 
     def _can_verify_payment(self, staff):
         return (
@@ -164,6 +180,26 @@ class PaymentProofViewSet(ScopedQuerysetMixin, viewsets.ModelViewSet):
                 "payment_id": "This field is required."
             })
 
+        with transaction.atomic():
+            target = serializer.validated_data["payment"]
+            ensure_payment_is_manual(target)
+            if target.status == Payment.Status.REJECTED:
+                # A proof re-submits a rejected payment (see below).
+                lock_invoice_for_manual_payment(target.student_invoice_id)
+            self._save_proof(serializer)
+
+    def perform_update(self, serializer):
+        ensure_payment_is_manual(serializer.instance.payment)
+        target = serializer.validated_data.get("payment")
+        if target is not None:
+            ensure_payment_is_manual(target)
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        ensure_payment_is_manual(instance.payment)
+        super().perform_destroy(instance)
+
+    def _save_proof(self, serializer):
         proof = serializer.save()
         payment = proof.payment
 

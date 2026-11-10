@@ -9,7 +9,11 @@ from apps.classes.models import Class, ClassTeacher
 from apps.fee_types.models import FeeType, FeeTypeClass
 from apps.guardians.models import Guardian
 from apps.locations.models import Location
+from apps.payment_aggregator import PaymentAggregator
+from apps.payment_gateway.selectors import locked_invoice_ids
+from apps.payments.exceptions import InvoiceLocked
 from apps.payments.models import Payment, PaymentProof
+from apps.payments.services import ensure_invoice_open_for_manual_payment
 from apps.schools.models import Branch, School
 from apps.score_settings.models import ScoreSetting
 from apps.student_invoices.models import StudentInvoice
@@ -17,6 +21,7 @@ from apps.students.models import Student, StudentGuardian
 from apps.staffs.models import Staff
 from apps.users.models import User
 from apps.users.managers import generate_temporary_password
+from apps.wallets.models import PayoutAccount
 from apps.admin_web.media import NO_BRANCH_MESSAGE, process_uploaded_image
 from apps.uploads.paths import instance_media_location
 
@@ -384,12 +389,17 @@ class PaymentForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         invoices = StudentInvoice.objects.select_related(
             "class_student__student", "class_student__class_obj__branch__school"
-        ).filter(status=StudentInvoice.Status.UNPAID, payment__isnull=True)
+        ).filter(status=StudentInvoice.Status.UNPAID, payment__isnull=True).exclude(
+            # Invoices locked by an active payment gateway checkout.
+            pk__in=locked_invoice_ids()
+        )
         if self.instance.pk:
             invoices = invoices | StudentInvoice.objects.filter(
                 pk=self.instance.student_invoice_id
             )
         self.fields["student_invoice"].queryset = invoices.order_by("invoice_date", "pk")
+        # Gateway methods are set only by the payment gateway, never by hand.
+        self.fields["payment_method"].choices = Payment.method_choices(Payment.MANUAL_PAYMENT_METHODS)
 
     def clean(self):
         cleaned_data = super().clean()
@@ -397,6 +407,11 @@ class PaymentForm(forms.ModelForm):
         if not self.instance.pk and invoice:
             if Payment.objects.filter(student_invoice=invoice).exists():
                 self.add_error("student_invoice", "This invoice already has a payment record.")
+        if invoice:
+            try:
+                ensure_invoice_open_for_manual_payment(invoice)
+            except InvoiceLocked as error:
+                self.add_error("student_invoice", error.message)
         return cleaned_data
 
 
@@ -629,3 +644,48 @@ class GuardianForm(SearchableImageUploadMixin, forms.ModelForm):
         else:
             eligible_users = eligible_users.filter(guardian__isnull=True)
         self.fields["user"].queryset = eligible_users.order_by("email")
+
+
+class PayoutAccountForm(forms.ModelForm):
+    """Edit a branch payout account (accounts are created by withdrawals)."""
+
+    bank_code = forms.ChoiceField(label="Bank")
+    account_number = forms.RegexField(regex=r"^[0-9]{5,30}$", max_length=30)
+
+    class Meta:
+        model = PayoutAccount
+        fields = ["bank_code", "account_number", "account_holder_name"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["bank_code"].choices = sorted(PaymentAggregator.get_banks().items(), key=lambda item: item[1])
+
+    def clean(self):
+        cleaned_data = super().clean()
+        duplicate = PayoutAccount.objects.filter(
+            branch_id=self.instance.branch_id,
+            bank_code=cleaned_data.get("bank_code"),
+            account_number=cleaned_data.get("account_number"),
+        ).exclude(pk=self.instance.pk)
+        if duplicate.exists():
+            raise ValidationError("This branch already has this bank account.")
+        return cleaned_data
+
+
+class BalanceAdjustmentForm(forms.Form):
+    """Correct a branch's available balance (+ adds, - deducts)."""
+
+    amount = forms.DecimalField(max_digits=14, decimal_places=2, help_text="Use a minus sign to deduct.")
+    note = forms.CharField(widget=forms.Textarea(attrs={"rows": 3}), max_length=2000)
+
+    def clean_amount(self):
+        amount = self.cleaned_data["amount"]
+        if amount == 0:
+            raise ValidationError("Amount cannot be zero.")
+        return amount
+
+
+class WithdrawalResolveForm(forms.Form):
+    """Close a stuck withdrawal after checking the provider dashboard."""
+
+    note = forms.CharField(widget=forms.Textarea(attrs={"rows": 3}), max_length=2000)

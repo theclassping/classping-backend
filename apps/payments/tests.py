@@ -127,7 +127,7 @@ class PaymentApiTests(TestCase):
             subtotal=Decimal("100000"), total_amount=Decimal("100000"), currency="IDR",
         )
 
-    @patch("apps.payments.serializers.Mailer")
+    @patch("apps.payments.notifications.Mailer")
     def test_create_payment_marks_invoice_submitted(self, mailer):
         client = APIClient()
         client.force_authenticate(user=self.user)
@@ -141,7 +141,7 @@ class PaymentApiTests(TestCase):
         self.invoice.refresh_from_db()
         self.assertEqual(self.invoice.status, StudentInvoice.Status.PAYMENT_SUBMITTED)
 
-    @patch("apps.payments.serializers.Mailer")
+    @patch("apps.payments.notifications.Mailer")
     def test_payment_amount_must_match_invoice_total(self, mailer):
         client = APIClient()
         client.force_authenticate(user=self.user)
@@ -152,7 +152,40 @@ class PaymentApiTests(TestCase):
         }, format="json")
         self.assertEqual(response.status_code, 400)
 
-    @patch("apps.payments.serializers.Mailer")
+    @patch("apps.payments.notifications.Mailer")
+    def test_gateway_payment_methods_rejected_on_create(self, mailer):
+        client = APIClient()
+        client.force_authenticate(user=self.user)
+        for method in ("virtual_account", "credit_card", "e_commerce"):
+            response = client.post("/api/payments/", {
+                "student_invoice_id": self.invoice.id,
+                "amount": "100000.00",
+                "payment_method": method,
+            }, format="json")
+            self.assertEqual(response.status_code, 400, msg=method)
+            self.assertIn("payment_method", response.data)
+        self.assertFalse(Payment.objects.filter(student_invoice=self.invoice).exists())
+
+    @patch("apps.payments.notifications.Mailer")
+    def test_payment_response_includes_channel_fields(self, mailer):
+        client = APIClient()
+        client.force_authenticate(user=self.user)
+        response = client.post("/api/payments/", {
+            "student_invoice_id": self.invoice.id,
+            "amount": "100000.00",
+            "payment_method": "bank_transfer",
+            # Read-only: ignored even if sent.
+            "payment_channel": "payment_gateway",
+        }, format="json")
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["payment_channel"], "manual")
+        self.assertIsNone(response.data["gateway_payment_id"])
+
+        detail = client.get(f"/api/payments/{response.data['id']}/")
+        self.assertEqual(detail.data["payment_channel"], "manual")
+        self.assertIn("gateway_payment_id", detail.data)
+
+    @patch("apps.payments.notifications.Mailer")
     def test_staff_can_complete_payment_and_mark_invoice_paid(self, mailer):
         payment = Payment.objects.create(
             student_invoice=self.invoice, amount=Decimal("100000"),
@@ -165,7 +198,7 @@ class PaymentApiTests(TestCase):
         self.invoice.refresh_from_db()
         self.assertEqual(self.invoice.status, StudentInvoice.Status.PAID)
 
-    @patch("apps.payments.serializers.Mailer")
+    @patch("apps.payments.notifications.Mailer")
     def test_staff_can_reject_payment_and_mark_invoice_unpaid(self, mailer):
         payment = Payment.objects.create(
             student_invoice=self.invoice, amount=Decimal("100000"),
@@ -184,7 +217,7 @@ class PaymentApiTests(TestCase):
         self.assertEqual(payment.status, Payment.Status.REJECTED)
         self.assertEqual(self.invoice.status, StudentInvoice.Status.UNPAID)
 
-    @patch("apps.payments.serializers.Mailer")
+    @patch("apps.payments.notifications.Mailer")
     @override_settings(MAILJET_TEMPLATES={"payment_rejected": 303})
     def test_rejection_sends_correct_mailer_template_and_payload(self, mailer):
         payment = Payment.objects.create(student_invoice=self.invoice, amount=Decimal("100000"), payment_method=Payment.PaymentMethod.BANK_TRANSFER)
@@ -202,7 +235,7 @@ class PaymentApiTests(TestCase):
         self.assertNotIn("T", kwargs["variables"]["updated_at"])
         self.assertEqual(kwargs["variables"]["due_date"], "31 July 2026")
 
-    @patch("apps.payments.serializers.Mailer")
+    @patch("apps.payments.notifications.Mailer")
     def test_invalid_status_and_full_put_behavior(self, mailer):
         payment = Payment.objects.create(student_invoice=self.invoice, amount=Decimal("100000"), payment_method=Payment.PaymentMethod.CASH)
         client = APIClient()
@@ -264,7 +297,7 @@ class PaymentApiTests(TestCase):
         client.force_authenticate(user=self.admin_user)
         self.assertEqual(client.delete(f"/api/payments/{payment.id}/").status_code, 204)
 
-    @patch("apps.payments.serializers.Mailer")
+    @patch("apps.payments.notifications.Mailer")
     def test_payment_proof_crud(self, mailer):
         payment = Payment.objects.create(
             student_invoice=self.invoice, amount=Decimal("100000"),
@@ -295,7 +328,7 @@ class PaymentApiTests(TestCase):
         self.assertEqual(update.status_code, 200)
         self.assertEqual(client.delete(f"/api/payment-proofs/{proof_id}/").status_code, 403)
 
-    @patch("apps.payments.serializers.Mailer")
+    @patch("apps.payments.notifications.Mailer")
     def test_nested_proof_must_be_in_the_invoice_class_folder(self, mailer):
         class_obj = self.invoice.class_student.class_obj
         client = APIClient()
@@ -321,7 +354,7 @@ class PaymentApiTests(TestCase):
         tracked = MediaObject.objects.get(file_key=f"branch_{class_obj.branch_id}/class_{class_obj.pk}/payments/x.jpg")
         self.assertEqual(tracked.status, MediaObject.Status.ATTACHED)
 
-    @patch("apps.payments.serializers.Mailer")
+    @patch("apps.payments.notifications.Mailer")
     def test_new_proof_resubmits_rejected_payment(self, mailer):
         payment = Payment.objects.create(
             student_invoice=self.invoice, amount=Decimal("100000"),

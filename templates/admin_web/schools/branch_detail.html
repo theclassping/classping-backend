@@ -23,6 +23,7 @@
     <div class="detail-row"><div class="detail-label">Email</div><div>{{ branch.email|default:"-" }}</div></div>
     <div class="detail-row"><div class="detail-label">Location</div><div>{{ location_path }}</div></div>
     <div class="detail-row"><div class="detail-label">Status</div><div>{% if branch.is_active %}Active{% else %}Inactive{% endif %}</div></div>
+    <div class="detail-row"><div class="detail-label">Payment Gateway</div><div>{% if branch.is_payment_gateway_enabled %}Enabled{% else %}Disabled{% endif %}</div></div>
     <div class="detail-row"><div class="detail-label">Created / Updated</div><div>{{ branch.created_at|date:"d M Y H:i" }} / {{ branch.updated_at|date:"d M Y H:i" }}</div></div>
     <div class="detail-section"><h3>Storage</h3>
         <p>
@@ -62,6 +63,21 @@
     <div class="detail-section"><h3>Staff</h3>
         {% for member in branch.staffs.all %}<p><a href="{% url 'admin_web:staff_detail' member.pk %}">{{ member.first_name }} {{ member.last_name }}</a> · {{ member.get_staff_type_display }}{% if not member.is_active %} · Inactive{% endif %}</p>
         {% empty %}<p class="text-muted">No staff assigned.</p>{% endfor %}
+    </div>
+    <div class="detail-section"><h3>Payout accounts</h3>
+        {% for account in branch.payout_accounts.all %}
+        <div class="detail-row">
+            <div>{{ account.bank_name }} · {{ account.account_number }} · {{ account.account_holder_name }}<br><small class="text-muted">Updated {{ account.updated_at|date:"d M Y H:i" }}</small></div>
+            {% if request.user.is_superuser %}
+            <div class="form-actions">
+                <a href="{% url 'admin_web:payout_account_edit' school.pk branch.pk account.pk %}" class="btn">Edit</a>
+                <form method="post" action="{% url 'admin_web:payout_account_delete' school.pk branch.pk account.pk %}" onsubmit="return confirm('Delete this payout account? Withdrawal history is kept.');">
+                    {% csrf_token %}<button class="btn" type="submit">Delete</button>
+                </form>
+            </div>
+            {% endif %}
+        </div>
+        {% empty %}<p class="text-muted">No payout accounts yet. An account is saved when the branch makes its first withdrawal to it.</p>{% endfor %}
     </div>
 </div>
 {% endblock %}

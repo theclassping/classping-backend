@@ -16,6 +16,8 @@ services:
     image: redis:7-alpine
     container_name: classping-redis
     restart: unless-stopped
+    # Never drop keys (Celery queues) when memory is full.
+    command: ["redis-server", "--maxmemory-policy", "noeviction"]
 
   web:
     build:
@@ -46,9 +48,13 @@ services:
       dockerfile: Dockerfile
     container_name: classping-scheduler
     restart: unless-stopped
+    # Celery worker + beat in one process (see config/celery.py).
+    # exec: celery must receive the stop signal itself (not sh) so it shuts
+    # down cleanly and puts queued/delayed tasks back on the queue.
     command: >
       sh -c "python manage.py migrate &&
-             python manage.py run_scheduler"
+             exec celery -A config worker -B --concurrency=2
+             --schedule=/tmp/celerybeat-schedule --loglevel=info"
     environment:
       - DATABASE_URL=postgres://classping:classping@db:5432/classping
       - REDIS_URL=redis://redis:6379/0

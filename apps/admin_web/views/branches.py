@@ -52,7 +52,7 @@ def branch_detail(request, school_pk, pk):
     school = get_object_or_404(School, pk=school_pk)
     branch = get_object_or_404(
         Branch.objects.select_related("location__parent").prefetch_related(
-            "academic_years", "classes", "staffs"
+            "academic_years", "classes", "staffs", "payout_accounts"
         ),
         pk=pk,
         school=school,
@@ -127,6 +127,9 @@ def branch_create(request, school_pk):
         is_active = request.POST.get("is_active") == "on"
         storage_capacity_raw = request.POST.get("storage_capacity_gb", "")
         storage_capacity_bytes, capacity_error = _parse_capacity_gb(storage_capacity_raw)
+        is_payment_gateway_enabled = (
+            request.POST.get("is_payment_gateway_enabled") == "on"
+        )
 
         # -----------------------------------------------------
         # Get selected location
@@ -208,6 +211,7 @@ def branch_create(request, school_pk):
                     "email": email,
                     "is_active": is_active,
                     **_capacity_context(storage_capacity_raw),
+                    "is_payment_gateway_enabled": is_payment_gateway_enabled,
                 },
             )
 
@@ -225,6 +229,7 @@ def branch_create(request, school_pk):
             location=location,
             is_active=is_active,
             storage_capacity_bytes=storage_capacity_bytes,
+            is_payment_gateway_enabled=is_payment_gateway_enabled,
         )
 
         # -----------------------------------------------------
@@ -399,6 +404,10 @@ def branch_edit(request, school_pk, pk):
             request.POST.get("is_active") == "on"
         )
 
+        is_payment_gateway_enabled = (
+            request.POST.get("is_payment_gateway_enabled") == "on"
+        )
+
         storage_capacity_raw = request.POST.get("storage_capacity_gb", "")
         if storage_capacity_raw.strip() == _capacity_gb(branch.storage_capacity_bytes):
             # Unchanged in the form: keep the exact bytes (the form shows a rounded GB value).
@@ -526,6 +535,7 @@ def branch_edit(request, school_pk, pk):
                     "phone": phone,
                     "email": email,
                     "is_active": is_active,
+                    "is_payment_gateway_enabled": is_payment_gateway_enabled,
 
                     "location_id": location_id,
 
@@ -559,6 +569,7 @@ def branch_edit(request, school_pk, pk):
         branch.location = location
         branch.is_active = is_active
         branch.storage_capacity_bytes = storage_capacity_bytes
+        branch.is_payment_gateway_enabled = is_payment_gateway_enabled
 
         branch.save()
 
@@ -601,6 +612,7 @@ def branch_edit(request, school_pk, pk):
             "is_active": branch.is_active,
 
             **_capacity_context(_capacity_gb(branch.storage_capacity_bytes)),
+            "is_payment_gateway_enabled": branch.is_payment_gateway_enabled,
 
             "location_id": (
                 branch.location_id

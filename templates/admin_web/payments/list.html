@@ -28,7 +28,7 @@
 <div class="card">
     {% if page_obj.object_list %}
         <table class="data-table">
-            <thead><tr><th>Invoice</th><th>Student</th><th>Branch</th><th>Amount</th><th>Method</th><th>Submitted</th><th>Status</th><th>Action</th></tr></thead>
+            <thead><tr><th>Invoice</th><th>Student</th><th>Branch</th><th>Amount</th><th>Method</th><th>Channel</th><th>Submitted</th><th>Status</th><th>Action</th></tr></thead>
             <tbody>
                 {% for payment in page_obj %}
                     <tr>
@@ -37,6 +37,7 @@
                         <td>{{ payment.student_invoice.class_student.class_obj.branch.name }}</td>
                         <td>{{ payment.amount }} {{ payment.student_invoice.currency }}</td>
                         <td>{{ payment.get_payment_method_display }}</td>
+                        <td>{{ payment.get_payment_channel_display }}</td>
                         <td>{{ payment.submitted_at|date:"Y-m-d H:i" }}</td>
                         <td><span class="status {% if payment.status == 'completed' %}status-active{% elif payment.status == 'rejected' %}status-inactive{% endif %}">{{ payment.get_status_display }}</span></td>
                         <td><a class="btn btn-small" href="{% url 'admin_web:payment_detail' payment.pk %}">Review</a></td>

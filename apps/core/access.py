@@ -27,6 +27,9 @@ def scope_queryset(queryset, user):
             "studentinvoice": Q(class_student__student__student_guardians__guardian__user_id=user.pk),
             "payment": Q(student_invoice__class_student__student__student_guardians__guardian__user_id=user.pk),
             "paymentproof": Q(payment__student_invoice__class_student__student__student_guardians__guardian__user_id=user.pk),
+            # Every guardian of the student can see the student's gateway checkouts.
+            "gatewaypayment": Q(student__student_guardians__guardian__user_id=user.pk),
+            "gatewaypaymentitem": Q(gateway_payment__student__student_guardians__guardian__user_id=user.pk),
             "class": Q(class_students__student__student_guardians__guardian__user_id=user.pk),
             "classstudent": Q(student__student_guardians__guardian__user_id=user.pk),
             "classteacher": Q(class_obj__class_students__student__student_guardians__guardian__user_id=user.pk),
@@ -105,6 +108,8 @@ def scope_queryset(queryset, user):
         "studentinvoice": Q(class_student__class_obj__branch_id=branch_id),
         "payment": Q(student_invoice__class_student__class_obj__branch_id=branch_id),
         "paymentproof": Q(payment__student_invoice__class_student__class_obj__branch_id=branch_id),
+        "gatewaypayment": Q(branch_id=branch_id),
+        "gatewaypaymentitem": Q(gateway_payment__branch_id=branch_id),
         "activity": Q(class_obj__branch_id=branch_id),
         "activityimage": Q(activity__class_obj__branch_id=branch_id),
         "activitystudent": Q(activity__class_obj__branch_id=branch_id),
@@ -152,6 +157,22 @@ class ScopedQuerysetMixin:
                 self._scope_related_fields(child)
             if hasattr(field, "fields"):
                 self._scope_related_fields(field)
+
+
+def get_finance_staff(user):
+    """The Staff profile when ``user`` is a branch principal / officer
+    (cancel checkouts, branch wallet, withdrawals), otherwise None."""
+    from apps.payment_aggregator.constants import BRANCH_FINANCE_STAFF_TYPES
+
+    staff = getattr(user, "staff", None)
+    if (
+        str(getattr(user, "role", "")).upper() != "STAFF"
+        or staff is None
+        or staff.staff_type not in BRANCH_FINANCE_STAFF_TYPES
+        or staff.branch_id is None
+    ):
+        return None
+    return staff
 
 
 def user_can_access_media(user, file_key):

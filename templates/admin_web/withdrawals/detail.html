@@ -1,0 +1,66 @@
+{% extends "admin_web/base.html" %}
+
+{% block title %}{{ withdrawal.withdrawal_no }} - ClassPing Admin{% endblock %}
+{% block page_title %}<h1>Withdrawal</h1>{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div><h2>{{ withdrawal.withdrawal_no }}</h2><p class="text-muted">{{ withdrawal.branch.school.name }} - {{ withdrawal.branch.name }} · {{ withdrawal.get_status_display }}</p></div>
+    <div class="form-actions">
+        <a href="{% url 'admin_web:withdrawal_list' %}" class="btn">Back to withdrawals</a>
+        {% if withdrawal.provider_disbursement_id %}
+            <form method="post" action="{% url 'admin_web:withdrawal_sync' withdrawal.pk %}">
+                {% csrf_token %}<button class="btn" type="submit">Sync status</button>
+            </form>
+        {% endif %}
+    </div>
+</div>
+
+{% if withdrawal.needs_review %}
+    <p class="alert alert-error">Needs review. {{ withdrawal.review_note|linebreaksbr }}</p>
+{% endif %}
+
+{% if is_stuck %}
+<div class="card form-card">
+    <h3>Stuck withdrawal</h3>
+    <p class="text-muted">The provider did not answer, so the result is unknown and the balance stays deducted. Resend first: it is safe, because the provider rejects a reused reference. If the provider reports a duplicate, find {{ withdrawal.withdrawal_no }} in the provider dashboard and mark the result below.</p>
+    <form method="post" action="{% url 'admin_web:withdrawal_resend' withdrawal.pk %}">
+        {% csrf_token %}<button class="btn" type="submit">Resend to provider</button>
+    </form>
+    <form method="post">
+        {% csrf_token %}
+        <div class="form-group">{{ resolve_form.note.label_tag }}{{ resolve_form.note }}</div>
+        <div class="form-actions">
+            <button class="btn" type="submit" formaction="{% url 'admin_web:withdrawal_mark_success' withdrawal.pk %}" onclick="return confirm('Mark as successful? The balance stays deducted.');">Mark successful</button>
+            <button class="btn" type="submit" formaction="{% url 'admin_web:withdrawal_mark_failed' withdrawal.pk %}" onclick="return confirm('Mark as failed and return the amount and fee to the branch?');">Mark failed and return balance</button>
+        </div>
+    </form>
+</div>
+{% endif %}
+
+<div class="card">
+    <div class="detail-row"><div class="detail-label">Status</div><div>{{ withdrawal.get_status_display }}{% if withdrawal.failure_reason %} · {{ withdrawal.failure_reason }}{% endif %}</div></div>
+    <div class="detail-row"><div class="detail-label">Amount / Fee / Received</div><div>{{ withdrawal.amount }} / {{ withdrawal.fee }} / {{ withdrawal.transfer_amount }}</div></div>
+    <div class="detail-row"><div class="detail-label">Destination</div><div>{{ withdrawal.bank_name }} · {{ withdrawal.account_number }} · {{ withdrawal.account_holder_name }}</div></div>
+    <div class="detail-row"><div class="detail-label">Requested by</div><div>{{ withdrawal.requested_by.email|default:"-" }} · {{ withdrawal.created_at|date:"Y-m-d H:i" }}</div></div>
+    <div class="detail-row"><div class="detail-label">Completed</div><div>{{ withdrawal.completed_at|date:"Y-m-d H:i"|default:"-" }}</div></div>
+    <div class="detail-row"><div class="detail-label">Provider</div><div>{{ withdrawal.provider }} · {{ withdrawal.provider_disbursement_id|default:"no id" }} · status {{ withdrawal.provider_status|default:"-" }} · fee {{ withdrawal.provider_fee|default:"-" }}</div></div>
+
+    <div class="detail-section">
+        <h3>Branch ledger</h3>
+        {% for entry in ledger_entries %}
+            <p>{{ entry.get_entry_type_display }} · {{ entry.amount }} · balance after {{ entry.balance_after }}</p>
+        {% empty %}
+            <p class="text-muted">No ledger entries.</p>
+        {% endfor %}
+    </div>
+
+    <div class="detail-section">
+        <h3>Provider data</h3>
+        <p class="text-muted">Response</p>
+        <pre>{{ withdrawal.provider_response|default:"-" }}</pre>
+        <p class="text-muted">Last callback: {{ withdrawal.callback_received_at|date:"Y-m-d H:i"|default:"-" }}</p>
+        <pre>{{ withdrawal.callback_payload|default:"-" }}</pre>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,81 @@
+{% extends "admin_web/base.html" %}
+
+{% block title %}{{ gateway_payment.payment_no }} - ClassPing Admin{% endblock %}
+{% block page_title %}<h1>Online Payment</h1>{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div><h2>{{ gateway_payment.payment_no }}</h2><p class="text-muted">{{ gateway_payment.channel_name }} · {{ gateway_payment.get_status_display }}</p></div>
+    <div class="form-actions">
+        <a href="{% url 'admin_web:gateway_payment_list' %}" class="btn">Back to online payments</a>
+        <form method="post" action="{% url 'admin_web:gateway_payment_sync' gateway_payment.pk %}">
+            {% csrf_token %}<button class="btn" type="submit">Sync status</button>
+        </form>
+    </div>
+</div>
+
+{% if gateway_payment.needs_refund or gateway_payment.needs_review %}
+    <p class="alert alert-error">
+        {% if gateway_payment.needs_refund %}Needs refund. {% endif %}{% if gateway_payment.needs_review %}Needs review. {% endif %}
+        {{ gateway_payment.review_note|linebreaksbr }}
+    </p>
+{% endif %}
+
+<div class="card">
+    <div class="detail-row"><div class="detail-label">Status</div><div>{{ gateway_payment.get_status_display }}</div></div>
+    <div class="detail-row"><div class="detail-label">Student</div><div>{{ gateway_payment.student.full_name }}</div></div>
+    <div class="detail-row"><div class="detail-label">Guardian (payer)</div><div>{{ gateway_payment.guardian.name }}</div></div>
+    <div class="detail-row"><div class="detail-label">Branch</div><div>{{ gateway_payment.branch.school.name }} - {{ gateway_payment.branch.name }}</div></div>
+    <div class="detail-row"><div class="detail-label">Channel</div><div>{{ gateway_payment.channel_name }} ({{ gateway_payment.channel_code }})</div></div>
+    <div class="detail-row"><div class="detail-label">Invoice total</div><div>{{ gateway_payment.invoice_total }}</div></div>
+    <div class="detail-row"><div class="detail-label">Transaction fee</div><div>{{ gateway_payment.transaction_fee }}</div></div>
+    <div class="detail-row"><div class="detail-label">Amount paid by parent</div><div>{{ gateway_payment.amount }}</div></div>
+    <div class="detail-row"><div class="detail-label">Payment code / link</div><div>{{ gateway_payment.payment_code|default:"-" }} {% if gateway_payment.payment_link %}· <a href="{{ gateway_payment.payment_link }}" target="_blank" rel="noopener">link</a>{% endif %}</div></div>
+    <div class="detail-row"><div class="detail-label">Created / Expires</div><div>{{ gateway_payment.created_at|date:"Y-m-d H:i" }} / {{ gateway_payment.expires_at|date:"Y-m-d H:i" }}</div></div>
+    <div class="detail-row"><div class="detail-label">Paid / Settled</div><div>{{ gateway_payment.paid_at|date:"Y-m-d H:i"|default:"-" }} / {{ gateway_payment.settled_at|date:"Y-m-d H:i"|default:"-" }}</div></div>
+    {% if gateway_payment.cancelled_at %}
+        <div class="detail-row"><div class="detail-label">Cancelled</div><div>{{ gateway_payment.cancelled_at|date:"Y-m-d H:i" }} by {{ gateway_payment.cancelled_by.email|default:"-" }}{% if gateway_payment.cancel_reason %} · {{ gateway_payment.cancel_reason }}{% endif %}</div></div>
+    {% endif %}
+    <div class="detail-row"><div class="detail-label">Provider</div><div>{{ gateway_payment.provider }} · {{ gateway_payment.provider_trx_id|default:"-" }}</div></div>
+
+    <div class="detail-section">
+        <h3>Invoices</h3>
+        <table class="data-table">
+            <thead><tr><th>Invoice</th><th>Fee type</th><th>Amount</th><th>Locks invoice</th></tr></thead>
+            <tbody>{% for item in items %}<tr><td>{{ item.student_invoice.invoice_no }}</td><td>{{ item.student_invoice.fee_type.name }}</td><td>{{ item.amount }}</td><td>{{ item.is_active|yesno:"Yes,No" }}</td></tr>{% endfor %}</tbody>
+        </table>
+    </div>
+
+    <div class="detail-section">
+        <h3>Payment records</h3>
+        {% for payment in payments %}
+            <p><a href="{% url 'admin_web:payment_detail' payment.pk %}">Payment {{ payment.pk }}</a> · {{ payment.student_invoice.invoice_no }} · {{ payment.amount }} · {{ payment.get_status_display }}</p>
+        {% empty %}
+            <p class="text-muted">No payment records yet (created when the checkout is paid).</p>
+        {% endfor %}
+    </div>
+
+    <div class="detail-section">
+        <h3>Branch ledger</h3>
+        {% for entry in ledger_entries %}
+            <p>{{ entry.get_entry_type_display }} · {{ entry.amount }} · {{ entry.get_settlement_status_display|default:"-" }}</p>
+        {% empty %}
+            <p class="text-muted">No ledger entries.</p>
+        {% endfor %}
+    </div>
+
+    <div class="detail-section">
+        <h3>Provider data</h3>
+        <p class="text-muted">Last callback: {{ gateway_payment.callback_received_at|date:"Y-m-d H:i"|default:"-" }}</p>
+        <pre>{{ gateway_payment.callback_payload|default:"-" }}</pre>
+        <p class="text-muted">Billing response</p>
+        <pre>{{ gateway_payment.provider_response|default:"-" }}</pre>
+    </div>
+
+    {% if can_cancel %}
+        <form method="post" action="{% url 'admin_web:gateway_payment_cancel' gateway_payment.pk %}" class="detail-actions inline-actions" onsubmit="return confirm('Cancel this online payment? The invoices become open for manual payment. The bank account may still accept a payment until the provider deadline.');">
+            {% csrf_token %}<label for="cancel-reason">Reason</label><input id="cancel-reason" name="reason" maxlength="500"><button class="btn danger-button" type="submit">Cancel online payment</button>
+        </form>
+    {% endif %}
+</div>
+{% endblock %}

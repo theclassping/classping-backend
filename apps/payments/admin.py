@@ -10,6 +10,7 @@ class PaymentAdmin(admin.ModelAdmin):
         "student_invoice",
         "amount",
         "payment_method",
+        "payment_channel",
         "status",
         "submitted_at",
         "verified_at",
@@ -18,6 +19,7 @@ class PaymentAdmin(admin.ModelAdmin):
     list_filter = [
         "status",
         "payment_method",
+        "payment_channel",
     ]
     search_fields = [
         "student_invoice__invoice_no",

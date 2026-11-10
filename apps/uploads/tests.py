@@ -280,16 +280,10 @@ class UploadCleanupTests(TestCase):
             first.delete()
         delete.assert_not_called()
 
-    def test_cleanup_schedule_removed_from_persistent_store_at_start(self):
-        from apscheduler.events import EVENT_SCHEDULER_STARTED
-        from apps.student_invoices.scheduler import register_jobs, SCHEDULED_JOBS
-        scheduler = mock.Mock()
-        register_jobs(scheduler)
-        self.assertNotIn("cleanup_orphaned_uploads", [job["id"] for job in SCHEDULED_JOBS])
-        callback, event = scheduler.add_listener.call_args.args
-        self.assertEqual(event, EVENT_SCHEDULER_STARTED)
-        callback(None)
-        scheduler.remove_job.assert_called_once_with("cleanup_orphaned_uploads")
+    def test_cleanup_is_not_a_scheduled_job(self):
+        from config.celery import app
+        scheduled_tasks = [entry["task"] for entry in app.conf.beat_schedule.values()]
+        self.assertFalse(any("cleanup_orphaned_uploads" in task for task in scheduled_tasks))
 
     @patch("apps.uploads.services.media.MediaService._redis")
     def test_rolled_back_save_keeps_pending_state(self, redis):

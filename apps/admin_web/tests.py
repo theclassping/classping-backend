@@ -549,3 +549,121 @@ class AdminModulePageTests(TestCase):
 			with self.subTest(section=section):
 				response = self.client.get(f"/admin-web/settings/{section}/add/")
 				self.assertEqual(response.status_code, 200)
+
+
+class PaymentGatewayAdminWebTests(TestCase):
+	def setUp(self):
+		admin = User.objects.create_superuser(
+			email="gateway-admin@example.com",
+			password="StrongPassword123!",
+			first_name="Gateway",
+			last_name="Admin",
+		)
+		self.client.force_login(admin)
+		self.location = Location.objects.create(name="GW Admin Province", code="GWA", location_type="PROVINCE")
+		self.school = School.objects.create(name="GW Admin School", register_number="GWA-001")
+		self.branch = Branch.objects.create(school=self.school, name="Main", code="MAIN", location=self.location)
+
+	def edit_branch(self, **extra):
+		data = {"name": "Main", "code": "MAIN", "location_id": self.location.id, "is_active": "on"}
+		data.update(extra)
+		return self.client.post(reverse("admin_web:branch_edit", args=[self.school.pk, self.branch.pk]), data)
+
+	def test_branch_edit_toggles_payment_gateway(self):
+		response = self.edit_branch(is_payment_gateway_enabled="on")
+		self.assertEqual(response.status_code, 302)
+		self.branch.refresh_from_db()
+		self.assertTrue(self.branch.is_payment_gateway_enabled)
+
+		self.edit_branch()
+		self.branch.refresh_from_db()
+		self.assertFalse(self.branch.is_payment_gateway_enabled)
+
+	def test_branch_pages_show_payment_gateway_state(self):
+		form = self.client.get(reverse("admin_web:branch_edit", args=[self.school.pk, self.branch.pk]))
+		self.assertContains(form, 'name="is_payment_gateway_enabled"')
+		detail = self.client.get(reverse("admin_web:branch_detail", args=[self.school.pk, self.branch.pk]))
+		self.assertContains(detail, "Payment Gateway")
+
+	def test_manual_payment_form_offers_only_manual_methods(self):
+		from apps.admin_web.forms import PaymentForm
+
+		values = [value for value, _ in PaymentForm().fields["payment_method"].choices if value]
+		self.assertEqual(values, ["bank_transfer", "cash"])
+
+
+class PaymentGatewayGuardAdminWebTests(TestCase):
+	def setUp(self):
+		from apps.payment_gateway.tests import GatewayFixtureMixin
+
+		fixture = type("Fixture", (GatewayFixtureMixin,), {})()
+		GatewayFixtureMixin.setUp(fixture)
+		self.fx = fixture
+		admin = User.objects.create_superuser(
+			email="gw-guard-admin@example.com",
+			password="StrongPassword123!",
+			first_name="Guard",
+			last_name="Admin",
+		)
+		self.client.force_login(admin)
+
+	def lock(self, invoice):
+		checkout = self.fx.make_payment("PAY-ADM-LOCK", "key-adm-lock")
+		self.fx.add_item(checkout, invoice)
+		return checkout
+
+	def gateway_payment_row(self):
+		from apps.payment_gateway.models import GatewayPayment
+
+		checkout = self.fx.make_payment("PAY-ADM-PAID", "key-adm-paid", status=GatewayPayment.Status.PAID)
+		return Payment.objects.create(
+			student_invoice=self.fx.invoice,
+			amount=self.fx.invoice.total_amount,
+			payment_method=Payment.PaymentMethod.VIRTUAL_ACCOUNT,
+			payment_channel=Payment.PaymentChannel.PAYMENT_GATEWAY,
+			gateway_payment=checkout,
+			status=Payment.Status.SUBMITTED,
+		)
+
+	def test_locked_invoice_hidden_from_manual_payment_form(self):
+		from apps.admin_web.forms import PaymentForm
+
+		self.lock(self.fx.invoice)
+		invoice_ids = set(PaymentForm().fields["student_invoice"].queryset.values_list("pk", flat=True))
+		self.assertNotIn(self.fx.invoice.pk, invoice_ids)
+		self.assertIn(self.fx.invoice_2.pk, invoice_ids)
+
+	def test_locked_invoice_rejected_by_form_validation(self):
+		from apps.admin_web.forms import PaymentForm
+
+		self.lock(self.fx.invoice)
+		form = PaymentForm(data={
+			"student_invoice": self.fx.invoice.pk,
+			"amount": "50000",
+			"payment_method": "cash",
+		})
+		self.assertFalse(form.is_valid())
+		self.assertIn("student_invoice", form.errors)
+
+	def test_gateway_payment_cannot_be_edited_deleted_or_reviewed(self):
+		# Even a gateway row in "submitted" state (defence in depth).
+		payment = self.gateway_payment_row()
+		detail_url = reverse("admin_web:payment_detail", args=[payment.pk])
+		for url in (
+			reverse("admin_web:payment_edit", args=[payment.pk]),
+			reverse("admin_web:payment_delete", args=[payment.pk]),
+			reverse("admin_web:payment_review", args=[payment.pk, "approve"]),
+		):
+			response = self.client.post(url, {})
+			self.assertRedirects(response, detail_url, fetch_redirect_response=False)
+		payment.refresh_from_db()
+		self.assertEqual(payment.status, Payment.Status.SUBMITTED)
+
+	def test_gateway_payment_detail_and_list_show_channel(self):
+		payment = self.gateway_payment_row()
+		detail = self.client.get(reverse("admin_web:payment_detail", args=[payment.pk]))
+		self.assertContains(detail, "Payment Gateway")
+		self.assertContains(detail, "PAY-ADM-PAID")
+		self.assertNotContains(detail, reverse("admin_web:payment_edit", args=[payment.pk]))
+		listing = self.client.get(reverse("admin_web:payment_list"))
+		self.assertContains(listing, "<th>Channel</th>", html=False)

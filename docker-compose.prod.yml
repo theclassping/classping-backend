@@ -38,7 +38,9 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
+    # appendonly: queued and delayed Celery tasks survive a Redis restart.
+    # noeviction: never drop keys (Celery queues) when memory is full.
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
     volumes:
       - redis_data:/data
     healthcheck:
@@ -76,14 +78,35 @@ services:
       start_period: 30s
       retries: 5
 
+  # Celery worker + beat in one process. Run exactly ONE instance (beat).
   scheduler:
     <<: *app
     restart: unless-stopped
-    command: ["python", "manage.py", "run_scheduler"]
+    command:
+      - celery
+      - -A
+      - config
+      - worker
+      - -B
+      - --concurrency=2
+      - --max-tasks-per-child=100
+      - --schedule=/app/var/celerybeat/schedule
+      - --loglevel=info
+    volumes:
+      # Beat's last-run times survive redeploys, so a job missed while the
+      # container was down runs once on start.
+      - celerybeat_data:/app/var/celerybeat
     depends_on:
       release:
         condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A config inspect ping -d celery@$$HOSTNAME --timeout 10 >/dev/null"]
+      interval: 60s
+      timeout: 30s
+      start_period: 60s
+      retries: 3
 
 volumes:
   postgres_data:
   redis_data:
+  celerybeat_data:

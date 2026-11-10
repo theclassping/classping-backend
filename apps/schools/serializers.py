@@ -35,6 +35,7 @@ class BranchSerializer(serializers.ModelSerializer):
             "email",
             "is_active",
             "storage_capacity_bytes",
+            "is_payment_gateway_enabled",
             "location_id",
             "location",
             "created_at",
@@ -42,6 +43,7 @@ class BranchSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             "id",
+            "is_payment_gateway_enabled",
             "created_at",
             "updated_at",
         ]

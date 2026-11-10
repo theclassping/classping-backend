@@ -1,0 +1,51 @@
+{% extends "admin_web/base.html" %}
+
+{% block title %}Wallets - ClassPing Admin{% endblock %}
+{% block page_title %}<h1>Wallets</h1>{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div><h2>Branch wallets</h2><p class="text-muted">Money from online payments, per branch. The provider balance must cover what branches can withdraw.</p></div>
+</div>
+<div class="card">
+    <div class="detail-row"><div class="detail-label">All branches · available</div><div>{{ platform.branches_available }}</div></div>
+    <div class="detail-row"><div class="detail-label">All branches · pending</div><div>{{ platform.branches_pending }}</div></div>
+    {% if platform.provider %}
+        <div class="detail-row"><div class="detail-label">Provider balance · available</div><div>{{ platform.provider.available }}</div></div>
+        <div class="detail-row"><div class="detail-label">Provider balance · pending</div><div>{{ platform.provider.pending }}</div></div>
+        {% if platform.provider.available < platform.branches_available %}
+            <p class="alert alert-error">The provider balance is lower than what branches can withdraw.</p>
+        {% endif %}
+    {% else %}
+        <p class="alert alert-error">Provider balance unavailable: {{ platform.provider_error }}</p>
+    {% endif %}
+</div>
+<form method="get" class="filter-bar">
+    <div class="form-group">
+        <label for="wallet-search">Search</label>
+        <input id="wallet-search" type="search" name="q" value="{{ search }}" placeholder="School or branch">
+    </div>
+    <button class="btn" type="submit">Filter</button>
+</form>
+<div class="card">
+    {% if page_obj.object_list %}
+        <table class="data-table">
+            <thead><tr><th>Branch</th><th>Available</th><th>Pending</th><th>Updated</th><th>Action</th></tr></thead>
+            <tbody>
+                {% for wallet in page_obj %}
+                    <tr>
+                        <td>{{ wallet.branch.school.name }} - {{ wallet.branch.name }}</td>
+                        <td>{{ wallet.available_balance }}</td>
+                        <td>{{ wallet.pending_balance }}</td>
+                        <td>{{ wallet.updated_at|date:"Y-m-d H:i" }}</td>
+                        <td><a class="btn btn-small" href="{% url 'admin_web:wallet_detail' wallet.branch_id %}">Open</a></td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <div class="empty-state"><h3>No wallets yet</h3><p>A wallet is created with a branch's first online payment.</p></div>
+    {% endif %}
+</div>
+{% include "admin_web/includes/pagination.html" %}
+{% endblock %}

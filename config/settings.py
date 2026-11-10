@@ -2,6 +2,8 @@ from pathlib import Path
 from datetime import timedelta
 import os
 import sys
+from urllib.parse import urlsplit
+from corsheaders.defaults import default_headers as default_cors_headers
 from django.core.exceptions import ImproperlyConfigured
 
 try:
@@ -65,7 +67,6 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
     "mptt",
-    "django_apscheduler",
 
     # ClassPing
     "apps.users",
@@ -79,6 +80,9 @@ INSTALLED_APPS = [
     "apps.fee_types",
     "apps.student_invoices",
     "apps.payments",
+    "apps.payment_aggregator.apps.PaymentAggregatorConfig",
+    "apps.payment_gateway.apps.PaymentGatewayConfig",
+    "apps.wallets.apps.WalletsConfig",
     "apps.report_layouts",
     "apps.report_sections",
     "apps.score_settings",
@@ -181,6 +185,8 @@ CORS_ALLOWED_ORIGINS = [
     ).split(",")
     if origin.strip()
 ]
+# Browsers must be allowed to send Idempotency-Key (gateway checkout).
+CORS_ALLOW_HEADERS = (*default_cors_headers, "idempotency-key")
 
 # Let browser clients read the Server-Timing header on cross-origin calls.
 CORS_EXPOSE_HEADERS = ["Server-Timing"]
@@ -226,6 +232,8 @@ REST_FRAMEWORK = {
         "password_forgot_email": "3/hour",
         "password_reset": "20/hour",
         "password_change": "5/min",
+        "gateway_checkout": "10/min",
+        "withdrawal_otp": "5/min",
     },
     # Ignore X-Forwarded-For unless production trusts its proxy.
     "NUM_PROXIES": 0,
@@ -349,12 +357,46 @@ MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_BYTES", str(10 * 1024 * 1024))
 # Storage capacity for branches without their own storage_capacity_bytes.
 DEFAULT_BRANCH_STORAGE_BYTES = int(os.environ.get("DEFAULT_BRANCH_STORAGE_BYTES", str(5 * 1024 ** 3)))
 
+RUNNING_TESTS = len(sys.argv) > 1 and sys.argv[1] == "test"
+
 # Rate-limit counters must be shared by every worker, so use Redis when set.
 # Tests get a no-op cache; throttling tests opt into a local cache.
-if len(sys.argv) > 1 and sys.argv[1] == "test":
+if RUNNING_TESTS:
     CACHES = {"default": {"BACKEND": "django.core.cache.backends.dummy.DummyCache"}}
 elif REDIS_URL:
     CACHES = {"default": {"BACKEND": "django.core.cache.backends.redis.RedisCache", "LOCATION": REDIS_URL}}
+
+# Celery (config/celery.py). The broker is the same Redis as REDIS_URL but
+# database /1, so queues never mix with the Django cache in /0. Empty when
+# REDIS_URL is not set (then tasks are not queued; see payment_gateway).
+CELERY_BROKER_URL = urlsplit(REDIS_URL)._replace(path="/1").geturl() if REDIS_URL else ""
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_TASK_SERIALIZER = "json"
+CELERY_ACCEPT_CONTENT = ["json"]
+# A task is acknowledged only after it finished, so a worker restart puts
+# in-flight and delayed (eta) tasks back on the queue instead of losing them.
+CELERY_TASK_ACKS_LATE = True
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+CELERY_WORKER_HIJACK_ROOT_LOGGER = False
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+CELERY_BROKER_CONNECTION_TIMEOUT = 3
+CELERY_BROKER_TRANSPORT_OPTIONS = {
+    # Must exceed the longest eta delay (payment expiry is ~62 minutes),
+    # otherwise Redis redelivers the delayed task and it runs twice.
+    "visibility_timeout": 2 * 60 * 60,
+    "socket_connect_timeout": 3,
+    "socket_timeout": 5,
+}
+# Publishing from a web request must fail fast instead of blocking it.
+CELERY_TASK_PUBLISH_RETRY_POLICY = {
+    "max_retries": 2,
+    "interval_start": 0,
+    "interval_step": 0.5,
+    "interval_max": 1,
+}
+# Tests run tasks inline and need no broker or worker.
+CELERY_TASK_ALWAYS_EAGER = RUNNING_TESTS
+CELERY_TASK_EAGER_PROPAGATES = RUNNING_TESTS
 
 # Mailjet Configuration
 MAILJET_API_KEY = os.environ.get("MAILJET_API_KEY")
@@ -367,4 +409,10 @@ MAILJET_TEMPLATES = {
     "payment_completed": 8345508,
     "payment_rejected": 8345509,
     "welcome_email": 8388105,
+    # Withdrawals (branch email). Without withdrawal_otp no withdrawal can be
+    # made (OTP_NOT_SENT); without withdrawal_status the email is skipped.
+    "withdrawal_otp": 8507159,
+    "withdrawal_status": 8507188,
+    # Nightly branch balance mismatch alert to OPS_ALERT_EMAIL.
+    "balance_alert": 8507233,
 }

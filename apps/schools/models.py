@@ -47,6 +47,8 @@ class Branch(models.Model):
     # Media storage this branch is expected to stay within. Null uses
     # settings.DEFAULT_BRANCH_STORAGE_BYTES. Monitored, not enforced.
     storage_capacity_bytes = models.PositiveBigIntegerField(null=True, blank=True)
+    # Paid opt-in feature; toggled only from admin web.
+    is_payment_gateway_enabled = models.BooleanField(default=False)
     location = models.ForeignKey(
         Location,
         on_delete=models.PROTECT,

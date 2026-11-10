@@ -1,0 +1,58 @@
+{% extends "admin_web/base.html" %}
+
+{% block title %}Online Payments - ClassPing Admin{% endblock %}
+{% block page_title %}<h1>Online Payments</h1>{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div><h2>Online Payments</h2><p class="text-muted">Payment gateway checkouts. Flagged checkouts need ops attention.</p></div>
+</div>
+<form method="get" class="filter-bar">
+    <div class="form-group">
+        <label for="gateway-search">Search</label>
+        <input id="gateway-search" type="search" name="q" value="{{ search }}" placeholder="Checkout no, provider id or student">
+    </div>
+    <div class="form-group">
+        <label for="gateway-status">Status</label>
+        <select id="gateway-status" name="status">
+            <option value="">All statuses</option>
+            {% for value, label in statuses %}<option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+    </div>
+    <div class="form-group"><label>Branch</label><select name="branch" data-searchable><option value="">All branches</option>{% for branch in branches %}<option value="{{ branch.pk }}" {% if branch_id == branch.pk|stringformat:'s' %}selected{% endif %}>{{ branch.school.name }} - {{ branch.name }}</option>{% endfor %}</select></div>
+    <div class="form-group">
+        <label for="gateway-flag">Flag</label>
+        <select id="gateway-flag" name="flag">
+            <option value="">All</option>
+            <option value="needs_refund" {% if flag == 'needs_refund' %}selected{% endif %}>Needs refund</option>
+            <option value="needs_review" {% if flag == 'needs_review' %}selected{% endif %}>Needs review</option>
+        </select>
+    </div>
+    <button class="btn" type="submit">Filter</button>
+</form>
+<div class="card">
+    {% if page_obj.object_list %}
+        <table class="data-table">
+            <thead><tr><th>Checkout</th><th>Student</th><th>Branch</th><th>Channel</th><th>Amount</th><th>Status</th><th>Created</th><th>Flags</th><th>Action</th></tr></thead>
+            <tbody>
+                {% for gateway_payment in page_obj %}
+                    <tr>
+                        <td><strong>{{ gateway_payment.payment_no }}</strong></td>
+                        <td>{{ gateway_payment.student.full_name }}</td>
+                        <td>{{ gateway_payment.branch.school.name }} - {{ gateway_payment.branch.name }}</td>
+                        <td>{{ gateway_payment.channel_name }}</td>
+                        <td>{{ gateway_payment.amount }}</td>
+                        <td><span class="status {% if gateway_payment.status == 'paid' %}status-active{% elif gateway_payment.status != 'pending' %}status-inactive{% endif %}">{{ gateway_payment.get_status_display }}</span></td>
+                        <td>{{ gateway_payment.created_at|date:"Y-m-d H:i" }}</td>
+                        <td>{% if gateway_payment.needs_refund %}<span class="status status-inactive">Refund</span>{% endif %} {% if gateway_payment.needs_review %}<span class="status status-inactive">Review</span>{% endif %}</td>
+                        <td><a class="btn btn-small" href="{% url 'admin_web:gateway_payment_detail' gateway_payment.pk %}">Open</a></td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <div class="empty-state"><h3>No online payments found</h3><p>Checkouts made by parents will appear here.</p></div>
+    {% endif %}
+</div>
+{% include "admin_web/includes/pagination.html" %}
+{% endblock %}

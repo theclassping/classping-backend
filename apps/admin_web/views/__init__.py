@@ -13,6 +13,9 @@ from .payments import (
     payment_delete, payment_detail, payment_form, payment_list, payment_review,
     student_invoice_detail, student_invoice_list,
 )
+from .gateway_payments import (
+    gateway_payment_cancel, gateway_payment_detail, gateway_payment_list, gateway_payment_sync,
+)
 from .settings import (
     role_permissions, settings_delete, settings_detail, settings_form, settings_list,
 )
@@ -27,5 +30,10 @@ from .users import (
 from .staff import staff_detail, staff_list
 from .staff_mutations import staff_activate, staff_create, staff_deactivate, staff_edit
 from .branches import branch_detail, branch_create, branch_edit, branch_deactivate, branch_set_active, storage_overview
+from .payout_accounts import payout_account_delete, payout_account_edit
+from .wallets import (
+    wallet_detail, wallet_list, withdrawal_detail, withdrawal_list, withdrawal_resend, withdrawal_resolve,
+    withdrawal_sync,
+)
 
 __all__ = [name for name in globals() if not name.startswith("_")]

@@ -10,6 +10,8 @@ from drf_spectacular.views import (
 from rest_framework_simplejwt.views import (
     TokenRefreshView,
 )
+
+from apps.core.webhooks import webhook
 from rest_framework_simplejwt.views import TokenObtainPairView
 from apps.users.serializers import LoginTokenSerializer
 from apps.users.throttling import LOGIN_THROTTLES, TokenRefreshThrottle, throttle_login_form
@@ -82,6 +84,9 @@ urlpatterns = [
     path("api/", include("apps.fee_types.urls")),
     path("api/", include("apps.student_invoices.urls")),
     path("api/", include("apps.payments.urls")),
+    path("api/", include("apps.payment_gateway.urls")),
+    path("api/", include("apps.wallets.urls")),
+    path("api/webhooks/<str:source>/<str:event>/", webhook, name="webhook"),
     path("api/", include("apps.activities.urls")),
     path("api/media/", include("apps.uploads.urls")),
     path("api/parent/", include("apps.parent_portal.urls")),
