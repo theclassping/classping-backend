@@ -21,6 +21,15 @@ class FakeResponse:
         self.status_code = status_code
         self._body = body
         self._text = text
+        self.headers = {"Content-Type": "application/json" if body is not None else "text/plain"}
+
+    @property
+    def text(self):
+        if self._text is not None:
+            return self._text
+        if self._body is not None:
+            return json.dumps(self._body)
+        return ""
 
     def json(self):
         if self._body is None:
