@@ -43,15 +43,17 @@ class RintisanProvider(BaseProvider):
     def _load_private_key(self):
         # Credentials are checked by RintisanClient.post before signing.
         if self._private_key is None:
-            with open(self.config.private_key_path, "rb") as handle:
-                self._private_key = signing.load_private_key(handle.read())
+            self._private_key = signing.load_private_key(
+                self.config.private_key.encode("utf-8")
+            )
         return self._private_key
 
     def _load_public_key(self):
         if self._public_key is None:
             self.config.require_callback_credentials()
-            with open(self.config.public_key_path, "rb") as handle:
-                self._public_key = signing.load_public_key(handle.read())
+            self._public_key = signing.load_public_key(
+                self.config.public_key.encode("utf-8")
+            )
         return self._public_key
 
     # --- fee configuration ----------------------------------------------

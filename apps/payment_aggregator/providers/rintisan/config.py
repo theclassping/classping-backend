@@ -5,8 +5,9 @@ RINTISAN_ENV              sandbox | production (default: sandbox)
 RINTISAN_BASE_URL         optional override of the base URL
 RINTISAN_CLIENT_ID        x-client-id
 RINTISAN_API_KEY          x-api-key
-RINTISAN_PRIVATE_KEY_PATH Classping RSA private key (PEM) used to sign requests
-RINTISAN_PUBLIC_KEY_PATH  Rintisan RSA public key (PEM) used to verify callbacks
+CLASSPING_PRIVATE_KEY     Classping RSA private key, PEM text, used to sign requests
+RINTISAN_PUBLIC_KEY       Rintisan RSA public key, PEM text, used to verify callbacks
+                          Both keys may use real newlines or literal \\n escapes.
 RINTISAN_CALLBACK_TOKEN   static x-callback-token expected on callbacks
 RINTISAN_PAYER_EMAIL      to_email sent on every billing (default: constants.PAYER_EMAIL)
 RINTISAN_REQUIRE_TRANSFER_CALLBACK_SIGNATURE
@@ -28,13 +29,18 @@ def _env_bool(name, default):
     return value.strip().lower() in ("1", "true", "yes", "on")
 
 
+def _env_pem(name):
+    """PEM text from the environment; literal \\n escapes become newlines."""
+    return os.environ.get(name, "").strip().replace("\\n", "\n")
+
+
 @dataclass(frozen=True)
 class RintisanConfig:
     base_url: str
     client_id: str
     api_key: str
-    private_key_path: str
-    public_key_path: str
+    private_key: str
+    public_key: str
     callback_token: str
     payer_email: str = constants.PAYER_EMAIL
     require_transfer_callback_signature: bool = True
@@ -52,8 +58,8 @@ class RintisanConfig:
             base_url=(os.environ.get("RINTISAN_BASE_URL") or default_url).rstrip("/"),
             client_id=os.environ.get("RINTISAN_CLIENT_ID", ""),
             api_key=os.environ.get("RINTISAN_API_KEY", ""),
-            private_key_path=os.environ.get("RINTISAN_PRIVATE_KEY_PATH", ""),
-            public_key_path=os.environ.get("RINTISAN_PUBLIC_KEY_PATH", ""),
+            private_key=_env_pem("CLASSPING_PRIVATE_KEY"),
+            public_key=_env_pem("RINTISAN_PUBLIC_KEY"),
             callback_token=os.environ.get("RINTISAN_CALLBACK_TOKEN", ""),
             payer_email=os.environ.get("RINTISAN_PAYER_EMAIL") or constants.PAYER_EMAIL,
             require_transfer_callback_signature=_env_bool(
@@ -75,11 +81,11 @@ class RintisanConfig:
         self._require(
             RINTISAN_CLIENT_ID=self.client_id,
             RINTISAN_API_KEY=self.api_key,
-            RINTISAN_PRIVATE_KEY_PATH=self.private_key_path,
+            CLASSPING_PRIVATE_KEY=self.private_key,
         )
 
     def require_callback_credentials(self):
         self._require(
             RINTISAN_CLIENT_ID=self.client_id,
-            RINTISAN_PUBLIC_KEY_PATH=self.public_key_path,
+            RINTISAN_PUBLIC_KEY=self.public_key,
         )

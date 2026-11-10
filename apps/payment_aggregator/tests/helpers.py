@@ -51,8 +51,8 @@ def make_config(**overrides):
         base_url="https://api.sandbox.rintisan.co.id/api/v1/billing/payin/partner",
         client_id=CLIENT_ID,
         api_key="api-key",
-        private_key_path="unused.pem",
-        public_key_path="unused.pem",
+        private_key="unused",
+        public_key="unused",
         callback_token="callback-token",
         require_transfer_callback_signature=True,
     )
