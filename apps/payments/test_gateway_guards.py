@@ -8,6 +8,7 @@ from rest_framework.test import APIClient
 from apps.payment_gateway.models import GatewayPayment
 from apps.payment_gateway.tests import GatewayFixtureMixin
 from apps.payments.models import Payment, PaymentProof
+from apps.payments.tests import accept_image_data_as_sent
 from apps.student_invoices.models import StudentInvoice
 from apps.users.models import User
 
@@ -18,6 +19,7 @@ PROOF = {"object_key": "proofs/test.png", "filename": "test.png"}
 class PaymentGatewayGuardApiTests(GatewayFixtureMixin, TestCase):
     def setUp(self):
         super().setUp()
+        accept_image_data_as_sent(self)
         self.parent = APIClient()
         self.parent.force_authenticate(user=self.parent_user)
         self.staff = APIClient()

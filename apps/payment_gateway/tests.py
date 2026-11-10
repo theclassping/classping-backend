@@ -1,4 +1,4 @@
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from unittest import mock
 
@@ -93,6 +93,9 @@ class GatewayFixtureMixin:
         )
 
     def make_payment(self, payment_no="PAY-1", idempotency_key="key-1", guardian=None, **overrides):
+        # Relative to now: a fixed past date makes expire_if_overdue release
+        # the lock on read once the real clock passes it.
+        expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
         values = dict(
             payment_no=payment_no,
             branch=self.branch,
@@ -105,8 +108,8 @@ class GatewayFixtureMixin:
             transaction_fee=Decimal("5000"),
             amount=Decimal("130000"),
             idempotency_key=idempotency_key,
-            deadline_date=date(2026, 11, 8),
-            expires_at=datetime(2026, 11, 8, 16, 59, 59, tzinfo=timezone.utc),
+            deadline_date=expires_at.date(),
+            expires_at=expires_at,
         )
         values.update(overrides)
         return GatewayPayment.objects.create(**values)

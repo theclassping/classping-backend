@@ -328,7 +328,7 @@ class PaymentApiTests(TestCase):
         self.assertEqual(update.status_code, 200)
         self.assertEqual(client.delete(f"/api/payment-proofs/{proof_id}/").status_code, 403)
 
-    @patch("apps.payments.serializers.Mailer")
+    @patch("apps.payments.notifications.Mailer")
     def test_nested_proof_must_be_in_the_invoice_class_folder(self, mailer):
         class_obj = self.invoice.class_student.class_obj
         client = APIClient()
