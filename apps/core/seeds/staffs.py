@@ -30,3 +30,22 @@ def seed_staffs():
             ),
         },
     )
+
+    staff_user = User.objects.get(
+        email="sam@classping.test",
+        role=User.Role.STAFF,
+    )
+
+    Staff.objects.get_or_create(
+        user=staff_user,
+        defaults={
+            "staff_type": Staff.StaffType.OFFICER,
+            "branch": branch,
+            "first_name": staff_user.first_name,
+            "last_name": staff_user.last_name,
+            "email": staff_user.email,
+            "phone": "0221234568",
+            "hire_date": date(2026, 1, 1),
+            "qualification": "Bachelor of Administration",
+        },
+    )

@@ -22,6 +22,15 @@ def seed_users():
             "password": "password123",
         },
         {
+            "email": "sam@classping.test",
+            "first_name": "Sam",
+            "last_name": "Staff",
+            "role": User.Role.STAFF,
+            "is_staff": False,
+            "is_superuser": False,
+            "password": "password123",
+        },
+        {
             "email": "john@example.com",
             "first_name": "John",
             "last_name": "Doe",

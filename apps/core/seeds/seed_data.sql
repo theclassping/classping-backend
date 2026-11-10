@@ -68,6 +68,7 @@ INSERT INTO users (password, last_login, is_superuser, email, first_name, last_n
 VALUES
     ('pbkdf2_sha256$600000$classping-seed-admin$9k6HmLRDRcUclm2QyzuoU2axViyzaW0jp8LoBN6qCn0=', NULL, TRUE,  'admin@classping.test', 'System', 'Admin',   'ADMIN',   TRUE, TRUE,  NOW(), NOW()),
     ('pbkdf2_sha256$600000$classping-seed$u1DDtZQjR1pmsQjhnxItbnFdM9rgHlN/7WuitYJiusk=', NULL, FALSE, 'anna@classping.test',  'Anna',   'Teacher', 'TEACHER', TRUE, FALSE, NOW(), NOW()),
+    ('pbkdf2_sha256$600000$classping-seed$u1DDtZQjR1pmsQjhnxItbnFdM9rgHlN/7WuitYJiusk=', NULL, FALSE, 'sam@classping.test',   'Sam',    'Staff',   'STAFF',   TRUE, FALSE, NOW(), NOW()),
     ('pbkdf2_sha256$600000$classping-seed$u1DDtZQjR1pmsQjhnxItbnFdM9rgHlN/7WuitYJiusk=', NULL, FALSE, 'john@example.com',     'John',   'Doe',     'PARENT',  TRUE, FALSE, NOW(), NOW())
 ON CONFLICT (email) DO NOTHING;
 
@@ -75,6 +76,13 @@ INSERT INTO staffs (branch_id, user_id, first_name, last_name, email, phone, sta
 SELECT b.id, u.id, 'Anna', 'Teacher', 'anna@classping.test', '0221234567', 'teacher', DATE '2026-01-01',
        'Bachelor of Early Childhood Education', TRUE, NOW(), NOW()
 FROM school_branches b JOIN users u ON u.email = 'anna@classping.test'
+WHERE b.code = 'MAIN'
+ON CONFLICT (email) DO NOTHING;
+
+INSERT INTO staffs (branch_id, user_id, first_name, last_name, email, phone, staff_type, hire_date, qualification, is_active, created_at, updated_at)
+SELECT b.id, u.id, 'Sam', 'Staff', 'sam@classping.test', '0221234568', 'officer', DATE '2026-01-01',
+       'Bachelor of Administration', TRUE, NOW(), NOW()
+FROM school_branches b JOIN users u ON u.email = 'sam@classping.test'
 WHERE b.code = 'MAIN'
 ON CONFLICT (email) DO NOTHING;
 
