@@ -72,7 +72,9 @@ def payment_form(request, pk=None):
     proof_formset = PaymentProofFormSet(
         request.POST or None,
         request.FILES or None,
-        instance=payment,
+        # form.instance, not payment: proofs on a new payment need its invoice
+        # (and so its class folder) once the payment form is validated.
+        instance=form.instance,
         prefix="proofs",
     )
     if request.method == "POST" and form.is_valid() and proof_formset.is_valid():

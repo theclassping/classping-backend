@@ -22,7 +22,8 @@ from apps.staffs.models import Staff
 from apps.users.models import User
 from apps.users.managers import generate_temporary_password
 from apps.wallets.models import PayoutAccount
-from apps.admin_web.media import process_uploaded_image
+from apps.admin_web.media import NO_BRANCH_MESSAGE, process_uploaded_image
+from apps.uploads.paths import instance_media_location
 
 
 class HierarchicalClassChoiceField(forms.ModelChoiceField):
@@ -50,11 +51,17 @@ class SearchableImageUploadMixin:
         )
         self.fields["image_file"].widget.attrs["accept"] = "image/*"
 
+    def _post_clean(self):
+        # After the instance holds the submitted fields (e.g. a student's branch).
+        super()._post_clean()
+        if self.cleaned_data.get("image_file") and instance_media_location(self.instance) is None:
+            self.add_error("image_file", NO_BRANCH_MESSAGE)
+
     def save(self, commit=True):
         instance = super().save(commit=False)
         uploaded_file = self.cleaned_data.get("image_file")
         if uploaded_file:
-            instance.image_data = process_uploaded_image(uploaded_file)
+            instance.image_data = process_uploaded_image(uploaded_file, instance)
         if commit:
             instance.save()
             self.save_m2m()

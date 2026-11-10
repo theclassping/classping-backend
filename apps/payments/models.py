@@ -4,6 +4,7 @@ from django.db.models import Q
 from apps.payment_aggregator.base import PaymentMethod as GatewayMethod
 from apps.student_invoices.models import StudentInvoice
 from apps.staffs.models import Staff
+from apps.uploads.indexes import media_key_indexes
 
 
 class Payment(models.Model):
@@ -148,6 +149,7 @@ class PaymentProof(models.Model):
 
     class Meta:
         db_table = "payment_proofs"
+        indexes = media_key_indexes("payment_proofs")
         ordering = ["-uploaded_at"]
 
     def __str__(self):

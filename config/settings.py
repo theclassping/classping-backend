@@ -354,6 +354,8 @@ REDIS_URL = os.environ.get("REDIS_URL", "")
 UPLOAD_METADATA_TTL = int(os.environ.get("UPLOAD_METADATA_TTL", "3600"))
 # Uploads above this size are rejected when they are attached to a record.
 MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_BYTES", str(10 * 1024 * 1024)))
+# Storage capacity for branches without their own storage_capacity_bytes.
+DEFAULT_BRANCH_STORAGE_BYTES = int(os.environ.get("DEFAULT_BRANCH_STORAGE_BYTES", str(5 * 1024 ** 3)))
 
 RUNNING_TESTS = len(sys.argv) > 1 and sys.argv[1] == "test"
 

@@ -10,12 +10,13 @@ from apps.users.permissions import RoleBasedAccessPermission
 from rest_framework.views import APIView
 from django.conf import settings
 
-from apps.uploads.services.media import MediaService
+from apps.uploads.paths import UploadTargetNotFound, resolve_upload_location
+from apps.uploads.services.media import MediaInputError, MediaService, UploadStoreUnavailable
 from apps.uploads.serializers import (
     PresignUrlSerializer,
     PresignUrlResponseSerializer,
 )
-from apps.uploads.storage import get_storage, is_valid_upload_token, validate_file_key
+from apps.uploads.storage import get_storage, is_valid_upload_token, read_upload_token, validate_file_key
 from apps.core.access import user_can_access_media
 
 logger = logging.getLogger(__name__)
@@ -38,13 +39,25 @@ class PresignUrlView(APIView):
     Request body:
     {
         "filename": "logo-1.png",
-        "content_type": "image/png",
-        "expires_in": 3600
+        "content_type": "image/png",   # jpeg, png, webp, gif, heic or heif
+        "size": 70389,                 # exact bytes; the upload must match
+        "expires_in": 3600,
+        "purpose": "activity",         # activity|assessment|payment|student|guardian|general
+        "class_id": 12,                # required for activity, assessment, payment
+        "branch_id": 3                 # optional for student, guardian, general
     }
+
+    The key is built under the branch the upload belongs to:
+    branch_{id}/class_{id}/{category}/... or branch_{id}/{category}/...
+    For student/guardian/general, the branch is branch_id if sent, else the
+    uploader's staff branch, else the only branch they can see.
+
+    The client must PUT the file to presigned_url with exactly this
+    Content-Type header and byte size, or the upload is rejected.
     
     Response:
     {
-        "file_key": "2025/01/15/abc123def456.png",
+        "file_key": "branch_3/class_12/activities/abc123def456.png",
         "presigned_url": "https://...",
         "expires_in": 3600,
         "content_type": "image/png"
@@ -57,15 +70,36 @@ class PresignUrlView(APIView):
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
+        data = serializer.validated_data
+        try:
+            location = resolve_upload_location(
+                request.user,
+                data['purpose'],
+                class_id=data.get('class_id'),
+                branch_id=data.get('branch_id'),
+            )
+        except UploadTargetNotFound as error:
+            return Response({'error': str(error)}, status=status.HTTP_404_NOT_FOUND)
+        except MediaInputError as error:
+            return Response({'error': str(error)}, status=status.HTTP_400_BAD_REQUEST)
+
         try:
             result = MediaService.generate_presign_url(
-                filename=serializer.validated_data['filename'],
-                content_type=serializer.validated_data['content_type'],
-                expires_in=serializer.validated_data.get('expires_in', 3600),
+                filename=data['filename'],
+                content_type=data['content_type'],
+                size=data['size'],
+                user_id=request.user.pk,
+                location=location,
+                expires_in=data.get('expires_in', 3600),
             )
             
             response_serializer = PresignUrlResponseSerializer(result)
             return Response(response_serializer.data, status=status.HTTP_200_OK)
+        except UploadStoreUnavailable:
+            return Response(
+                {'error': 'Upload service is temporarily unavailable. Please try again shortly.'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
         except Exception:
             logger.exception("Failed to generate presigned upload URL")
             return Response(
@@ -90,12 +124,25 @@ class UploadView(APIView):
     """
     # LocalStorage returns a presigned-style URL that is uploaded directly by
     # the browser and therefore does not include the user's JWT header. The
-    # signed, expiring token in that URL is the upload capability; callers
-    # without one must be authenticated with upload permission.
-    permission_classes = [HasValidUploadToken | RoleBasedAccessPermission]
+    # signed, expiring token in that URL is the only upload capability: it
+    # names one key and, like R2's signed headers, its type and size.
+    permission_classes = [HasValidUploadToken]
     
     def put(self, request, file_key):
         """Handle file upload via PUT request."""
+        payload = read_upload_token(request.query_params.get("token"), file_key) or {}
+        content_type = request.META.get("CONTENT_TYPE", "").split(";")[0].strip()
+        if "ct" in payload and content_type != payload["ct"]:
+            return Response(
+                {'error': 'Content-Type does not match the upload URL.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        if "len" in payload and len(request.body) != payload["len"]:
+            return Response(
+                {'error': 'File size does not match the upload URL.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         try:
             safe_file_key = validate_file_key(file_key)
             media_root = os.path.abspath(settings.MEDIA_ROOT)

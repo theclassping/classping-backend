@@ -2,7 +2,10 @@ from rest_framework import serializers
 from django.utils import timezone
 
 from apps.student_invoices.models import StudentInvoice
+from apps.uploads.paths import check_media_location
+from apps.uploads.tracking import record_attached
 from apps.uploads.services.media import MediaService
+from apps.uploads.serializers import resolve_image_input
 from apps.mailer.services import Mailer
 from django.conf import settings
 from django.utils import timezone
@@ -41,7 +44,7 @@ class PaymentProofSerializer(serializers.ModelSerializer):
         if not obj.image_data:
             return None
 
-        object_key = obj.image_data.get("object_key")
+        object_key = obj.image_data.get("id") or obj.image_data.get("object_key")
         if not object_key:
             return None
 
@@ -51,24 +54,9 @@ class PaymentProofSerializer(serializers.ModelSerializer):
             return None
 
     def validate_image_data(self, value):
-        if isinstance(value, str):
-            try:
-                return MediaService.process_image_data(value)
-            except FileNotFoundError:
-                raise serializers.ValidationError(
-                    "File not found. Provide a valid full file path or R2 URL."
-                )
-            except Exception as error:
-                raise serializers.ValidationError(
-                    f"Error processing image: {error}"
-                )
-
-        if not isinstance(value, dict):
-            raise serializers.ValidationError(
-                "image_data must be a file path string or media metadata object."
-            )
-
-        return value
+        # A metadata dict gets the same checks as a file_key: it must be this
+        # user's pending upload or an image they can already see.
+        return resolve_image_input(self, value, as_field=False)
 
 
 class PaymentSerializer(serializers.ModelSerializer):
@@ -192,20 +180,30 @@ class PaymentSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         proofs_data = validated_data.pop("proofs", [])
-        payment = Payment.objects.create(**validated_data)
-        PaymentProof.objects.bulk_create(
-            [
-                PaymentProof(
-                    payment=payment,
-                    **{
-                        key: value
-                        for key, value in proof_data.items()
-                        if key != "payment"
-                    },
-                )
-                for proof_data in proofs_data
-            ]
-        )
+        payment = Payment(**validated_data)
+        proofs = [
+            PaymentProof(
+                payment=payment,
+                **{
+                    key: value
+                    for key, value in proof_data.items()
+                    if key != "payment"
+                },
+            )
+            for proof_data in proofs_data
+        ]
+        # bulk_create skips the media signals, so check each key here,
+        # before anything is written.
+        for proof in proofs:
+            key = (proof.image_data or {}).get("id") or (proof.image_data or {}).get("object_key")
+            if key:
+                check_media_location(proof, key)
+        payment.save(force_insert=True)
+        PaymentProof.objects.bulk_create(proofs)
+        for proof in proofs:
+            key = (proof.image_data or {}).get("id") or (proof.image_data or {}).get("object_key")
+            if key:
+                record_attached(proof, key, proof.image_data)
 
         self._send_status_email(payment)
 

@@ -73,6 +73,7 @@
                 <a href="{% url 'admin_web:wallet_list' %}">Wallets</a>
                 <a href="{% url 'admin_web:withdrawal_list' %}">Withdrawals</a>{% endif %}
                 <a href="{% url 'admin_web:student_invoice_list' %}">Student Invoices</a>
+                <a href="{% url 'admin_web:storage_overview' %}">Storage</a>
                 <details class="sidebar-group" {% if request.resolver_match.url_name == 'settings_list' or request.resolver_match.url_name == 'settings_create' or request.resolver_match.url_name == 'settings_edit' %}open{% endif %}>
                     <summary>Settings</summary>
                     <a href="{% url 'admin_web:settings_list' 'fee-types' %}">Fee Types</a>

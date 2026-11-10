@@ -3,7 +3,7 @@ import logging
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
-from apps.uploads.services.media import FileTooLargeError, MediaService
+from apps.uploads.serializers import resolve_image_input
 from apps.students.models import Student, StudentGuardian
 from apps.users.managers import generate_temporary_password
 from .models import Guardian
@@ -87,23 +87,8 @@ class GuardianSerializer(serializers.ModelSerializer):
                 "user_id": "A guardian must be linked to a user with the PARENT role."
             })
 
-        if 'image_data' in attrs and attrs['image_data']:
-            image_data_input = attrs['image_data']
-            if isinstance(image_data_input, str):
-                try:
-                    processed_metadata = MediaService.process_image_data(image_data_input)
-                    attrs['image_data'] = processed_metadata
-                except FileNotFoundError:
-                    raise serializers.ValidationError({
-                        "image_data": "File not found. Please provide the full file path, e.g. 'C:/Users/audia/Downloads/brownies.jpg'"
-                    })
-                except FileTooLargeError as error:
-                    raise serializers.ValidationError({"image_data": str(error)})
-                except Exception:
-                    logger.exception("Failed to process image_data")
-                    raise serializers.ValidationError({
-                        "image_data": "Error processing image."
-                    })
+        if attrs.get('image_data'):
+            attrs['image_data'] = resolve_image_input(self, attrs['image_data'])
         
         return attrs
 
@@ -166,23 +151,8 @@ class GuardianInlineSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         """Process image_data if provided."""
-        if 'image_data' in attrs and attrs['image_data']:
-            image_data_input = attrs['image_data']
-            if isinstance(image_data_input, str):
-                try:
-                    processed_metadata = MediaService.process_image_data(image_data_input)
-                    attrs['image_data'] = processed_metadata
-                except FileNotFoundError:
-                    raise serializers.ValidationError({
-                        "image_data": "File not found. Please provide the full file path, e.g. 'C:/Users/audia/Downloads/brownies.jpg'"
-                    })
-                except FileTooLargeError as error:
-                    raise serializers.ValidationError({"image_data": str(error)})
-                except Exception:
-                    logger.exception("Failed to process image_data")
-                    raise serializers.ValidationError({
-                        "image_data": "Error processing image."
-                    })
+        if attrs.get('image_data'):
+            attrs['image_data'] = resolve_image_input(self, attrs['image_data'])
         
         return attrs
 

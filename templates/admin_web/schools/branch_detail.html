@@ -25,6 +25,33 @@
     <div class="detail-row"><div class="detail-label">Status</div><div>{% if branch.is_active %}Active{% else %}Inactive{% endif %}</div></div>
     <div class="detail-row"><div class="detail-label">Payment Gateway</div><div>{% if branch.is_payment_gateway_enabled %}Enabled{% else %}Disabled{% endif %}</div></div>
     <div class="detail-row"><div class="detail-label">Created / Updated</div><div>{{ branch.created_at|date:"d M Y H:i" }} / {{ branch.updated_at|date:"d M Y H:i" }}</div></div>
+    <div class="detail-section"><h3>Storage</h3>
+        <p>
+            <span class="status status-{{ storage.status }}">{{ storage.status|title }}</span>
+            {{ storage.used_bytes|filesizeformat }} of {{ storage.capacity_bytes|filesizeformat }}{% if storage.percent is not None %} ({{ storage.percent }}%){% endif %}
+            {% if storage.capacity_is_default %}<span class="text-muted">· default capacity</span>{% endif %}
+            {% if storage.pending_bytes %}<span class="text-muted">· {{ storage.pending_bytes|filesizeformat }} awaiting upload</span>{% endif %}
+        </p>
+        {% if storage.by_category %}
+        <div class="table-wrapper"><table class="data-table">
+            <thead><tr><th>Category</th><th>Files</th><th>Size</th></tr></thead>
+            <tbody>{% for row in storage.by_category %}<tr><td>{{ row.category|title }}</td><td>{{ row.files }}</td><td>{{ row.used_bytes|filesizeformat }}</td></tr>{% endfor %}</tbody>
+        </table></div>
+        {% endif %}
+        {% if storage.by_class %}
+        <div class="table-wrapper"><table class="data-table">
+            <thead><tr><th>Class</th><th>Files</th><th>Size</th><th>Breakdown</th></tr></thead>
+            <tbody>{% for row in storage.by_class %}<tr>
+                <td><a href="{% url 'admin_web:class_detail' row.class_id %}">{{ row.class_name }}</a></td>
+                <td>{{ row.files }}</td>
+                <td>{{ row.used_bytes|filesizeformat }}</td>
+                <td class="text-muted">{% for part in row.by_category %}{{ part.category|title }} {{ part.used_bytes|filesizeformat }}{% if not forloop.last %} · {% endif %}{% endfor %}</td>
+            </tr>{% endfor %}</tbody>
+        </table></div>
+        {% elif not storage.by_category %}
+        <p class="text-muted">No stored media yet.</p>
+        {% endif %}
+    </div>
     <div class="detail-section"><h3>Academic years</h3>
         {% for year in branch.academic_years.all %}<p>{{ year.name }} · {{ year.start_date|date:"d M Y" }} to {{ year.end_date|date:"d M Y" }}{% if year.is_current %} · Current{% endif %}</p>
         {% empty %}<p class="text-muted">No academic years configured.</p>{% endfor %}

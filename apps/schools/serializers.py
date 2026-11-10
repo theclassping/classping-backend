@@ -1,6 +1,7 @@
 import logging
 
 from rest_framework import serializers
+from rest_framework.exceptions import PermissionDenied
 
 from apps.locations.models import Location
 from apps.locations.serializers import (
@@ -8,7 +9,7 @@ from apps.locations.serializers import (
     LocationSerializer,
     preloaded_location,
 )
-from apps.uploads.services.media import FileTooLargeError, MediaService
+from apps.uploads.serializers import resolve_image_input
 from .models import Branch, School
 
 logger = logging.getLogger(__name__)
@@ -33,6 +34,7 @@ class BranchSerializer(serializers.ModelSerializer):
             "phone",
             "email",
             "is_active",
+            "storage_capacity_bytes",
             "is_payment_gateway_enabled",
             "location_id",
             "location",
@@ -46,6 +48,13 @@ class BranchSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         list_serializer_class = LocationPreloadListSerializer
+
+    def validate_storage_capacity_bytes(self, value):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if user is not None and not (user.is_superuser or str(user.role).upper() == "ADMIN"):
+            raise PermissionDenied("Only admins can change a branch's storage capacity.")
+        return value
 
     def get_location(self, obj):
         if not obj.location_id:
@@ -93,22 +102,7 @@ class SchoolSerializer(serializers.ModelSerializer):
     
     def validate(self, attrs):
         """Process image_data if provided."""
-        if 'image_data' in attrs and attrs['image_data']:
-            image_data_input = attrs['image_data']
-            if isinstance(image_data_input, str):
-                try:
-                    processed_metadata = MediaService.process_image_data(image_data_input)
-                    attrs['image_data'] = processed_metadata
-                except FileNotFoundError:
-                    raise serializers.ValidationError({
-                        "image_data": "File not found. Please provide the full file path, e.g. 'C:/Users/audia/Downloads/brownies.jpg'"
-                    })
-                except FileTooLargeError as error:
-                    raise serializers.ValidationError({"image_data": str(error)})
-                except Exception:
-                    logger.exception("Failed to process image_data")
-                    raise serializers.ValidationError({
-                        "image_data": "Error processing image."
-                    })
+        if attrs.get('image_data'):
+            attrs['image_data'] = resolve_image_input(self, attrs['image_data'])
         
         return attrs

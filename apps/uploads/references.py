@@ -1,7 +1,6 @@
 """Database ownership checks shared by media cleanup paths."""
 from django.apps import apps
-
-from apps.uploads.utils import MediaFieldMixin
+from django.db.models import Q
 
 
 MEDIA_MODELS = (
@@ -11,14 +10,17 @@ MEDIA_MODELS = (
 )
 
 
+def media_key_filter(file_key):
+    """Match records whose image_data names file_key under either key field."""
+    return Q(image_data__id=file_key) | Q(image_data__object_key=file_key)
+
+
 def is_media_referenced(file_key):
-    # Parse legacy JSON strings as well as dictionaries. Use the base manager
-    # so records hidden by a default manager still protect their files.
+    # Uses the base manager so records hidden by a default manager still
+    # protect their files. Relies on image_data being stored as a JSON object;
+    # uploads migration 0002 converted older JSON-string rows.
     for label in MEDIA_MODELS:
         model = apps.get_model(label)
-        values = model._base_manager.values_list("image_data", flat=True)
-        for value in values.iterator():
-            data = MediaFieldMixin._parse_media_data(value)
-            if isinstance(data, dict) and file_key in (data.get("id"), data.get("object_key")):
-                return True
+        if model._base_manager.filter(media_key_filter(file_key)).exists():
+            return True
     return False

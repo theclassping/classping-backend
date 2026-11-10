@@ -78,8 +78,22 @@ from apps.students.models import Student
 from apps.activities.models import Activity, ActivityImage
 
 
+def accept_image_data_as_sent(test):
+    """These API tests are not about upload ownership (see apps.uploads.tests),
+    so attach whatever image_data they send without touching storage."""
+    from unittest.mock import patch
+    from apps.uploads.services.media import MediaService
+    def resolve(value, user):
+        key = MediaService.extract_key(value)
+        return {"id": key, "object_key": key}
+    patcher = patch.object(MediaService, "resolve_image_data", side_effect=resolve)
+    patcher.start()
+    test.addCleanup(patcher.stop)
+
+
 class ActivityApiTests(TestCase):
     def setUp(self):
+        accept_image_data_as_sent(self)
         self.user = User.objects.create_user(
             email="activity-api@example.com",
             password="StrongPassword123!",
@@ -367,7 +381,10 @@ class ActivityMediaLifecycleTests(TestCase):
             with patch("apps.uploads.management.commands.cleanup_orphaned_uploads.get_storage") as storage:
                 call_command("cleanup_orphaned_uploads", stdout=StringIO())
                 storage.return_value.delete_object.assert_not_called()
-            redis.return_value.zrem.assert_called_with("classping:uploads:pending", "activity.jpg")
+            # mark_upload_attached clears pending state in one MULTI/EXEC pipeline.
+            pipe = redis.return_value.pipeline.return_value
+            pipe.zrem.assert_called_with("classping:uploads:pending", "activity.jpg")
+            pipe.execute.assert_called_once_with()
 
     def test_caption_update_and_empty_images_preserve_file(self):
         from unittest.mock import patch
