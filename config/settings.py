@@ -276,6 +276,13 @@ LOGGING = {
             "level": LOG_LEVEL,
             "propagate": False,
         },
+        # Provider responses are logged at INFO for payment troubleshooting,
+        # even when the deployment's general DJANGO_LOG_LEVEL is WARNING.
+        "apps.payment_aggregator.providers.rintisan.client": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
     },
 }
 
