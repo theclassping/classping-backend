@@ -240,6 +240,15 @@ class CheckoutApiTests(CheckoutFixtureMixin, TestCase):
         self.assertEqual(data["student_name"], "Budi Santoso")
         self.assertEqual(len(data["items"]), 2)
 
+    def test_long_payment_link_is_stored(self, apply_async):
+        # Tokopedia CC returns OneLink deep links well over 1000 characters.
+        long_link = "https://tokopedia.onelink.me/2ZX3?af_web_dp=" + "x" * 2000
+        with mock.patch(CREATE_BILLING, return_value=billing_result(payment_link=long_link)):
+            response = self.checkout()
+        self.assertEqual(response.status_code, 201, response.data)
+        payment = GatewayPayment.objects.get(pk=response.data["id"])
+        self.assertEqual(payment.payment_link, long_link)
+
     def test_same_idempotency_key_returns_same_checkout(self, apply_async):
         with mock.patch(CREATE_BILLING, return_value=billing_result()) as create_billing:
             first = self.checkout()

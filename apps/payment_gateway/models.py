@@ -75,8 +75,9 @@ class GatewayPayment(models.Model):
 
     provider_trx_id = models.CharField(max_length=100, unique=True, blank=True, null=True)
     payment_code = models.TextField(blank=True, default="")
-    payment_link = models.URLField(max_length=1000, blank=True, default="")
-    billing_url = models.URLField(max_length=1000, blank=True, default="")
+    # TextField: Tokopedia/OneLink deep links can exceed 1000 characters.
+    payment_link = models.TextField(blank=True, default="")
+    billing_url = models.TextField(blank=True, default="")
     provider_response = models.JSONField(blank=True, null=True)
     callback_payload = models.JSONField(blank=True, null=True)
     callback_received_at = models.DateTimeField(blank=True, null=True)
