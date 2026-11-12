@@ -2,7 +2,7 @@ from celery import shared_task
 from django.db import OperationalError
 from django.utils import timezone
 
-from apps.payment_aggregator.exceptions import ProviderUnavailable
+from payment_aggregator.exceptions import ProviderUnavailable
 
 from . import services
 from .models import GatewayPayment

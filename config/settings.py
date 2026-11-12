@@ -80,7 +80,6 @@ INSTALLED_APPS = [
     "apps.fee_types",
     "apps.student_invoices",
     "apps.payments",
-    "apps.payment_aggregator.apps.PaymentAggregatorConfig",
     "apps.payment_gateway.apps.PaymentGatewayConfig",
     "apps.wallets.apps.WalletsConfig",
     "apps.report_layouts",
@@ -278,7 +277,7 @@ LOGGING = {
         },
         # Provider responses are logged at INFO for payment troubleshooting,
         # even when the deployment's general DJANGO_LOG_LEVEL is WARNING.
-        "apps.payment_aggregator.providers.rintisan.client": {
+        "payment_aggregator.providers.rintisan.client": {
             "handlers": ["console"],
             "level": "INFO",
             "propagate": False,

@@ -53,3 +53,6 @@ prompt_toolkit==3.0.52
 tzdata==2026.6
 vine==5.1.0
 wcwidth==0.9.4
+
+# Local library (libs/payment_aggregator); reinstall after changing it.
+./libs/payment_aggregator

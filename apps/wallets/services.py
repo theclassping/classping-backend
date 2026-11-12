@@ -31,15 +31,15 @@ from apps.core.notes import append_note
 from apps.core.webhooks import InvalidWebhook
 from apps.mailer.services import Mailer
 from apps.payment_aggregator import PaymentAggregator
-from apps.payment_aggregator import exceptions as provider_errors
-from apps.payment_aggregator.base import (
+from payment_aggregator import exceptions as provider_errors
+from payment_aggregator.base import (
     ProviderBalance,
     TransferRequest,
     TransferResult,
     TransferStatus,
     WithdrawalBreakdown,
 )
-from apps.payment_aggregator.constants import (
+from apps.wallets.constants import (
     OPS_ALERT_EMAIL,
     WITHDRAWAL_OTP_LENGTH,
     WITHDRAWAL_OTP_MAX_ATTEMPTS,

@@ -10,11 +10,11 @@ import re
 
 import requests
 
-from apps.payment_aggregator.exceptions import (
+from payment_aggregator.exceptions import (
     ProviderAccessDenied,
     ProviderUnavailable,
 )
-from apps.payment_aggregator.providers.rintisan import signing
+from payment_aggregator.providers.rintisan import signing
 
 logger = logging.getLogger(__name__)
 

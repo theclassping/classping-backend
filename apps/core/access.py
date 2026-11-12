@@ -159,11 +159,14 @@ class ScopedQuerysetMixin:
                 self._scope_related_fields(field)
 
 
+# Branch staff (Staff.staff_type) who may cancel a checkout and manage the
+# branch wallet / withdrawals.
+BRANCH_FINANCE_STAFF_TYPES = ("officer", "principal")
+
+
 def get_finance_staff(user):
     """The Staff profile when ``user`` is a branch principal / officer
     (cancel checkouts, branch wallet, withdrawals), otherwise None."""
-    from apps.payment_aggregator.constants import BRANCH_FINANCE_STAFF_TYPES
-
     staff = getattr(user, "staff", None)
     if (
         str(getattr(user, "role", "")).upper() != "STAFF"

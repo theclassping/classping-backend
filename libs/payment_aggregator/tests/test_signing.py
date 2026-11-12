@@ -2,13 +2,13 @@ import base64
 import hashlib
 import json
 
-from django.test import SimpleTestCase
+from unittest import TestCase
 
-from apps.payment_aggregator.providers.rintisan import signing
-from apps.payment_aggregator.tests.helpers import CLIENT_ID, key_pair
+from payment_aggregator.providers.rintisan import signing
+from payment_aggregator.testing import CLIENT_ID, key_pair
 
 
-class MinifyTests(SimpleTestCase):
+class MinifyTests(TestCase):
     def test_compact_and_slashes_not_escaped(self):
         body = signing.minify({"url": "https://a.b/c", "n": 1})
         self.assertEqual(body, '{"url":"https://a.b/c","n":1}')
@@ -17,7 +17,7 @@ class MinifyTests(SimpleTestCase):
         self.assertEqual(signing.minify({"name": "Sekolah Ñ"}), '{"name":"Sekolah Ñ"}')
 
 
-class StringToSignTests(SimpleTestCase):
+class StringToSignTests(TestCase):
     def test_format_client_id_colon_lower_hex(self):
         body = '{"a":1}'
         expected = CLIENT_ID + ":" + hashlib.sha256(body.encode()).hexdigest()
@@ -25,9 +25,9 @@ class StringToSignTests(SimpleTestCase):
         self.assertEqual(signing.string_to_sign(CLIENT_ID, body.encode()), expected)
 
 
-class SignVerifyTests(SimpleTestCase):
+class SignVerifyTests(TestCase):
     def setUp(self):
-        self.private_key, self.public_key = key_pair("classping")
+        self.private_key, self.public_key = key_pair("merchant")
 
     def test_round_trip(self):
         body = signing.minify({"trx_id": "PPI-1"})

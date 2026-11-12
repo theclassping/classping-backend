@@ -3,7 +3,7 @@
 from ..forms import BalanceAdjustmentForm, WithdrawalResolveForm
 from ..views_common import *
 from apps.core.exceptions import CodedAPIException
-from apps.payment_aggregator.exceptions import PaymentAggregatorError
+from payment_aggregator.exceptions import PaymentAggregatorError
 from apps.wallets import services as wallet_services
 from apps.wallets.models import BranchWallet, LedgerEntry, Withdrawal
 

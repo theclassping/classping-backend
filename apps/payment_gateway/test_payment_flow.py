@@ -10,9 +10,9 @@ from django.urls import reverse
 from rest_framework.test import APIClient
 
 from apps.payment_aggregator.aggregator import set_provider
-from apps.payment_aggregator.base import BillingResult, BillingStatus, SettlementStatus
-from apps.payment_aggregator.providers.rintisan import signing
-from apps.payment_aggregator.tests.helpers import CLIENT_ID, key_pair, make_provider
+from payment_aggregator.base import BillingResult, BillingStatus, SettlementStatus
+from payment_aggregator.providers.rintisan import signing
+from apps.payment_aggregator.testing import CLIENT_ID, key_pair, make_provider
 from apps.payments.models import Payment, PaymentProof
 from apps.student_invoices.models import StudentInvoice
 from apps.users.models import User

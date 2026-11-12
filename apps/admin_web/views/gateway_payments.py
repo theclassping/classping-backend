@@ -2,7 +2,7 @@
 
 from ..views_common import *
 from apps.core.exceptions import CodedAPIException
-from apps.payment_aggregator.exceptions import PaymentAggregatorError
+from payment_aggregator.exceptions import PaymentAggregatorError
 from apps.payment_gateway import services as gateway_services
 from apps.payment_gateway.models import GatewayPayment
 

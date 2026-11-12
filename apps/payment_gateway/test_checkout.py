@@ -8,8 +8,8 @@ from django.test import TestCase, TransactionTestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from apps.payment_aggregator.base import BillingResult, BillingStatus
-from apps.payment_aggregator.exceptions import (
+from payment_aggregator.base import BillingResult, BillingStatus
+from payment_aggregator.exceptions import (
     DuplicateBilling,
     InvalidPayerPhone,
     ProviderRejected,

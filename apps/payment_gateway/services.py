@@ -30,14 +30,14 @@ from apps.core.notes import append_note
 from apps.core.phone import InvalidPhoneNumber, normalize_phone
 from apps.core.webhooks import InvalidWebhook
 from apps.payment_aggregator import PaymentAggregator
-from apps.payment_aggregator import exceptions as provider_errors
-from apps.payment_aggregator.base import (
+from payment_aggregator import exceptions as provider_errors
+from payment_aggregator.base import (
     BillingRequest,
     BillingStatus,
     FeeBreakdown,
     SettlementStatus,
 )
-from apps.payment_aggregator.constants import (
+from apps.payment_gateway.constants import (
     PAYMENT_DEADLINE_MINUTES,
     PAYMENT_EXPIRY_CHECK_DELAY_MINUTES,
 )

@@ -1,44 +1,55 @@
 """
-General (provider-independent) payment rules and provider selection.
+Classping's payment aggregator settings: which provider, with Classping's
+contract rates. The provider code itself is the ``payment_aggregator``
+library (libs/payment_aggregator).
 
-Fee amounts, channels and limits are NOT defined here: each provider keeps
-its own numbers in ``providers/<name>/constants.py``.
+Checkout rules live in apps/payment_gateway/constants.py, withdrawal rules in
+apps/wallets/constants.py.
 """
 
-# Active provider key (see PROVIDER_CLASSES).
-PAYMENT_AGGREGATOR_PROVIDER = "rintisan"
+from decimal import Decimal
 
-PROVIDER_CLASSES = {
-    "rintisan": "apps.payment_aggregator.providers.rintisan.provider.RintisanProvider",
+# --- Rintisan contract (Pricing & SLA deck) -------------------------------
+
+# Virtual Account MDR, flat per transaction ("mulai dari Rp5.000", negotiable
+# above 1000 trx/month). Paid by the parent on top of the invoice total.
+RINTISAN_MDR_VA = Decimal("5000")
+
+# Online Credit Card Rintisan MDR, percent. Paid by the parent via gross-up.
+RINTISAN_MDR_CC = Decimal("2")
+
+# E-commerce MDR, percent. Paid by the parent via gross-up.
+RINTISAN_MDR_TOKOPEDIA_CC = Decimal("1.75")
+RINTISAN_MDR_TOKOPEDIA_NON_CC = Decimal("0.5")
+RINTISAN_MDR_BLIBLI_CC = Decimal("1.75")
+
+# Rate per channel code (payment_aggregator.providers.rintisan.constants.CHANNELS).
+# A channel left out is not offered. QRIS is intentionally not offered (BI
+# forbids charging QRIS MDR to the payer). VAPERMATA is not in the pricing
+# deck; it uses the VA rate until Rintisan confirms.
+RINTISAN_CHANNEL_FEES = {
+    "VABCA": RINTISAN_MDR_VA,
+    "VABRI": RINTISAN_MDR_VA,
+    "VAMANDIRI": RINTISAN_MDR_VA,
+    "VABNI": RINTISAN_MDR_VA,
+    "VAPERMATA": RINTISAN_MDR_VA,
+    "CC": RINTISAN_MDR_CC,
+    "TOKOPEDIA CC": RINTISAN_MDR_TOKOPEDIA_CC,
+    "TOKOPEDIA NON CC": RINTISAN_MDR_TOKOPEDIA_NON_CC,
+    "BLIBLI CC": RINTISAN_MDR_BLIBLI_CC,
 }
 
-# --- Classping rules ------------------------------------------------------
+# Rintisan fee per disbursement (incl. bank validator), borne by the school.
+# Rintisan deducts it from the sent amount: withdraw 100.000 -> the bank
+# account receives 97.500. There is no min/max disbursement amount.
+RINTISAN_DISBURSEMENT_FEE = Decimal("2500")
 
-# A gateway checkout must be paid within this many minutes. Only the date
-# (deadline_date) is sent to the provider; Classping expires the checkout
-# itself after the window, and the invoice is open for manual payment again.
-PAYMENT_DEADLINE_MINUTES = 60
+# --- Rintisan account ------------------------------------------------------
 
-# The expiry check runs this many minutes after expires_at (the provider sends
-# no expiry callback).
-PAYMENT_EXPIRY_CHECK_DELAY_MINUTES = 2
+# Env var holding Classping's RSA private key (PEM) that signs Rintisan requests.
+RINTISAN_PRIVATE_KEY_ENV = "CLASSPING_PRIVATE_KEY"
 
-# One checkout pays 1..N invoices of one student.
-MAX_INVOICES_PER_CHECKOUT = 5
-
-# Classping takes no fee of its own: the payer pays the provider's
-# transaction fee on top, and the branch receives the full invoice total.
-
-# Branch staff (Staff.staff_type) who may cancel a checkout and manage the
-# branch wallet / withdrawals.
-BRANCH_FINANCE_STAFF_TYPES = ("officer", "principal")
-
-# --- Withdrawals ----------------------------------------------------------
-
-# OTP emailed to the branch before a withdrawal is sent to the provider.
-WITHDRAWAL_OTP_LENGTH = 6
-WITHDRAWAL_OTP_TTL_MINUTES = 3
-WITHDRAWAL_OTP_MAX_ATTEMPTS = 3
-
-# Receives the nightly branch balance check alert (wallets.check_branch_balances).
-OPS_ALERT_EMAIL = "the.class.ping@gmail.com"
+# Sent as to_email on every billing instead of the guardian's email, so payers
+# never receive emails from Rintisan (all emails come from Classping).
+# Overridable with env RINTISAN_PAYER_EMAIL.
+RINTISAN_PAYER_EMAIL = "no-reply@hamanto.com"

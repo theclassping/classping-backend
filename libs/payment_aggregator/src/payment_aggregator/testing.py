@@ -1,17 +1,22 @@
+"""
+Test helpers for applications using payment_aggregator: run a real provider
+against canned HTTP responses, and sign / verify with throwaway RSA keys.
+"""
+
 import json
 from functools import lru_cache
 
 from cryptography.hazmat.primitives.asymmetric import rsa
 
-from apps.payment_aggregator.providers.rintisan.config import RintisanConfig
-from apps.payment_aggregator.providers.rintisan.provider import RintisanProvider
+from payment_aggregator.providers.rintisan.config import RintisanConfig
+from payment_aggregator.providers.rintisan.provider import RintisanProvider
 
-CLIENT_ID = "classping-test"
+CLIENT_ID = "merchant-test"
 
 
 @lru_cache(maxsize=None)
 def key_pair(name):
-    """Cached RSA key pairs: 'classping' (our side) and 'rintisan' (theirs)."""
+    """Cached RSA key pairs: 'merchant' (our side) and 'rintisan' (theirs)."""
     private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     return private_key, private_key.public_key()
 
@@ -69,9 +74,16 @@ def make_config(**overrides):
     return RintisanConfig(**values)
 
 
-def make_provider(*responses, **config_overrides):
+def make_provider(*responses, channel_fees=None, disbursement_fee=None, **config_overrides):
+    """A real RintisanProvider talking to a FakeSession that returns ``responses``
+    (FakeResponse objects, or exceptions to raise), with test key pairs loaded."""
     session = FakeSession(*responses)
-    provider = RintisanProvider(config=make_config(**config_overrides), session=session)
-    provider._private_key = key_pair("classping")[0]
+    provider = RintisanProvider(
+        config=make_config(**config_overrides),
+        channel_fees=channel_fees,
+        disbursement_fee=disbursement_fee,
+        session=session,
+    )
+    provider._private_key = key_pair("merchant")[0]
     provider._public_key = key_pair("rintisan")[1]
     return provider, session

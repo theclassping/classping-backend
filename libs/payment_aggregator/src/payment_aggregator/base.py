@@ -1,7 +1,7 @@
 """
 Provider-neutral contract for payment aggregators.
 
-Business code (payment_gateway, wallets) only sees the dataclasses and
+Application code only sees the dataclasses and
 statuses defined here, never provider-specific codes or payloads.
 """
 
@@ -24,7 +24,7 @@ class FeeType:
 
 
 class BillingStatus:
-    # Provider view of a billing. Expiry is a Classping rule (the provider
+    # Provider view of a billing. Expiry is an application rule (the provider
     # keeps reporting an unpaid billing as PENDING), not a provider status.
     PENDING = "pending"
     PAID = "paid"
@@ -91,12 +91,12 @@ class BillingRequest:
     channel_code: str
     amount: Decimal
     invoice_date: datetime.date
-    # Classping payment window end (aware datetime); the provider decides how
+    # Application payment window end (aware datetime); the provider decides how
     # to express it (Rintisan: deadline_date + expiry time).
     expires_at: datetime.datetime
     payer_name: str
     payer_phone: str
-    # Providers may ignore this (Rintisan always sends its own PAYER_EMAIL).
+    # Providers may replace it (Rintisan: RintisanConfig.payer_email, when set).
     payer_email: str = ""
     identifier: str = ""
     payer_address: str = ""
@@ -158,7 +158,7 @@ class BaseProvider(abc.ABC):
 
     name = ""
 
-    # Fee configuration (numbers live in the provider's constants.py)
+    # Fee configuration (rates come from the application, limits from the provider)
     @abc.abstractmethod
     def get_channels(self) -> Sequence[Channel]:
         ...

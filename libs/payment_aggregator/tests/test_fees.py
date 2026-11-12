@@ -1,10 +1,10 @@
 from decimal import Decimal
 
-from django.test import SimpleTestCase
+from unittest import TestCase
 
-from apps.payment_aggregator import fees
-from apps.payment_aggregator.base import Channel, FeeType, PaymentMethod, WithdrawalRules
-from apps.payment_aggregator.exceptions import (
+from payment_aggregator import fees
+from payment_aggregator.base import Channel, FeeType, PaymentMethod, WithdrawalRules
+from payment_aggregator.exceptions import (
     AmountBelowMinimum,
     ChannelNotAvailable,
     InvalidAmount,
@@ -30,7 +30,7 @@ CC = Channel(
 RULES = WithdrawalRules(fee=Decimal("2500"))
 
 
-class TransactionFeeTests(SimpleTestCase):
+class TransactionFeeTests(TestCase):
     def test_flat_fee_added_on_top(self):
         result = fees.calculate_transaction_fee(VA, Decimal("50000"))
         self.assertEqual(result.invoice_total, Decimal("50000.00"))
@@ -98,7 +98,7 @@ class TransactionFeeTests(SimpleTestCase):
         self.assertEqual(codes, ["VABCA"])
 
 
-class WithdrawalTests(SimpleTestCase):
+class WithdrawalTests(TestCase):
     def test_fee_deducted_from_amount(self):
         result = fees.calculate_withdrawal(RULES, Decimal("1500000"))
         self.assertEqual(result.amount, Decimal("1500000.00"))

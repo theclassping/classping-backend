@@ -1,17 +1,17 @@
 from unittest import mock
 
 from cryptography.hazmat.primitives import serialization
-from django.test import SimpleTestCase
+from unittest import TestCase
 
-from apps.payment_aggregator.exceptions import ProviderNotConfigured
-from apps.payment_aggregator.providers.rintisan import signing
-from apps.payment_aggregator.providers.rintisan.config import RintisanConfig
-from apps.payment_aggregator.providers.rintisan.provider import RintisanProvider
-from apps.payment_aggregator.tests.helpers import CLIENT_ID, key_pair
+from payment_aggregator.exceptions import ProviderNotConfigured
+from payment_aggregator.providers.rintisan import signing
+from payment_aggregator.providers.rintisan.config import RintisanConfig
+from payment_aggregator.providers.rintisan.provider import RintisanProvider
+from payment_aggregator.testing import CLIENT_ID, key_pair
 
 
 def _private_pem():
-    return key_pair("classping")[0].private_bytes(
+    return key_pair("merchant")[0].private_bytes(
         serialization.Encoding.PEM,
         serialization.PrivateFormat.PKCS8,
         serialization.NoEncryption(),
@@ -19,18 +19,18 @@ def _private_pem():
 
 
 def _public_pem():
-    return key_pair("classping")[1].public_bytes(
+    return key_pair("merchant")[1].public_bytes(
         serialization.Encoding.PEM,
         serialization.PublicFormat.SubjectPublicKeyInfo,
     ).decode("utf-8")
 
 
-class KeysFromEnvTests(SimpleTestCase):
+class KeysFromEnvTests(TestCase):
     def _provider(self, private_pem, public_pem):
         env = {
             "RINTISAN_CLIENT_ID": CLIENT_ID,
             "RINTISAN_API_KEY": "api-key",
-            "CLASSPING_PRIVATE_KEY": private_pem,
+            "RINTISAN_PRIVATE_KEY": private_pem,
             "RINTISAN_PUBLIC_KEY": public_pem,
         }
         with mock.patch.dict("os.environ", env, clear=True):
@@ -57,10 +57,26 @@ class KeysFromEnvTests(SimpleTestCase):
         env = {"RINTISAN_CLIENT_ID": CLIENT_ID, "RINTISAN_API_KEY": "api-key"}
         with mock.patch.dict("os.environ", env, clear=True):
             config = RintisanConfig.from_env()
-        with self.assertRaisesMessage(ProviderNotConfigured, "CLASSPING_PRIVATE_KEY"):
+        with self.assertRaisesRegex(ProviderNotConfigured, "RINTISAN_PRIVATE_KEY"):
+            config.require_request_credentials()
+
+    def test_private_key_variable_name_is_configurable(self):
+        env = {
+            "RINTISAN_CLIENT_ID": CLIENT_ID,
+            "RINTISAN_API_KEY": "api-key",
+            "MY_APP_PRIVATE_KEY": _private_pem(),
+        }
+        with mock.patch.dict("os.environ", env, clear=True):
+            config = RintisanConfig.from_env(private_key_env="MY_APP_PRIVATE_KEY")
+        self.assertIn("BEGIN PRIVATE KEY", config.private_key)
+        config.require_request_credentials()
+
+        with mock.patch.dict("os.environ", {"RINTISAN_CLIENT_ID": CLIENT_ID, "RINTISAN_API_KEY": "k"}, clear=True):
+            config = RintisanConfig.from_env(private_key_env="MY_APP_PRIVATE_KEY")
+        with self.assertRaisesRegex(ProviderNotConfigured, "MY_APP_PRIVATE_KEY"):
             config.require_request_credentials()
 
     def test_missing_public_key_is_reported_by_name(self):
         provider = self._provider(_private_pem(), "")
-        with self.assertRaisesMessage(ProviderNotConfigured, "RINTISAN_PUBLIC_KEY"):
+        with self.assertRaisesRegex(ProviderNotConfigured, "RINTISAN_PUBLIC_KEY"):
             provider._load_public_key()

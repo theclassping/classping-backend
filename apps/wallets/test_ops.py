@@ -8,9 +8,9 @@ from unittest import mock
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
-from apps.payment_aggregator import exceptions as provider_errors
-from apps.payment_aggregator.base import ProviderBalance
-from apps.payment_aggregator.constants import OPS_ALERT_EMAIL
+from payment_aggregator import exceptions as provider_errors
+from payment_aggregator.base import ProviderBalance
+from apps.wallets.constants import OPS_ALERT_EMAIL
 from apps.payment_gateway.tests import PASSWORD
 from apps.users.models import User
 
