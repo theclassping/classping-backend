@@ -24,6 +24,7 @@ from dataclasses import dataclass
 
 from payment_aggregator.exceptions import ProviderNotConfigured
 from payment_aggregator.providers.rintisan import constants
+from payment_aggregator.utils import env_pem
 
 
 def _env_bool(name, default):
@@ -31,11 +32,6 @@ def _env_bool(name, default):
     if value is None or value.strip() == "":
         return default
     return value.strip().lower() in ("1", "true", "yes", "on")
-
-
-def _env_pem(name):
-    """PEM text from the environment; literal \\n escapes become newlines."""
-    return os.environ.get(name, "").strip().replace("\\n", "\n")
 
 
 @dataclass(frozen=True)
@@ -64,8 +60,8 @@ class RintisanConfig:
             base_url=(os.environ.get("RINTISAN_BASE_URL") or default_url).rstrip("/"),
             client_id=os.environ.get("RINTISAN_CLIENT_ID", ""),
             api_key=os.environ.get("RINTISAN_API_KEY", ""),
-            private_key=_env_pem(private_key_env),
-            public_key=_env_pem("RINTISAN_PUBLIC_KEY"),
+            private_key=env_pem(private_key_env),
+            public_key=env_pem("RINTISAN_PUBLIC_KEY"),
             callback_token=os.environ.get("RINTISAN_CALLBACK_TOKEN", ""),
             payer_email=os.environ.get("RINTISAN_PAYER_EMAIL") or default_payer_email,
             require_transfer_callback_signature=_env_bool(

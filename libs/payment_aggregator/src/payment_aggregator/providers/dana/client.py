@@ -13,7 +13,7 @@ import requests
 
 from payment_aggregator.exceptions import ProviderUnavailable
 from payment_aggregator.providers.dana import signing
-from payment_aggregator.providers.rintisan.client import _safe_response_preview
+from payment_aggregator.utils import safe_response_preview
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +60,7 @@ class DanaClient:
             "DANA POST %s response: HTTP %s body=%r",
             path,
             response.status_code,
-            _safe_response_preview(response),
+            safe_response_preview(response),
         )
 
         if not isinstance(data, dict) or not data.get("responseCode"):
