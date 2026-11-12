@@ -275,15 +275,21 @@ LOGGING = {
             "level": LOG_LEVEL,
             "propagate": False,
         },
-        # Provider responses are logged at INFO for payment troubleshooting,
+        # Provider responses (every provider) are logged at INFO for payment troubleshooting,
         # even when the deployment's general DJANGO_LOG_LEVEL is WARNING.
-        "payment_aggregator.providers.rintisan.client": {
+        "payment_aggregator.providers": {
             "handlers": ["console"],
             "level": "INFO",
             "propagate": False,
         },
     },
 }
+
+# Payment aggregator for NEW checkouts and withdrawals (one of
+# apps/payment_aggregator/providers/). Existing records keep
+# using the provider stored on them, so switching is safe while payments are
+# in flight; keep the old provider's credentials until they are all closed.
+PAYMENT_PROVIDER = os.environ.get("PAYMENT_PROVIDER", "rintisan").strip().lower()
 
 # Password changes invalidate access and refresh tokens from every login.
 SIMPLE_JWT = {

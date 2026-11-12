@@ -25,6 +25,7 @@ from .test_checkout import CheckoutFixtureMixin
 from .tests import NoMailjetMixin
 
 WEBHOOK_URL = "/api/webhooks/rintisan/payment/"
+GENERIC_WEBHOOK_URL = "/api/webhooks/payment/"
 EMAIL_TASK = "apps.payment_gateway.tasks.send_payment_completed_email_task.delay"
 
 
@@ -409,3 +410,120 @@ class PaymentRaceTests(NoMailjetMixin, PaymentFlowMixin, TransactionTestCase):
         )
         self.assertEqual(errors, [])
         self.assertEqual(self.reload().status, GatewayPayment.Status.PAID)
+
+
+class ProviderSwitchFlowTests(PaymentFlowMixin, TestCase):
+    """PAYMENT_PROVIDER switched while a Rintisan checkout is pending."""
+
+    def setUp(self):
+        super().setUp()
+        from apps.payment_aggregator.aggregator import add_provider
+        from apps.payment_aggregator.test_switch import OtherProvider
+
+        rintisan, _ = make_provider()
+        self.other = OtherProvider(
+            billing=BillingResult("PAY-1", "OTH-1", status=BillingStatus.PAID, amount=Decimal("130000"))
+        )
+        set_provider(self.other)  # the new active provider
+        add_provider(rintisan)  # still reachable for its own records
+
+    def test_rintisan_callback_still_settles_its_checkout(self):
+        self.assertEqual(self.post_callback(callback_body()).status_code, 200)
+        self.assertEqual(self.reload().status, GatewayPayment.Status.PAID)
+
+    def test_sync_asks_the_provider_that_created_the_checkout(self):
+        paid = BillingResult("PAY-1", "PPI-1", status=BillingStatus.PAID, amount=Decimal("130000"))
+        with mock.patch.object(type(self.rintisan_aggregator()), "get_billing_status", return_value=paid) as status:
+            services.sync_gateway_payment(self.checkout_row.pk)
+        status.assert_called_once_with("PPI-1")
+        self.assertEqual(self.other.calls, [])
+        self.assertEqual(self.reload().status, GatewayPayment.Status.PAID)
+
+    def test_callback_from_another_provider_is_ignored(self):
+        result = services.handle_payment_callback(b"{}", {"X-Other-Token": "other-token"}, provider="other")
+        self.assertEqual(result, {"status": "ignored"})
+        self.assertEqual(self.reload().status, GatewayPayment.Status.PENDING)
+
+    def test_generic_url_finds_rintisan_while_another_is_active(self):
+        raw = callback_body()
+        headers = {
+            "HTTP_X_CALLBACK_TOKEN": "callback-token",
+            "HTTP_X_SIGNATURE": signing.sign(CLIENT_ID, raw, key_pair("rintisan")[0]),
+        }
+        response = self.client.post(GENERIC_WEBHOOK_URL, raw, content_type="application/json", **headers)
+        self.assertEqual(response.json(), {"status": "ok"})
+        self.assertEqual(self.reload().status, GatewayPayment.Status.PAID)
+
+    def test_generic_url_rejects_unsigned_body(self):
+        response = self.client.post(GENERIC_WEBHOOK_URL, callback_body(), content_type="application/json")
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(self.reload().status, GatewayPayment.Status.PENDING)
+
+    def rintisan_aggregator(self):
+        from apps.payment_aggregator.aggregator import get_aggregator
+
+        return get_aggregator("rintisan")
+
+
+class DanaCallbackTests(CheckoutFixtureMixin, TestCase):
+    """A DANA checkout paid via Finish Notify on the generic and SNAP URLs."""
+
+    def setUp(self):
+        super().setUp()
+        import json
+
+        from payment_aggregator.testing import make_dana_provider
+
+        provider, _ = make_dana_provider(channel_fees={"VIRTUAL_ACCOUNT_BCA": Decimal("2775")})
+        set_provider(provider)
+        self.addCleanup(set_provider, None)
+        self.checkout_row = self.make_payment(
+            "PAY-1", "k1", provider="dana", provider_trx_id="DANA-1", channel_code="VIRTUAL_ACCOUNT_BCA"
+        )
+        self.add_item(self.checkout_row, self.invoice)
+        self.add_item(self.checkout_row, self.invoice_2)
+        self.raw = json.dumps({
+            "originalPartnerReferenceNo": "PAY-1",
+            "originalReferenceNo": "DANA-1",
+            "merchantId": "216620000000000000000",
+            "amount": {"value": "130000.00", "currency": "IDR"},
+            "latestTransactionStatus": "00",
+            "createdTime": "2026-11-12T10:30:00+07:00",
+            "finishedTime": "2026-11-12T10:41:05+07:00",
+            "additionalInfo": {"paymentInfo": {"paidTime": "2026-11-12T10:41:00+07:00"}},
+        }).encode()
+
+    def post(self, url, signed_path=None):
+        from payment_aggregator.testing import dana_notify_headers
+
+        headers = {
+            "HTTP_" + name.upper().replace("-", "_"): value
+            for name, value in dana_notify_headers(signed_path or url, self.raw).items()
+        }
+        with mock.patch(EMAIL_TASK):
+            return self.client.post(url, self.raw, content_type="application/json", **headers)
+
+    def test_generic_url_marks_paid_and_replies_with_dana_ack(self):
+        response = self.post(GENERIC_WEBHOOK_URL)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"responseCode": "2005600", "responseMessage": "Successful"})
+        self.assertRegex(response["X-TIMESTAMP"], r"\+07:00$")
+        self.checkout_row.refresh_from_db()
+        self.assertEqual(self.checkout_row.status, GatewayPayment.Status.PAID)
+
+    def test_snap_standard_url(self):
+        response = self.post("/api/webhooks/v1.0/debit/notify")
+        self.assertEqual(response.json()["responseCode"], "2005600")
+        self.checkout_row.refresh_from_db()
+        self.assertEqual(self.checkout_row.status, GatewayPayment.Status.PAID)
+
+    def test_bad_signature_is_rejected(self):
+        response = self.post(GENERIC_WEBHOOK_URL, signed_path="/elsewhere/")
+        self.assertEqual(response.status_code, 401)
+        self.checkout_row.refresh_from_db()
+        self.assertEqual(self.checkout_row.status, GatewayPayment.Status.PENDING)
+
+    def test_unknown_order_is_acknowledged_so_dana_stops_retrying(self):
+        GatewayPayment.objects.filter(pk=self.checkout_row.pk).update(payment_no="PAY-OTHER", provider_trx_id="X")
+        response = self.post(GENERIC_WEBHOOK_URL)
+        self.assertEqual(response.json()["responseCode"], "2005600")

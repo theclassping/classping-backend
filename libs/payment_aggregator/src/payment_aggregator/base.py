@@ -9,7 +9,7 @@ import abc
 import datetime
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Any, Dict, Mapping, Optional, Sequence
+from typing import Any, Dict, Mapping, Optional, Sequence, Tuple
 
 
 class PaymentMethod:
@@ -182,7 +182,9 @@ class BaseProvider(abc.ABC):
         ...
 
     @abc.abstractmethod
-    def parse_billing_callback(self, raw_body: bytes, headers: Mapping[str, str]) -> BillingResult:
+    def parse_billing_callback(self, raw_body: bytes, headers: Mapping[str, str], request_path: str = "") -> BillingResult:
+        """Verify and parse a payment notification. ``request_path`` is the URL
+        path it was received on (providers that sign it need it)."""
         ...
 
     # Payout
@@ -195,9 +197,16 @@ class BaseProvider(abc.ABC):
         ...
 
     @abc.abstractmethod
-    def parse_transfer_callback(self, raw_body: bytes, headers: Mapping[str, str]) -> TransferResult:
+    def parse_transfer_callback(self, raw_body: bytes, headers: Mapping[str, str], request_path: str = "") -> TransferResult:
         ...
 
     @abc.abstractmethod
     def get_balance(self) -> ProviderBalance:
         ...
+
+    # Notification acknowledgement
+    def callback_reply(self, event: str) -> Optional[Tuple[Dict[str, Any], Dict[str, str]]]:
+        """(body, headers) the provider requires in reply to a processed
+        notification (``event``: "payment" or "disbursement"), or None when
+        any 2xx reply is fine."""
+        return None

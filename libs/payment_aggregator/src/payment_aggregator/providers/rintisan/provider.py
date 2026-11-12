@@ -111,7 +111,8 @@ class RintisanProvider(BaseProvider):
         mapper.raise_for_billing_response(body)
         return mapper.billing_result(body)
 
-    def parse_billing_callback(self, raw_body, headers):
+    def parse_billing_callback(self, raw_body, headers, request_path=""):
+        # Rintisan signs the body only; request_path is not used.
         body = self._verify_callback(raw_body, headers, signature_required=True)
         return mapper.billing_result(body)
 
@@ -129,7 +130,7 @@ class RintisanProvider(BaseProvider):
         mapper.raise_for_transfer_status_response(body)
         return mapper.transfer_result(body)
 
-    def parse_transfer_callback(self, raw_body, headers):
+    def parse_transfer_callback(self, raw_body, headers, request_path=""):
         body = self._verify_callback(
             raw_body,
             headers,

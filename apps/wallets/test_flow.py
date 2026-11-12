@@ -78,7 +78,8 @@ class PaymentToWithdrawalFlowTests(PaymentFlowMixin, TestCase):
         }).encode()
         with mock.patch(MAILER):
             response = self.client.post(
-                "/api/webhooks/rintisan/disbursement/", raw, content_type="application/json", **rintisan_headers(raw)
+                # Provider-neutral URL: the sender is found by its signature.
+                "/api/webhooks/disbursement/", raw, content_type="application/json", **rintisan_headers(raw)
             )
         self.assertEqual(response.json(), {"status": "ok"})
 

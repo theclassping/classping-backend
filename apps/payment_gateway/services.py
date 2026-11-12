@@ -30,6 +30,7 @@ from apps.core.notes import append_note
 from apps.core.phone import InvalidPhoneNumber, normalize_phone
 from apps.core.webhooks import InvalidWebhook
 from apps.payment_aggregator import PaymentAggregator
+from apps.payment_aggregator.aggregator import callback_reply, parse_callback
 from payment_aggregator import exceptions as provider_errors
 from payment_aggregator.base import (
     BillingRequest,
@@ -236,21 +237,36 @@ def apply_billing_result(gateway_payment, billing):
     return gateway_payment
 
 
-def handle_payment_callback(raw_body, headers):
-    """Webhook ("rintisan", "payment"). Rintisan calls back only when a billing
-    is paid; expiry is decided by Classping's expiry job (no callback)."""
+def handle_payment_callback(raw_body, headers, provider=None, request_path=""):
+    """Webhook /api/webhooks/payment/ (any provider, identified by its
+    signature) or /api/webhooks/<provider>/payment/. Rintisan calls back only
+    when a billing is paid; expiry is decided by Classping's expiry job.
+    Replies in the format the provider requires (DANA: responseCode)."""
     try:
-        billing = PaymentAggregator.parse_billing_callback(raw_body, headers)
+        provider, billing = parse_callback(
+            "parse_billing_callback", raw_body, headers, provider, request_path=request_path
+        )
     except (provider_errors.InvalidCallback, provider_errors.ProviderNotConfigured) as error:
         logger.warning("Rejected payment callback: %s", error)
         raise InvalidWebhook() from error
+    status = _apply_payment_callback(provider, billing)
+    return callback_reply(provider, "payment", {"status": status})
 
+
+def _apply_payment_callback(provider, billing):
+    """'ok', or 'ignored' for an unknown checkout or another provider's one."""
     gateway_payment = GatewayPayment.objects.filter(payment_no=billing.reference_no).first()
     if gateway_payment is None and billing.provider_trx_id:
         gateway_payment = GatewayPayment.objects.filter(provider_trx_id=billing.provider_trx_id).first()
     if gateway_payment is None:
         logger.error("Payment callback for unknown checkout %s / %s", billing.reference_no, billing.provider_trx_id)
-        return {"status": "ignored"}
+        return "ignored"
+    if gateway_payment.provider and gateway_payment.provider != provider:
+        logger.error(
+            "Payment callback from %s for checkout %s created with %s; ignored",
+            provider, gateway_payment.payment_no, gateway_payment.provider,
+        )
+        return "ignored"
 
     GatewayPayment.objects.filter(pk=gateway_payment.pk).update(
         callback_payload=billing.raw, callback_received_at=timezone.now()
@@ -260,7 +276,7 @@ def handle_payment_callback(raw_body, headers):
             provider_trx_id=billing.provider_trx_id
         )
     apply_billing_result(gateway_payment, billing)
-    return {"status": "ok"}
+    return "ok"
 
 
 def sync_gateway_payment(gateway_payment_id):
@@ -272,7 +288,7 @@ def sync_gateway_payment(gateway_payment_id):
         return expire_gateway_payment(gateway_payment.pk)
     if not gateway_payment.provider_trx_id:
         return gateway_payment
-    billing = PaymentAggregator.get_billing_status(gateway_payment.provider_trx_id)
+    billing = PaymentAggregator.using(gateway_payment.provider).get_billing_status(gateway_payment.provider_trx_id)
     return apply_billing_result(gateway_payment, billing)
 
 
@@ -297,10 +313,10 @@ def reconcile_settlements():
     settled = 0
     unsettled = GatewayPayment.objects.filter(
         status=GatewayPayment.Status.PAID, settled_at__isnull=True, provider_trx_id__isnull=False
-    ).values_list("pk", "provider_trx_id")
-    for gateway_payment_id, provider_trx_id in unsettled:
+    ).values_list("pk", "provider", "provider_trx_id")
+    for gateway_payment_id, provider, provider_trx_id in unsettled:
         try:
-            billing = PaymentAggregator.get_billing_status(provider_trx_id)
+            billing = PaymentAggregator.using(provider).get_billing_status(provider_trx_id)
         except provider_errors.PaymentAggregatorError:
             logger.exception("Settlement check failed for gateway payment %s", gateway_payment_id)
             continue
@@ -362,7 +378,9 @@ def expire_gateway_payment(gateway_payment_id, now=None):
 
     if gateway_payment.provider_trx_id:
         try:
-            billing = PaymentAggregator.get_billing_status(gateway_payment.provider_trx_id)
+            billing = PaymentAggregator.using(gateway_payment.provider).get_billing_status(
+                gateway_payment.provider_trx_id
+            )
         except provider_errors.BillingNotFound:
             billing = None
         if billing is not None and billing.status == BillingStatus.PAID:
@@ -614,12 +632,13 @@ def _create_pending_checkout(guardian, quote, fee, idempotency_key, expires_at):
     return gateway_payment
 
 
-def _request_billing(billing_request):
+def _request_billing(billing_request, provider):
+    aggregator = PaymentAggregator.using(provider)
     try:
-        return PaymentAggregator.create_billing(billing_request)
+        return aggregator.create_billing(billing_request)
     except provider_errors.DuplicateBilling as error:
         # Retried after a timeout: the billing already exists, fetch it.
-        return PaymentAggregator.get_billing_status(error.provider_trx_id)
+        return aggregator.get_billing_status(error.provider_trx_id)
 
 
 def _create_provider_billing(gateway_payment, guardian, payer_phone, quote):
@@ -635,7 +654,7 @@ def _create_provider_billing(gateway_payment, guardian, payer_phone, quote):
         note=", ".join(invoice.invoice_no for invoice in quote.invoices),
     )
     try:
-        billing = _request_billing(billing_request)
+        billing = _request_billing(billing_request, gateway_payment.provider)
     except provider_errors.InvalidPayerPhone:
         mark_gateway_payment_failed(gateway_payment.pk)
         raise errors.PayerPhoneInvalid(gateway_payment_id=gateway_payment.pk)

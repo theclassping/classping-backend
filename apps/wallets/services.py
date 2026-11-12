@@ -31,6 +31,7 @@ from apps.core.notes import append_note
 from apps.core.webhooks import InvalidWebhook
 from apps.mailer.services import Mailer
 from apps.payment_aggregator import PaymentAggregator
+from apps.payment_aggregator.aggregator import callback_reply, parse_callback
 from payment_aggregator import exceptions as provider_errors
 from payment_aggregator.base import (
     ProviderBalance,
@@ -425,7 +426,7 @@ def _send_to_provider(withdrawal):
         )
 
     try:
-        result = PaymentAggregator.transfer_balance(request)
+        result = PaymentAggregator.using(withdrawal.provider).transfer_balance(request)
     except provider_errors.DuplicateTransfer:
         # Cannot be told apart from an earlier accepted request: keep it.
         return flag_withdrawal_for_review(withdrawal.pk, "Provider reported a duplicate reference.")
@@ -532,14 +533,23 @@ def apply_transfer_result(withdrawal_id, result):
     return withdrawal
 
 
-def handle_disbursement_callback(raw_body, headers):
-    """Webhook ("rintisan", "disbursement")."""
+def handle_disbursement_callback(raw_body, headers, provider=None, request_path=""):
+    """Webhook /api/webhooks/disbursement/ (any provider, identified by its
+    signature) or /api/webhooks/<provider>/disbursement/. Replies in the
+    format the provider requires."""
     try:
-        result = PaymentAggregator.parse_transfer_callback(raw_body, headers)
+        provider, result = parse_callback(
+            "parse_transfer_callback", raw_body, headers, provider, request_path=request_path
+        )
     except (provider_errors.InvalidCallback, provider_errors.ProviderNotConfigured) as error:
         logger.warning("Rejected disbursement callback: %s", error)
         raise InvalidWebhook() from error
+    status = _apply_disbursement_callback(provider, result)
+    return callback_reply(provider, "disbursement", {"status": status})
 
+
+def _apply_disbursement_callback(provider, result):
+    """'ok', or 'ignored' for an unknown withdrawal or another provider's one."""
     withdrawal = None
     if result.reference_no:
         withdrawal = Withdrawal.objects.filter(withdrawal_no=result.reference_no).first()
@@ -547,13 +557,19 @@ def handle_disbursement_callback(raw_body, headers):
         withdrawal = Withdrawal.objects.filter(provider_disbursement_id=result.provider_transfer_id).first()
     if withdrawal is None:
         logger.error("Disbursement callback for unknown withdrawal %s / %s", result.reference_no, result.provider_transfer_id)
-        return {"status": "ignored"}
+        return "ignored"
+    if withdrawal.provider and withdrawal.provider != provider:
+        logger.error(
+            "Disbursement callback from %s for withdrawal %s sent with %s; ignored",
+            provider, withdrawal.withdrawal_no, withdrawal.provider,
+        )
+        return "ignored"
 
     Withdrawal.objects.filter(pk=withdrawal.pk).update(
         callback_payload=result.raw, callback_received_at=timezone.now()
     )
     apply_transfer_result(withdrawal.pk, result)
-    return {"status": "ok"}
+    return "ok"
 
 
 def sync_withdrawal(withdrawal_id):
@@ -562,7 +578,8 @@ def sync_withdrawal(withdrawal_id):
     if not withdrawal.provider_disbursement_id:
         return withdrawal
     return apply_transfer_result(
-        withdrawal.pk, PaymentAggregator.get_transfer_status(withdrawal.provider_disbursement_id)
+        withdrawal.pk,
+        PaymentAggregator.using(withdrawal.provider).get_transfer_status(withdrawal.provider_disbursement_id),
     )
 
 

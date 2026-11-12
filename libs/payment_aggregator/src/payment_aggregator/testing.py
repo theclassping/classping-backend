@@ -87,3 +87,57 @@ def make_provider(*responses, channel_fees=None, disbursement_fee=None, **config
     provider._private_key = key_pair("merchant")[0]
     provider._public_key = key_pair("rintisan")[1]
     return provider, session
+
+
+# --- DANA -------------------------------------------------------------------
+
+DANA_PARTNER_ID = "dana-partner-test"
+
+
+def make_dana_config(**overrides):
+    from payment_aggregator.providers.dana.config import DanaConfig
+
+    values = dict(
+        base_url="https://api.sandbox.dana.id",
+        merchant_id="216620000000000000000",
+        client_id=DANA_PARTNER_ID,
+        channel_id="95221",
+        private_key="unused",
+        public_key="unused",
+        notify_url="https://api.example.com/api/webhooks/payment/",
+        return_url="https://app.example.com/payment/finish",
+        mcc="8211",
+    )
+    values.update(overrides)
+    return DanaConfig(**values)
+
+
+def make_dana_provider(*responses, channel_fees=None, disbursement_fee=None, **config_overrides):
+    """A real DanaProvider talking to a FakeSession; signs with key_pair("merchant")
+    and trusts notifications signed with key_pair("dana")."""
+    from payment_aggregator.providers.dana.provider import DanaProvider
+
+    session = FakeSession(*responses)
+    provider = DanaProvider(
+        config=make_dana_config(**config_overrides),
+        channel_fees=channel_fees,
+        disbursement_fee=disbursement_fee,
+        session=session,
+    )
+    provider._private_key = key_pair("merchant")[0]
+    provider._public_key = key_pair("dana")[1]
+    return provider, session
+
+
+def dana_notify_headers(path, raw_body, x_timestamp="2026-11-12T10:30:00+07:00"):
+    """Headers DANA would send: signature with key_pair("dana") over ``path``."""
+    from payment_aggregator.providers.dana import signing
+
+    minified = signing.body_forms(raw_body)[-1]
+    return {
+        "X-TIMESTAMP": x_timestamp,
+        "X-SIGNATURE": signing.sign("POST", path, minified, x_timestamp, key_pair("dana")[0]),
+        "X-PARTNER-ID": "dana",
+        "X-EXTERNAL-ID": "ext-1",
+        "CHANNEL-ID": "95221",
+    }

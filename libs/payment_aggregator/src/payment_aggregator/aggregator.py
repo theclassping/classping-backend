@@ -71,8 +71,12 @@ class PaymentAggregator:
     def get_billing_status(self, provider_trx_id):
         return self.provider.get_billing_status(provider_trx_id)
 
-    def parse_billing_callback(self, raw_body, headers):
-        return self.provider.parse_billing_callback(raw_body, headers)
+    def parse_billing_callback(self, raw_body, headers, request_path=""):
+        return self.provider.parse_billing_callback(raw_body, headers, request_path=request_path)
+
+    def callback_reply(self, event):
+        """(body, headers) the provider requires in reply to a notification, or None."""
+        return self.provider.callback_reply(event)
 
     # --- payout ----------------------------------------------------------
 
@@ -82,8 +86,8 @@ class PaymentAggregator:
     def get_transfer_status(self, provider_transfer_id):
         return self.provider.get_transfer_status(provider_transfer_id)
 
-    def parse_transfer_callback(self, raw_body, headers):
-        return self.provider.parse_transfer_callback(raw_body, headers)
+    def parse_transfer_callback(self, raw_body, headers, request_path=""):
+        return self.provider.parse_transfer_callback(raw_body, headers, request_path=request_path)
 
     def get_balance(self):
         return self.provider.get_balance()

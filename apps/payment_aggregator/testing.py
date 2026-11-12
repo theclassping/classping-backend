@@ -12,15 +12,15 @@ from payment_aggregator.testing import (  # noqa: F401
 )
 from payment_aggregator.testing import make_provider as _make_provider
 
-from apps.payment_aggregator import constants
+from apps.payment_aggregator.providers import rintisan
 
 
 def make_provider(*responses, **config_overrides):
     """A RintisanProvider with Classping's rates, answering with ``responses``."""
-    config_overrides.setdefault("payer_email", constants.RINTISAN_PAYER_EMAIL)
+    config_overrides.setdefault("payer_email", rintisan.PAYER_EMAIL)
     return _make_provider(
         *responses,
-        channel_fees=constants.RINTISAN_CHANNEL_FEES,
-        disbursement_fee=constants.RINTISAN_DISBURSEMENT_FEE,
+        channel_fees=rintisan.CHANNEL_FEES,
+        disbursement_fee=rintisan.DISBURSEMENT_FEE,
         **config_overrides,
     )
