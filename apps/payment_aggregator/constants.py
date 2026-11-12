@@ -1,44 +1,26 @@
 """
-General (provider-independent) payment rules and provider selection.
+Classping's provider-neutral payment aggregator settings.
 
-Fee amounts, channels and limits are NOT defined here: each provider keeps
-its own numbers in ``providers/<name>/constants.py``.
+Each provider's contract rates and account settings live in their own module
+under apps/payment_aggregator/providers/ (rintisan.py, dana.py, ...). The
+active provider is chosen with env PAYMENT_PROVIDER (config/settings.py).
+
+Checkout rules live in apps/payment_gateway/constants.py, withdrawal rules in
+apps/wallets/constants.py. The provider code itself is the
+``payment_aggregator`` library (libs/payment_aggregator).
 """
 
-# Active provider key (see PROVIDER_CLASSES).
-PAYMENT_AGGREGATOR_PROVIDER = "rintisan"
+from decimal import Decimal
 
-PROVIDER_CLASSES = {
-    "rintisan": "apps.payment_aggregator.providers.rintisan.provider.RintisanProvider",
-}
+# Indonesian VAT (PPN) a provider may add on top of its own fee.
+VAT_RATE = Decimal("0.11")
 
-# --- Classping rules ------------------------------------------------------
+# Classping's no-reply address, given to providers instead of the guardian's
+# email so payers never receive provider emails (all emails come from Classping).
+PAYER_EMAIL = "no-reply@hamanto.com"
 
-# A gateway checkout must be paid within this many minutes. Only the date
-# (deadline_date) is sent to the provider; Classping expires the checkout
-# itself after the window, and the invoice is open for manual payment again.
-PAYMENT_DEADLINE_MINUTES = 60
 
-# The expiry check runs this many minutes after expires_at (the provider sends
-# no expiry callback).
-PAYMENT_EXPIRY_CHECK_DELAY_MINUTES = 2
-
-# One checkout pays 1..N invoices of one student.
-MAX_INVOICES_PER_CHECKOUT = 5
-
-# Classping takes no fee of its own: the payer pays the provider's
-# transaction fee on top, and the branch receives the full invoice total.
-
-# Branch staff (Staff.staff_type) who may cancel a checkout and manage the
-# branch wallet / withdrawals.
-BRANCH_FINANCE_STAFF_TYPES = ("officer", "principal")
-
-# --- Withdrawals ----------------------------------------------------------
-
-# OTP emailed to the branch before a withdrawal is sent to the provider.
-WITHDRAWAL_OTP_LENGTH = 6
-WITHDRAWAL_OTP_TTL_MINUTES = 3
-WITHDRAWAL_OTP_MAX_ATTEMPTS = 3
-
-# Receives the nightly branch balance check alert (wallets.check_branch_balances).
-OPS_ALERT_EMAIL = "the.class.ping@gmail.com"
+def with_vat(fee):
+    """A provider fee plus VAT, for providers that list their rates before VAT
+    (a flat amount in rupiah or a percent rate)."""
+    return fee * (1 + VAT_RATE)

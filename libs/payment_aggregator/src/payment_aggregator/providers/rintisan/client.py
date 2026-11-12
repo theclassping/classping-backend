@@ -6,30 +6,17 @@ JSON decoding. Interpreting ``response_code`` is done in mapper.py.
 """
 
 import logging
-import re
 
 import requests
 
-from apps.payment_aggregator.exceptions import (
+from payment_aggregator.exceptions import (
     ProviderAccessDenied,
     ProviderUnavailable,
 )
-from apps.payment_aggregator.providers.rintisan import signing
+from payment_aggregator.providers.rintisan import signing
+from payment_aggregator.utils import safe_response_preview
 
 logger = logging.getLogger(__name__)
-
-
-def _safe_response_preview(response, limit=1000):
-    """Return a bounded provider response sample with common secrets masked."""
-    preview = response.text[:limit]
-    preview = re.sub(
-        r'(?i)("?(?:x-api-key|api[_-]?key|token|authorization|x-signature|signature|private[_-]?key)"?\s*[:=]\s*"?)[^"&,\s}]+',
-        r"\1[REDACTED]",
-        preview,
-    )
-    if len(response.text) > limit:
-        preview += "…[truncated]"
-    return preview
 
 
 class RintisanClient:
@@ -86,7 +73,7 @@ class RintisanClient:
             path,
             response.status_code,
             response.headers.get("Content-Type", ""),
-            _safe_response_preview(response),
+            safe_response_preview(response),
         )
 
         if response.status_code == 403:

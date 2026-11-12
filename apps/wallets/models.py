@@ -8,9 +8,16 @@ class DestinationMixin:
 
     @property
     def bank_name(self):
+        from payment_aggregator.exceptions import ProviderNotConfigured
+
         from apps.payment_aggregator import PaymentAggregator
 
-        return PaymentAggregator.get_banks().get(self.bank_code, self.bank_code)
+        # A withdrawal shows the bank names of the provider it was sent with.
+        try:
+            banks = PaymentAggregator.using(getattr(self, "provider", "")).get_banks()
+        except ProviderNotConfigured:
+            return self.bank_code
+        return banks.get(self.bank_code, self.bank_code)
 
     @property
     def account_number_masked(self):

@@ -9,7 +9,7 @@ import datetime
 import re
 from decimal import Decimal, InvalidOperation
 
-from apps.payment_aggregator.base import (
+from payment_aggregator.base import (
     BillingResult,
     BillingStatus,
     ProviderBalance,
@@ -17,7 +17,7 @@ from apps.payment_aggregator.base import (
     TransferResult,
     TransferStatus,
 )
-from apps.payment_aggregator.exceptions import (
+from payment_aggregator.exceptions import (
     BillingNotFound,
     DuplicateBilling,
     DuplicateTransfer,
@@ -29,7 +29,7 @@ from apps.payment_aggregator.exceptions import (
     ProviderUnavailable,
     TransferNotFound,
 )
-from apps.payment_aggregator.providers.rintisan import constants as c
+from payment_aggregator.providers.rintisan import constants as c
 
 PROVIDER_TZ = datetime.timezone(
     datetime.timedelta(hours=c.PROVIDER_UTC_OFFSET_HOURS), name="WIB"
@@ -137,7 +137,7 @@ def billing_result(body, reference_no=""):
     """Build a BillingResult from a /create, /querypayment or callback body."""
     payment_status = str(body.get("payment_status") or "").upper()
     callback_code = _status_code(body)
-    # Rintisan only reports PAID / UNPAID; expiry is decided by Classping.
+    # Rintisan only reports PAID / UNPAID; expiry is decided by the application.
     if payment_status == c.PAYMENT_STATUS_PAID or callback_code == c.CALLBACK_STATUS_SUCCESS:
         status = BillingStatus.PAID
     else:

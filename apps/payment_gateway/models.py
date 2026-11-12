@@ -139,11 +139,11 @@ class GatewayPayment(models.Model):
     def channel_name(self):
         """Display name of the channel (falls back to the code if retired)."""
         from apps.payment_aggregator import PaymentAggregator
-        from apps.payment_aggregator.exceptions import ChannelNotAvailable
+        from payment_aggregator.exceptions import ChannelNotAvailable, ProviderNotConfigured
 
         try:
-            return PaymentAggregator.get_channel(self.channel_code).name
-        except ChannelNotAvailable:
+            return PaymentAggregator.using(self.provider).get_channel(self.channel_code).name
+        except (ChannelNotAvailable, ProviderNotConfigured):
             return self.channel_code
 
 

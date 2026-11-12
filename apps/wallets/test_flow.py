@@ -9,8 +9,8 @@ from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
 from apps.payment_aggregator.aggregator import set_provider
-from apps.payment_aggregator.providers.rintisan import signing
-from apps.payment_aggregator.tests.helpers import CLIENT_ID, FakeResponse, key_pair, make_provider
+from payment_aggregator.providers.rintisan import signing
+from apps.payment_aggregator.testing import CLIENT_ID, FakeResponse, key_pair, make_provider
 from apps.payment_gateway import services as gateway_services
 from apps.payment_gateway.test_payment_flow import EMAIL_TASK, PaymentFlowMixin, callback_body
 
@@ -78,7 +78,8 @@ class PaymentToWithdrawalFlowTests(PaymentFlowMixin, TestCase):
         }).encode()
         with mock.patch(MAILER):
             response = self.client.post(
-                "/api/webhooks/rintisan/disbursement/", raw, content_type="application/json", **rintisan_headers(raw)
+                # Provider-neutral URL: the sender is found by its signature.
+                "/api/webhooks/disbursement/", raw, content_type="application/json", **rintisan_headers(raw)
             )
         self.assertEqual(response.json(), {"status": "ok"})
 

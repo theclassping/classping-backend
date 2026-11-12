@@ -7,7 +7,7 @@ from typing import List
 
 from rest_framework import serializers
 
-from apps.payment_aggregator.constants import MAX_INVOICES_PER_CHECKOUT
+from apps.payment_gateway.constants import MAX_INVOICES_PER_CHECKOUT
 
 from .exceptions import InvalidInvoiceIds
 from .models import GatewayPayment, GatewayPaymentItem

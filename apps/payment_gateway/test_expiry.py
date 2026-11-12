@@ -6,8 +6,8 @@ from django.db import connection, transaction
 from django.test import TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 
-from apps.payment_aggregator.base import BillingResult, BillingStatus
-from apps.payment_aggregator.exceptions import BillingNotFound, ProviderUnavailable
+from payment_aggregator.base import BillingResult, BillingStatus
+from payment_aggregator.exceptions import BillingNotFound, ProviderUnavailable
 
 from . import services
 from .models import GatewayPayment, GatewayPaymentItem

@@ -8,12 +8,12 @@ re-implement any of this; go through PaymentAggregator.
 
 from decimal import ROUND_CEILING, Decimal, InvalidOperation
 
-from apps.payment_aggregator.base import (
+from payment_aggregator.base import (
     FeeBreakdown,
     FeeType,
     WithdrawalBreakdown,
 )
-from apps.payment_aggregator.exceptions import (
+from payment_aggregator.exceptions import (
     AmountBelowMinimum,
     ChannelNotAvailable,
     InvalidAmount,

@@ -2,16 +2,16 @@ import datetime
 from decimal import Decimal
 
 import requests
-from django.test import SimpleTestCase
+from unittest import TestCase
 
-from apps.payment_aggregator.base import (
+from payment_aggregator.base import (
     BillingRequest,
     BillingStatus,
     SettlementStatus,
     TransferRequest,
     TransferStatus,
 )
-from apps.payment_aggregator.exceptions import (
+from payment_aggregator.exceptions import (
     BillingNotFound,
     DuplicateBilling,
     DuplicateTransfer,
@@ -25,10 +25,10 @@ from apps.payment_aggregator.exceptions import (
     ProviderUnavailable,
     TransferNotFound,
 )
-from apps.payment_aggregator.providers.rintisan import signing
-from apps.payment_aggregator.providers.rintisan.config import RintisanConfig
-from apps.payment_aggregator.providers.rintisan.provider import RintisanProvider
-from apps.payment_aggregator.tests.helpers import (
+from payment_aggregator.providers.rintisan import signing
+from payment_aggregator.providers.rintisan.config import RintisanConfig
+from payment_aggregator.providers.rintisan.provider import RintisanProvider
+from payment_aggregator.testing import (
     CLIENT_ID,
     FakeResponse,
     FakeSession,
@@ -92,7 +92,7 @@ def rintisan_sign(raw):
     return signing.sign(CLIENT_ID, raw, key_pair("rintisan")[0])
 
 
-class RequestSigningTests(SimpleTestCase):
+class RequestSigningTests(TestCase):
     def test_create_billing_sends_signed_minified_body(self):
         provider, session = make_provider(FakeResponse(body=CREATE_VA_OK))
         provider.create_billing(BILLING_REQUEST)
@@ -105,12 +105,14 @@ class RequestSigningTests(SimpleTestCase):
         self.assertEqual(headers["x-api-key"], "api-key")
         # The exact bytes sent are what was signed.
         self.assertTrue(
-            signing.verify(CLIENT_ID, call["data"], headers["x-signature"], key_pair("classping")[1])
+            signing.verify(CLIENT_ID, call["data"], headers["x-signature"], key_pair("merchant")[1])
         )
         self.assertNotIn(b": ", call["data"])
 
     def test_create_billing_payload(self):
-        provider, session = make_provider(FakeResponse(body=CREATE_VA_OK))
+        provider, session = make_provider(
+            FakeResponse(body=CREATE_VA_OK), payer_email="no-reply@example.com"
+        )
         provider.create_billing(BILLING_REQUEST)
         self.assertEqual(
             session.last_json(),
@@ -122,13 +124,18 @@ class RequestSigningTests(SimpleTestCase):
                 "to_name": "Ibu Sari",
                 "to_address": "",
                 "to_phone": "6281234567890",
-                # Guardian email is never sent; Rintisan gets Classping's no-reply.
-                "to_email": "no-reply@hamanto.com",
+                # The payer's own email is replaced by the configured payer_email.
+                "to_email": "no-reply@example.com",
                 "note": "INV-11, INV-12",
                 "payment_method": "VABNI",
                 "amount": 154000,
             },
         )
+
+    def test_payer_email_falls_back_to_request_when_not_configured(self):
+        provider, session = make_provider(FakeResponse(body=CREATE_VA_OK))
+        provider.create_billing(BILLING_REQUEST)
+        self.assertEqual(session.last_json()["to_email"], "sari@example.com")
 
     def test_deadline_date_is_wib_date_of_expires_at(self):
         # 17:30 UTC = 00:30 WIB on 8 Nov (checkout at 23:30 WIB + 60 minutes).
@@ -167,7 +174,7 @@ class RequestSigningTests(SimpleTestCase):
             provider.create_billing(BILLING_REQUEST)
 
 
-class BillingResponseTests(SimpleTestCase):
+class BillingResponseTests(TestCase):
     def test_create_success_maps_neutral_result(self):
         provider, _ = make_provider(FakeResponse(body=CREATE_VA_OK))
         result = provider.create_billing(BILLING_REQUEST)
@@ -247,7 +254,7 @@ class BillingResponseTests(SimpleTestCase):
             provider.get_billing_status("PPI-X")
 
 
-class TransferTests(SimpleTestCase):
+class TransferTests(TestCase):
     def test_transfer_payload_and_processing_result(self):
         provider, session = make_provider(
             FakeResponse(
@@ -319,7 +326,7 @@ class TransferTests(SimpleTestCase):
             provider.get_transfer_status("DISPTR-X")
 
 
-class CallbackTests(SimpleTestCase):
+class CallbackTests(TestCase):
     def payment_raw(self):
         return (
             b'{"timestamp":"2026-11-07 10:30:00","paid_at":"2026-11-07 10:35:00",'
@@ -406,7 +413,7 @@ class CallbackTests(SimpleTestCase):
             provider.parse_transfer_callback(raw, {**headers, "x-signature": rintisan_sign(b"other")})
 
 
-class ConfigTests(SimpleTestCase):
+class ConfigTests(TestCase):
     def test_from_env_defaults_to_sandbox(self):
         from unittest import mock
 
@@ -422,6 +429,32 @@ class ConfigTests(SimpleTestCase):
         from unittest import mock
 
         with mock.patch.dict("os.environ", {"RINTISAN_PAYER_EMAIL": ""}, clear=False):
-            self.assertEqual(RintisanConfig.from_env().payer_email, "no-reply@hamanto.com")
-        with mock.patch.dict("os.environ", {"RINTISAN_PAYER_EMAIL": "x@classping.com"}, clear=False):
-            self.assertEqual(RintisanConfig.from_env().payer_email, "x@classping.com")
+            self.assertEqual(RintisanConfig.from_env().payer_email, "")
+            self.assertEqual(
+                RintisanConfig.from_env(default_payer_email="no-reply@example.com").payer_email,
+                "no-reply@example.com",
+            )
+        with mock.patch.dict("os.environ", {"RINTISAN_PAYER_EMAIL": "x@example.com"}, clear=False):
+            self.assertEqual(
+                RintisanConfig.from_env(default_payer_email="no-reply@example.com").payer_email,
+                "x@example.com",
+            )
+
+
+class ChannelFeeTests(TestCase):
+    def test_channels_without_a_rate_are_not_offered(self):
+        provider, _ = make_provider(channel_fees={"VABCA": Decimal("4000")})
+        channels = {c.code: c for c in provider.get_channels()}
+        self.assertEqual(channels["VABCA"].fee, Decimal("4000"))
+        self.assertIsNone(channels["CC"].fee)
+
+    def test_unknown_channel_code_is_rejected(self):
+        with self.assertRaisesRegex(ProviderNotConfigured, "QRIS"):
+            make_provider(channel_fees={"QRIS": Decimal("0.7")})
+
+    def test_withdrawal_requires_disbursement_fee(self):
+        provider, _ = make_provider()
+        with self.assertRaises(ProviderNotConfigured):
+            provider.get_withdrawal_rules()
+        provider, _ = make_provider(disbursement_fee=Decimal("2500"))
+        self.assertEqual(provider.get_withdrawal_rules().fee, Decimal("2500"))

@@ -6,15 +6,15 @@ import hmac
 import json
 import logging
 
-from apps.payment_aggregator.base import (
+from payment_aggregator.base import (
     BaseProvider,
     Channel,
     WithdrawalRules,
 )
-from apps.payment_aggregator.exceptions import InvalidCallback
-from apps.payment_aggregator.providers.rintisan import constants, mapper, signing
-from apps.payment_aggregator.providers.rintisan.client import RintisanClient
-from apps.payment_aggregator.providers.rintisan.config import RintisanConfig
+from payment_aggregator.exceptions import InvalidCallback, ProviderNotConfigured
+from payment_aggregator.providers.rintisan import constants, mapper, signing
+from payment_aggregator.providers.rintisan.client import RintisanClient
+from payment_aggregator.providers.rintisan.config import RintisanConfig
 
 logger = logging.getLogger(__name__)
 
@@ -30,10 +30,25 @@ def _lower_headers(headers):
 
 
 class RintisanProvider(BaseProvider):
+    """
+    ``channel_fees``: your contract rate per channel code in
+    constants.CHANNELS (IDR for flat channels, percent for percent channels).
+    Channels without a rate are not offered.
+    ``disbursement_fee``: IDR Rintisan deducts from each payout; required for
+    withdrawals.
+    """
+
     name = constants.PROVIDER_NAME
 
-    def __init__(self, config=None, session=None):
+    def __init__(self, config=None, channel_fees=None, disbursement_fee=None, session=None):
         self.config = config or RintisanConfig.from_env()
+        unknown = set(channel_fees or {}) - set(constants.CHANNELS)
+        if unknown:
+            raise ProviderNotConfigured(
+                "Unknown Rintisan channel(s): " + ", ".join(sorted(unknown))
+            )
+        self.channel_fees = dict(channel_fees or {})
+        self.disbursement_fee = disbursement_fee
         self._private_key = None
         self._public_key = None
         self.client = RintisanClient(self.config, self._load_private_key, session=session)
@@ -65,7 +80,7 @@ class RintisanProvider(BaseProvider):
                 name=data["name"],
                 method=data["method"],
                 fee_type=data["fee_type"],
-                fee=data["fee"],
+                fee=self.channel_fees.get(code),  # None -> channel not offered
                 min_amount=data.get("min_amount"),
                 max_amount=data.get("max_amount"),
                 is_active=data.get("is_active", True),
@@ -74,7 +89,9 @@ class RintisanProvider(BaseProvider):
         ]
 
     def get_withdrawal_rules(self):
-        return WithdrawalRules(fee=constants.DISBURSEMENT_FEE)
+        if self.disbursement_fee is None:
+            raise ProviderNotConfigured("Rintisan disbursement_fee is not set")
+        return WithdrawalRules(fee=self.disbursement_fee)
 
     def get_banks(self):
         return dict(constants.BANK_CODES)
@@ -83,7 +100,8 @@ class RintisanProvider(BaseProvider):
 
     def create_billing(self, request):
         body = self.client.post(
-            PATH_CREATE, mapper.billing_payload(request, self.config.payer_email)
+            PATH_CREATE,
+            mapper.billing_payload(request, self.config.payer_email or request.payer_email),
         )
         mapper.raise_for_billing_response(body)
         return mapper.billing_result(body, reference_no=request.reference_no)
@@ -93,7 +111,8 @@ class RintisanProvider(BaseProvider):
         mapper.raise_for_billing_response(body)
         return mapper.billing_result(body)
 
-    def parse_billing_callback(self, raw_body, headers):
+    def parse_billing_callback(self, raw_body, headers, request_path=""):
+        # Rintisan signs the body only; request_path is not used.
         body = self._verify_callback(raw_body, headers, signature_required=True)
         return mapper.billing_result(body)
 
@@ -111,7 +130,7 @@ class RintisanProvider(BaseProvider):
         mapper.raise_for_transfer_status_response(body)
         return mapper.transfer_result(body)
 
-    def parse_transfer_callback(self, raw_body, headers):
+    def parse_transfer_callback(self, raw_body, headers, request_path=""):
         body = self._verify_callback(
             raw_body,
             headers,

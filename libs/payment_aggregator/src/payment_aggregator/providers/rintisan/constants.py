@@ -1,42 +1,26 @@
 """
-Rintisan fees, channels and limits.
+Rintisan channels, limits, bank codes and protocol constants.
 
-Source: Rintisan "Pricing & SLA" deck and OpenAPI "Rintisan Payin Partner API"
-v1.0.0 (https://docs.rintisan.co.id/). Change the numbers here only; the
-formulas live in apps/payment_aggregator/fees.py.
+Source: Rintisan OpenAPI "Rintisan Payin Partner API" v1.0.0
+(https://docs.rintisan.co.id/). Contract rates (MDR, disbursement fee) are not
+here: the application passes them to RintisanProvider. Fee formulas live in
+payment_aggregator/fees.py.
 """
 
 from decimal import Decimal
 
-from apps.payment_aggregator.base import FeeType, PaymentMethod
+from payment_aggregator.base import FeeType, PaymentMethod
 
 PROVIDER_NAME = "rintisan"
 
 BASE_URL_SANDBOX = "https://api.sandbox.rintisan.co.id/api/v1/billing/payin/partner"
 BASE_URL_PRODUCTION = "https://api.rintisan.co.id/api/v1/billing/payin/partner"
 
-# --- Fees (IDR / percent) -------------------------------------------------
-
-# Virtual Account MDR, flat per transaction ("mulai dari Rp5.000", negotiable
-# above 1000 trx/month). Paid by the parent on top of the invoice total.
-MDR_VA = Decimal("5000")
-
-# Online Credit Card Rintisan MDR, percent. Paid by the parent via gross-up.
-MDR_CC = Decimal("2")
-
-# E-commerce MDR, percent. Paid by the parent via gross-up.
-MDR_TOKOPEDIA_CC = Decimal("1.75")
-MDR_TOKOPEDIA_NON_CC = Decimal("0.5")
-MDR_BLIBLI_CC = Decimal("1.75")
-
-# Rintisan fee per disbursement (incl. bank validator), borne by the school.
-# Rintisan deducts it from the sent amount: withdraw 100.000 -> the bank
-# account receives 97.500. There is no min/max disbursement amount.
-DISBURSEMENT_FEE = Decimal("2500")
-
 # --- Pay-in channels ------------------------------------------------------
-# QRIS is intentionally not offered (BI forbids charging QRIS MDR to the payer).
-# VAPERMATA is not in the pricing deck; it uses MDR_VA until Rintisan confirms.
+# Channel catalog: what Rintisan offers and how each channel is priced (flat
+# IDR or percent). Rates are per merchant contract and are passed to
+# RintisanProvider(channel_fees=...); a channel without a rate is not offered.
+# QRIS is intentionally not listed (BI forbids charging QRIS MDR to the payer).
 # min/max apply to the amount the payer pays (after fee). None = no limit.
 
 VA_MIN_AMOUNT = Decimal("10000")
@@ -49,7 +33,6 @@ CHANNELS = {
         "name": "BCA Virtual Account",
         "method": PaymentMethod.VIRTUAL_ACCOUNT,
         "fee_type": FeeType.FLAT,
-        "fee": MDR_VA,
         "min_amount": VA_MIN_AMOUNT,
         "max_amount": None,
     },
@@ -57,7 +40,6 @@ CHANNELS = {
         "name": "BRI Virtual Account",
         "method": PaymentMethod.VIRTUAL_ACCOUNT,
         "fee_type": FeeType.FLAT,
-        "fee": MDR_VA,
         "min_amount": VA_MIN_AMOUNT,
         "max_amount": None,
     },
@@ -65,7 +47,6 @@ CHANNELS = {
         "name": "Mandiri Virtual Account",
         "method": PaymentMethod.VIRTUAL_ACCOUNT,
         "fee_type": FeeType.FLAT,
-        "fee": MDR_VA,
         "min_amount": VA_MIN_AMOUNT,
         "max_amount": None,
     },
@@ -73,7 +54,6 @@ CHANNELS = {
         "name": "BNI Virtual Account",
         "method": PaymentMethod.VIRTUAL_ACCOUNT,
         "fee_type": FeeType.FLAT,
-        "fee": MDR_VA,
         "min_amount": VA_MIN_AMOUNT,
         "max_amount": None,
     },
@@ -81,7 +61,6 @@ CHANNELS = {
         "name": "Permata Virtual Account",
         "method": PaymentMethod.VIRTUAL_ACCOUNT,
         "fee_type": FeeType.FLAT,
-        "fee": MDR_VA,
         "min_amount": VA_MIN_AMOUNT,
         "max_amount": None,
     },
@@ -89,7 +68,6 @@ CHANNELS = {
         "name": "Kartu Kredit",
         "method": PaymentMethod.CREDIT_CARD,
         "fee_type": FeeType.PERCENT,
-        "fee": MDR_CC,
         "min_amount": CC_MIN_AMOUNT,
         "max_amount": CC_MAX_AMOUNT,
     },
@@ -97,7 +75,6 @@ CHANNELS = {
         "name": "Tokopedia (Kartu Kredit)",
         "method": PaymentMethod.E_COMMERCE,
         "fee_type": FeeType.PERCENT,
-        "fee": MDR_TOKOPEDIA_CC,
         "min_amount": E_COMMERCE_MIN_AMOUNT,
         "max_amount": None,
     },
@@ -105,7 +82,6 @@ CHANNELS = {
         "name": "Tokopedia",
         "method": PaymentMethod.E_COMMERCE,
         "fee_type": FeeType.PERCENT,
-        "fee": MDR_TOKOPEDIA_NON_CC,
         "min_amount": E_COMMERCE_MIN_AMOUNT,
         "max_amount": None,
     },
@@ -113,7 +89,6 @@ CHANNELS = {
         "name": "Blibli (Kartu Kredit)",
         "method": PaymentMethod.E_COMMERCE,
         "fee_type": FeeType.PERCENT,
-        "fee": MDR_BLIBLI_CC,
         "min_amount": E_COMMERCE_MIN_AMOUNT,
         "max_amount": None,
     },
@@ -121,20 +96,15 @@ CHANNELS = {
 
 # --- Pay-in rules ---------------------------------------------------------
 
-# Sent as to_email on every billing instead of the guardian's email, so payers
-# never receive emails from Rintisan (all emails come from Classping).
-# Overridable with env RINTISAN_PAYER_EMAIL.
-PAYER_EMAIL = "no-reply@hamanto.com"
-
 # to_phone must be an Indonesian number, "62" + digits (Rintisan OpenAPI).
-# Callers pass a number already normalized by apps.core.phone.
+# Callers must normalize the number before building the BillingRequest.
 PAYER_PHONE_PATTERN = r"^62[1-9][0-9]{6,20}$"
 
 # Billing expiry (confirmed by Rintisan): only deadline_date (a date) is sent;
 # no expiry time. Rintisan sends no expiry callback and /querypayment keeps
-# returning UNPAID, so Classping's expiry job closes the checkout after the
-# 60-minute window. The VA stays payable at Rintisan until the end of
-# deadline_date; such late payments are handled by mark_gateway_payment_paid.
+# returning UNPAID, so the application must expire its own checkouts. The VA
+# stays payable at Rintisan until the end of deadline_date, so the application
+# must also accept a late PAID callback.
 
 # --- Payout ---------------------------------------------------------------
 

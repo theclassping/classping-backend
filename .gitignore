@@ -40,3 +40,7 @@ Thumbs.db
 
 # Celery beat schedule (local runs)
 celerybeat-schedule*
+
+# Python package build output (libs/*)
+build/
+*.egg-info/

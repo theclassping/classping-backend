@@ -1,7 +1,7 @@
 from django.db import models
 from django.db.models import Q
 
-from apps.payment_aggregator.base import PaymentMethod as GatewayMethod
+from payment_aggregator.base import PaymentMethod as GatewayMethod
 from apps.student_invoices.models import StudentInvoice
 from apps.staffs.models import Staff
 from apps.uploads.indexes import media_key_indexes

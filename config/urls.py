@@ -11,7 +11,7 @@ from rest_framework_simplejwt.views import (
     TokenRefreshView,
 )
 
-from apps.core.webhooks import webhook
+from apps.core.webhooks import provider_webhook, webhook
 from rest_framework_simplejwt.views import TokenObtainPairView
 from apps.users.serializers import LoginTokenSerializer
 from apps.users.throttling import LOGIN_THROTTLES, TokenRefreshThrottle, throttle_login_form
@@ -86,6 +86,15 @@ urlpatterns = [
     path("api/", include("apps.payments.urls")),
     path("api/", include("apps.payment_gateway.urls")),
     path("api/", include("apps.wallets.urls")),
+    # SNAP-standard notify paths (DANA), same handlers as payment / disbursement.
+    path("api/webhooks/v1.0/debit/notify", provider_webhook, {"event": "payment"}, name="snap-payment-webhook"),
+    path(
+        "api/webhooks/v1.0/debit/emoney/transfer-bank/notify.htm",
+        provider_webhook,
+        {"event": "disbursement"},
+        name="snap-disbursement-webhook",
+    ),
+    path("api/webhooks/<str:event>/", provider_webhook, name="provider-webhook"),
     path("api/webhooks/<str:source>/<str:event>/", webhook, name="webhook"),
     path("api/", include("apps.activities.urls")),
     path("api/media/", include("apps.uploads.urls")),

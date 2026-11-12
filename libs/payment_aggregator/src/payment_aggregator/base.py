@@ -1,7 +1,7 @@
 """
 Provider-neutral contract for payment aggregators.
 
-Business code (payment_gateway, wallets) only sees the dataclasses and
+Application code only sees the dataclasses and
 statuses defined here, never provider-specific codes or payloads.
 """
 
@@ -9,7 +9,7 @@ import abc
 import datetime
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Any, Dict, Mapping, Optional, Sequence
+from typing import Any, Dict, Mapping, Optional, Sequence, Tuple
 
 
 class PaymentMethod:
@@ -24,7 +24,7 @@ class FeeType:
 
 
 class BillingStatus:
-    # Provider view of a billing. Expiry is a Classping rule (the provider
+    # Provider view of a billing. Expiry is an application rule (the provider
     # keeps reporting an unpaid billing as PENDING), not a provider status.
     PENDING = "pending"
     PAID = "paid"
@@ -91,12 +91,12 @@ class BillingRequest:
     channel_code: str
     amount: Decimal
     invoice_date: datetime.date
-    # Classping payment window end (aware datetime); the provider decides how
+    # Application payment window end (aware datetime); the provider decides how
     # to express it (Rintisan: deadline_date + expiry time).
     expires_at: datetime.datetime
     payer_name: str
     payer_phone: str
-    # Providers may ignore this (Rintisan always sends its own PAYER_EMAIL).
+    # Providers may replace it (Rintisan: RintisanConfig.payer_email, when set).
     payer_email: str = ""
     identifier: str = ""
     payer_address: str = ""
@@ -158,7 +158,7 @@ class BaseProvider(abc.ABC):
 
     name = ""
 
-    # Fee configuration (numbers live in the provider's constants.py)
+    # Fee configuration (rates come from the application, limits from the provider)
     @abc.abstractmethod
     def get_channels(self) -> Sequence[Channel]:
         ...
@@ -182,7 +182,9 @@ class BaseProvider(abc.ABC):
         ...
 
     @abc.abstractmethod
-    def parse_billing_callback(self, raw_body: bytes, headers: Mapping[str, str]) -> BillingResult:
+    def parse_billing_callback(self, raw_body: bytes, headers: Mapping[str, str], request_path: str = "") -> BillingResult:
+        """Verify and parse a payment notification. ``request_path`` is the URL
+        path it was received on (providers that sign it need it)."""
         ...
 
     # Payout
@@ -195,9 +197,16 @@ class BaseProvider(abc.ABC):
         ...
 
     @abc.abstractmethod
-    def parse_transfer_callback(self, raw_body: bytes, headers: Mapping[str, str]) -> TransferResult:
+    def parse_transfer_callback(self, raw_body: bytes, headers: Mapping[str, str], request_path: str = "") -> TransferResult:
         ...
 
     @abc.abstractmethod
     def get_balance(self) -> ProviderBalance:
         ...
+
+    # Notification acknowledgement
+    def callback_reply(self, event: str) -> Optional[Tuple[Dict[str, Any], Dict[str, str]]]:
+        """(body, headers) the provider requires in reply to a processed
+        notification (``event``: "payment" or "disbursement"), or None when
+        any 2xx reply is fine."""
+        return None

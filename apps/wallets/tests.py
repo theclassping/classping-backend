@@ -9,8 +9,8 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.locations.models import Location
-from apps.payment_aggregator import exceptions as provider_errors
-from apps.payment_aggregator.base import TransferResult, TransferStatus
+from payment_aggregator import exceptions as provider_errors
+from payment_aggregator.base import TransferResult, TransferStatus
 from apps.payment_gateway.tests import PASSWORD, NoMailjetMixin, make_branch, make_parent, make_staff
 from apps.schools.models import School
 from apps.staffs.models import Staff
