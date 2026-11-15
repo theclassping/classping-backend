@@ -53,7 +53,8 @@ class GatewayPayment(models.Model):
     )
 
     provider = models.CharField(max_length=30)
-    channel_code = models.CharField(max_length=30)
+    # Provider channel code, e.g. DOKU "VIRTUAL_ACCOUNT_BANK_SYARIAH_MANDIRI" (36).
+    channel_code = models.CharField(max_length=50)
     # Same values as payments.payment_method for gateway rows.
     payment_method = models.CharField(
         max_length=30,

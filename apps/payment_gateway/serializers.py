@@ -32,7 +32,8 @@ def parse_invoice_ids(raw):
 
 class CheckoutRequestSerializer(serializers.Serializer):
     invoice_ids = serializers.ListField(child=serializers.IntegerField(min_value=1))
-    channel = serializers.CharField(max_length=30)
+    # Same limit as GatewayPayment.channel_code.
+    channel = serializers.CharField(max_length=50)
 
     def validate_invoice_ids(self, value):
         return parse_invoice_ids(value)

@@ -110,6 +110,19 @@ class ProviderModuleTests(SimpleTestCase):
                 self.assertTrue(hasattr(module, "DISBURSEMENT_FEE"))
                 self.assertTrue(callable(module.build))
 
+    def test_every_channel_code_fits_the_checkout_fields(self):
+        from apps.payment_aggregator import providers
+        from apps.payment_gateway.models import GatewayPayment
+        from apps.payment_gateway.serializers import CheckoutRequestSerializer
+
+        db_limit = GatewayPayment._meta.get_field("channel_code").max_length
+        request_limit = CheckoutRequestSerializer().fields["channel"].max_length
+        for name, module in providers.registry().items():
+            for code in module.CHANNEL_FEES:
+                with self.subTest(provider=name, channel=code):
+                    self.assertLessEqual(len(code), db_limit)
+                    self.assertLessEqual(len(code), request_limit)
+
     def test_dana_rates_include_vat(self):
         from apps.payment_aggregator.providers import dana
 
