@@ -558,6 +558,31 @@ class TransferCallbackTests(unittest.TestCase):
         with self.assertRaises(InvalidCallback):
             provider.parse_transfer_callback(self.body(), {"X-SIGNATURE": "a"})
 
+    def test_reference_fallback_and_echoed_beneficiary(self):
+        provider, _ = make_doku_provider()
+        body = json.loads(self.body())
+        del body["sendTrxId"]
+        body.update(partnerReferenceNo="WDR-20261115-000001", beneficiaryBankCode="014",
+                    beneficiaryAccountNumber="1234512345")
+        result = provider.parse_transfer_callback(json.dumps(body).encode(), self.headers())
+        self.assertEqual(result.reference_no, "WDR-20261115-000001")
+        # Same id as the transfer response / transfer_id_for, so it matches provider_disbursement_id.
+        self.assertEqual(result.provider_transfer_id, provider.transfer_id_for(transfer_request()))
+
+    def test_callbacks_need_confirmation(self):
+        provider, _ = make_doku_provider()
+        self.assertTrue(provider.confirm_transfer_callbacks)
+
+
+class TransferIdTests(unittest.TestCase):
+    def test_derived_from_request(self):
+        provider, _ = make_doku_provider()
+        self.assertEqual(provider.transfer_id_for(transfer_request()), "WDR-20261115-000001|014|1234512345")
+
+    def test_unknown_bank_has_none(self):
+        provider, _ = make_doku_provider()
+        self.assertIsNone(provider.transfer_id_for(transfer_request(bank_code="NOPE")))
+
 
 class BalanceTests(unittest.TestCase):
     def test_balance(self):

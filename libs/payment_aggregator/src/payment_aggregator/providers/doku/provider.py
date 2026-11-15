@@ -48,6 +48,8 @@ class DokuProvider(BaseProvider):
     """
 
     name = constants.PROVIDER_NAME
+    # Kirim DOKU notifications are authenticated only by the static agentKey.
+    confirm_transfer_callbacks = True
 
     def __init__(self, config=None, channel_fees=None, channel_flat_fees=None, disbursement_fee=None, session=None, now=None):
         self.config = config or DokuConfig.from_env()
@@ -152,6 +154,14 @@ class DokuProvider(BaseProvider):
         mapper.raise_for_transfer(body)
         return mapper.transfer_result(body, inquiry, request, bank[0], amount_sent)
 
+    def transfer_id_for(self, request):
+        """Check Status is keyed by our reference + beneficiary bank/account,
+        so the id is known even when the Transfer Bank response is lost."""
+        bank = constants.BANKS.get(request.bank_code)
+        if bank is None or not request.reference_no or not request.account_number:
+            return None
+        return mapper.transfer_id(request.reference_no, bank[0], request.account_number)
+
     def get_transfer_status(self, provider_transfer_id):
         body = self.client.snap_post(constants.PATH_TRANSFER_STATUS, mapper.status_payload(provider_transfer_id))
         return mapper.transfer_status_result(body, provider_transfer_id)
@@ -159,7 +169,8 @@ class DokuProvider(BaseProvider):
     def parse_transfer_callback(self, raw_body, headers, request_path=""):
         """Kirim DOKU Unpaid / Refund notification. DOKU documents no
         signature algorithm for it, so the sender is authenticated by the
-        agentKey header (DOKU_PAYOUT_AGENT_KEY)."""
+        agentKey header (DOKU_PAYOUT_AGENT_KEY) only; the application
+        confirms it with get_transfer_status (confirm_transfer_callbacks)."""
         if isinstance(raw_body, str):
             raw_body = raw_body.encode("utf-8")
         headers = _lower_headers(headers)

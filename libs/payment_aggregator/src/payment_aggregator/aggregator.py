@@ -89,5 +89,12 @@ class PaymentAggregator:
     def parse_transfer_callback(self, raw_body, headers, request_path=""):
         return self.provider.parse_transfer_callback(raw_body, headers, request_path=request_path)
 
+    def confirm_transfer_callbacks(self):
+        """True: apply a transfer callback only after get_transfer_status confirms it."""
+        return bool(self.provider.confirm_transfer_callbacks)
+
+    def transfer_id_for(self, request):
+        return self.provider.transfer_id_for(request)
+
     def get_balance(self):
         return self.provider.get_balance()

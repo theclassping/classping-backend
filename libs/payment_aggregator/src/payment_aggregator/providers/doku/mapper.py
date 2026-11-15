@@ -382,11 +382,24 @@ def notify_transfer_result(body):
     if not raw_status and "refund" in str(body.get("message") or "").lower():
         raw_status = c.NOTIFY_STATUS_REFUNDED
     status = _NOTIFY_STATUS.get(raw_status, TransferStatus.PROCESSING)
+    # DOKU does not document which field carries our partnerReferenceNo
+    # (sendTrxId in the samples seen), so every candidate is tried; DOKU's
+    # own transactionId is kept in raw and echoed in the reply.
+    reference_no = ""
+    for key in ("sendTrxId", "partnerReferenceNo", "originalPartnerReferenceNo"):
+        if body.get(key):
+            reference_no = str(body[key])
+            break
+    # With the beneficiary echoed, the id matches provider_disbursement_id
+    # even if the reference field above is not ours.
+    bank_id = str(body.get("beneficiaryBankCode") or "")
+    account_number = str(body.get("beneficiaryAccountNumber") or "")
+    provider_transfer_id = (
+        transfer_id(reference_no, bank_id, account_number) if reference_no and bank_id and account_number else ""
+    )
     return TransferResult(
-        # sendTrxId is our partnerReferenceNo (= reference_no); DOKU's own
-        # transactionId is kept in raw and echoed in the reply.
-        reference_no=str(body.get("sendTrxId") or ""),
-        provider_transfer_id="",
+        reference_no=reference_no,
+        provider_transfer_id=provider_transfer_id,
         status=status,
         provider_status_code=raw_status,
         provider_message=str(body.get("message") or ""),

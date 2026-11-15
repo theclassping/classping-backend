@@ -384,6 +384,65 @@ class DisbursementResultTests(WalletFixtureMixin, TestCase):
             response = APIClient().post("/api/webhooks/rintisan/disbursement/", b"{}", content_type="application/json")
         self.assertEqual(response.status_code, 401)
 
+    def test_unsigned_callback_applied_only_after_status_check(self):
+        with mock.patch("apps.wallets.services.PaymentAggregator.confirm_transfer_callbacks", return_value=True), \
+                mock.patch(
+                    "apps.wallets.services.PaymentAggregator.get_transfer_status",
+                    return_value=self.result(TransferStatus.SUCCESS, "00"),
+                ) as status:
+            response = self.post_callback(self.result(TransferStatus.FAILED, "35"))
+        self.assertEqual(response.json(), {"status": "ok"})
+        status.assert_called_once_with("DISPTR-1")
+        # The provider's answer wins over the (forgeable) callback: no reversal.
+        self.assertEqual(Withdrawal.objects.get().status, Withdrawal.Status.SUCCESS)
+
+    def test_unsigned_callback_not_applied_when_unconfirmed(self):
+        with mock.patch("apps.wallets.services.PaymentAggregator.confirm_transfer_callbacks", return_value=True), \
+                mock.patch(
+                    "apps.wallets.services.PaymentAggregator.get_transfer_status",
+                    side_effect=provider_errors.ProviderUnavailable("down"),
+                ), self.assertLogs("apps.wallets.services", "ERROR"):
+            response = self.post_callback(self.result(TransferStatus.FAILED, "35"))
+        self.assertEqual(response.json(), {"status": "unconfirmed"})
+        withdrawal = Withdrawal.objects.get()
+        self.assertEqual(withdrawal.status, Withdrawal.Status.PROCESSING)
+        self.assertTrue(withdrawal.needs_review)
+        self.assertFalse(LedgerEntry.objects.filter(entry_type=LedgerEntry.EntryType.WITHDRAWAL_REVERSAL).exists())
+
+    def test_poll_checks_old_withdrawal_without_id_by_derived_id(self):
+        Withdrawal.objects.filter(pk=self.withdrawal.pk).update(provider_disbursement_id="")
+        derived = mock.patch("apps.wallets.services.PaymentAggregator.transfer_id_for", return_value="WDR|014|527")
+        # Still recent: the request may be in flight.
+        with derived, mock.patch("apps.wallets.services.PaymentAggregator.get_transfer_status") as status:
+            self.assertEqual(services.poll_processing_withdrawals(), 0)
+        status.assert_not_called()
+
+        Withdrawal.objects.filter(pk=self.withdrawal.pk).update(created_at=timezone.now() - datetime.timedelta(hours=1))
+        with derived, mock.patch(
+            "apps.wallets.services.PaymentAggregator.get_transfer_status",
+            side_effect=provider_errors.TransferNotFound("no"),
+        ):
+            self.assertEqual(services.poll_processing_withdrawals(), 1)
+        # Never reached the provider: left for resend / resolve.
+        self.assertEqual(Withdrawal.objects.get().status, Withdrawal.Status.PROCESSING)
+
+        with derived, mock.patch(
+            "apps.wallets.services.PaymentAggregator.get_transfer_status",
+            return_value=self.result(TransferStatus.SUCCESS, "00", provider_transfer_id="WDR|014|527"),
+        ) as status, mock.patch(MAILER):
+            self.assertEqual(services.poll_processing_withdrawals(), 1)
+        status.assert_called_once_with("WDR|014|527")
+        withdrawal = Withdrawal.objects.get()
+        self.assertEqual((withdrawal.status, withdrawal.provider_disbursement_id), ("success", "WDR|014|527"))
+
+    def test_poll_skips_withdrawal_without_id_when_not_derivable(self):
+        Withdrawal.objects.filter(pk=self.withdrawal.pk).update(
+            provider_disbursement_id="", created_at=timezone.now() - datetime.timedelta(hours=1)
+        )
+        with mock.patch("apps.wallets.services.PaymentAggregator.get_transfer_status") as status:
+            self.assertEqual(services.poll_processing_withdrawals(), 0)
+        status.assert_not_called()
+
     def test_poll_syncs_processing_withdrawals(self):
         with mock.patch(
             "apps.wallets.services.PaymentAggregator.get_transfer_status",

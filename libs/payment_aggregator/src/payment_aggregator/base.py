@@ -204,6 +204,17 @@ class BaseProvider(abc.ABC):
     def parse_transfer_callback(self, raw_body: bytes, headers: Mapping[str, str], request_path: str = "") -> TransferResult:
         ...
 
+    # True when transfer notifications carry no verifiable signature (only a
+    # shared token): the application must not apply one as is, only use it
+    # as a prompt to ask get_transfer_status.
+    confirm_transfer_callbacks = False
+
+    def transfer_id_for(self, request: TransferRequest) -> Optional[str]:
+        """provider_transfer_id derivable from the request alone (providers
+        whose status check is keyed by our own data), or None. Lets a
+        transfer whose response was lost still be checked."""
+        return None
+
     @abc.abstractmethod
     def get_balance(self) -> ProviderBalance:
         ...
