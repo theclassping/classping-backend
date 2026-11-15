@@ -156,7 +156,7 @@ class PaymentApiTests(TestCase):
     def test_gateway_payment_methods_rejected_on_create(self, mailer):
         client = APIClient()
         client.force_authenticate(user=self.user)
-        for method in ("virtual_account", "credit_card", "e_commerce"):
+        for method in ("virtual_account", "credit_card", "e_commerce", "e_wallet"):
             response = client.post("/api/payments/", {
                 "student_invoice_id": self.invoice.id,
                 "amount": "100000.00",

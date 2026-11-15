@@ -16,6 +16,7 @@ class PaymentMethod:
     VIRTUAL_ACCOUNT = "virtual_account"
     CREDIT_CARD = "credit_card"
     E_COMMERCE = "e_commerce"
+    E_WALLET = "e_wallet"
 
 
 class FeeType:
@@ -52,6 +53,9 @@ class Channel:
     fee_type: str
     fee: Optional[Decimal]  # None = rate not agreed yet -> channel disabled
     min_amount: Optional[Decimal] = None
+    # PERCENT channels only: flat IDR charged on top of the percentage, also
+    # deducted by the provider (DOKU cards: 2.8% + Rp2.000).
+    flat_fee: Optional[Decimal] = None
     max_amount: Optional[Decimal] = None
     is_active: bool = True
 
@@ -205,8 +209,9 @@ class BaseProvider(abc.ABC):
         ...
 
     # Notification acknowledgement
-    def callback_reply(self, event: str) -> Optional[Tuple[Dict[str, Any], Dict[str, str]]]:
+    def callback_reply(self, event: str, result: Any = None) -> Optional[Tuple[Dict[str, Any], Dict[str, str]]]:
         """(body, headers) the provider requires in reply to a processed
         notification (``event``: "payment" or "disbursement"), or None when
-        any 2xx reply is fine."""
+        any 2xx reply is fine. ``result`` is the parsed BillingResult /
+        TransferResult, for providers that echo an id from the notification."""
         return None

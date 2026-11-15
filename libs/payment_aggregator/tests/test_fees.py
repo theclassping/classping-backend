@@ -124,3 +124,34 @@ class WithdrawalTests(TestCase):
         for value in ("0", "-1", "50000.50", "abc"):
             with self.assertRaises(InvalidAmount, msg=value):
                 fees.calculate_withdrawal(RULES, value)
+
+
+class PercentPlusFlatFeeTests(TestCase):
+    CARD = Channel(
+        code="CREDIT_CARD",
+        name="Kartu",
+        method=PaymentMethod.CREDIT_CARD,
+        fee_type=FeeType.PERCENT,
+        fee=Decimal("3.108"),  # 2.8% + 11% VAT
+        flat_fee=Decimal("2220"),  # Rp2.000 + 11% VAT
+    )
+
+    def test_gross_up_covers_percent_and_flat(self):
+        breakdown = fees.calculate_transaction_fee(self.CARD, Decimal("1000000"))
+        # ceil(1.002.220 * 100 / 96.892) = 1.034.369
+        self.assertEqual(breakdown.amount, Decimal("1034369.00"))
+        self.assertEqual(breakdown.transaction_fee, Decimal("34369.00"))
+        # What the provider deducts leaves at least the invoice total.
+        deducted = breakdown.amount * Decimal("3.108") / 100 + Decimal("2220")
+        self.assertGreaterEqual(breakdown.amount - deducted, Decimal("1000000"))
+
+    def test_without_flat_fee_unchanged(self):
+        self.assertEqual(fees.calculate_transaction_fee(CC, Decimal("98000")).amount, Decimal("100000.00"))
+
+    def test_negative_flat_fee_rejected(self):
+        bad = Channel(
+            code="X", name="X", method=PaymentMethod.CREDIT_CARD, fee_type=FeeType.PERCENT,
+            fee=Decimal("2"), flat_fee=Decimal("-1"),
+        )
+        with self.assertRaises(ChannelNotAvailable):
+            fees.calculate_transaction_fee(bad, Decimal("1000"))

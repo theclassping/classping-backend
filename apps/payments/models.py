@@ -22,6 +22,7 @@ class Payment(models.Model):
         VIRTUAL_ACCOUNT = GatewayMethod.VIRTUAL_ACCOUNT, "Virtual Account"
         CREDIT_CARD = GatewayMethod.CREDIT_CARD, "Credit Card"
         E_COMMERCE = GatewayMethod.E_COMMERCE, "E-commerce"
+        E_WALLET = GatewayMethod.E_WALLET, "E-wallet"
 
     class PaymentChannel(models.TextChoices):
         MANUAL = "manual", "Manual"
@@ -36,6 +37,7 @@ class Payment(models.Model):
         PaymentMethod.VIRTUAL_ACCOUNT,
         PaymentMethod.CREDIT_CARD,
         PaymentMethod.E_COMMERCE,
+        PaymentMethod.E_WALLET,
     )
 
     @classmethod

@@ -141,3 +141,74 @@ def dana_notify_headers(path, raw_body, x_timestamp="2026-11-12T10:30:00+07:00")
         "X-EXTERNAL-ID": "ext-1",
         "CHANNEL-ID": "95221",
     }
+
+
+# --- DOKU -------------------------------------------------------------------
+
+DOKU_CLIENT_ID = "BRN-0000-0000000000001"
+DOKU_SECRET_KEY = "SK-doku-test-secret"
+DOKU_AGENT_KEY = "agent-key-test"
+
+
+def make_doku_config(**overrides):
+    from payment_aggregator.providers.doku.config import DokuConfig
+
+    values = dict(
+        base_url="https://api-sandbox.doku.com",
+        client_id=DOKU_CLIENT_ID,
+        secret_key=DOKU_SECRET_KEY,
+        notify_url="https://api.example.com/api/webhooks/payment/",
+        return_url="https://app.example.com/payment/finish",
+        payout_client_id=DOKU_CLIENT_ID,
+        payout_secret_key=DOKU_SECRET_KEY,
+        private_key="unused",
+        payout_account_no="1000000001",
+        payout_agent_key=DOKU_AGENT_KEY,
+        sender_phone="6281200000000",
+        sender_first_name="Classping",
+        sender_last_name="Indonesia",
+        sender_id_number="3171000000000001",
+    )
+    values.update(overrides)
+    return DokuConfig(**values)
+
+
+def make_doku_provider(*responses, channel_fees=None, channel_flat_fees=None, disbursement_fee=None, now=None, **config_overrides):
+    """A real DokuProvider talking to a FakeSession; Kirim DOKU tokens are
+    signed with key_pair("merchant")."""
+    from payment_aggregator.providers.doku.provider import DokuProvider
+
+    session = FakeSession(*responses)
+    provider = DokuProvider(
+        config=make_doku_config(**config_overrides),
+        channel_fees=channel_fees,
+        channel_flat_fees=channel_flat_fees,
+        disbursement_fee=disbursement_fee,
+        session=session,
+        now=now,
+    )
+    provider._private_key = key_pair("merchant")[0]
+    return provider, session
+
+
+def doku_notify_headers(path, raw_body, client_id=DOKU_CLIENT_ID, secret_key=DOKU_SECRET_KEY,
+                        request_id="notif-1", timestamp="2026-11-15T03:00:00Z"):
+    """Headers DOKU would send with a Checkout notification to ``path``."""
+    from payment_aggregator.providers.doku import signing
+
+    return {
+        "Client-Id": client_id,
+        "Request-Id": request_id,
+        "Request-Timestamp": timestamp,
+        "Signature": signing.checkout_signature(secret_key, client_id, request_id, timestamp, path, raw_body),
+    }
+
+
+def doku_token_response():
+    return FakeResponse(200, {
+        "responseCode": "2007300",
+        "responseMessage": "Successful",
+        "accessToken": "token-abc",
+        "tokenType": "Bearer",
+        "expiresIn": 900,
+    })

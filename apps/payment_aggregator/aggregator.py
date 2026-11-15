@@ -91,13 +91,14 @@ def parse_callback(method, raw_body, headers, provider=None, request_path=""):
     raise last_error or InvalidCallback("No payment provider accepted the callback")
 
 
-def callback_reply(provider, event, default):
+def callback_reply(provider, event, default, result=None):
     """The reply to a provider notification: the provider's required
-    acknowledgement (DANA: responseCode + X-TIMESTAMP) or ``default``."""
+    acknowledgement (DANA: responseCode + X-TIMESTAMP; Kirim DOKU: echoes
+    the notification's transactionId from ``result``) or ``default``."""
     from apps.core.webhooks import WebhookReply
 
     try:
-        reply = PaymentAggregator.using(provider).callback_reply(event)
+        reply = PaymentAggregator.using(provider).callback_reply(event, result=result)
     except ProviderNotConfigured:
         reply = None
     if reply is None:

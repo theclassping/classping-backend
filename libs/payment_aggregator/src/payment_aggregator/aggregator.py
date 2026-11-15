@@ -74,9 +74,9 @@ class PaymentAggregator:
     def parse_billing_callback(self, raw_body, headers, request_path=""):
         return self.provider.parse_billing_callback(raw_body, headers, request_path=request_path)
 
-    def callback_reply(self, event):
+    def callback_reply(self, event, result=None):
         """(body, headers) the provider requires in reply to a notification, or None."""
-        return self.provider.callback_reply(event)
+        return self.provider.callback_reply(event, result=result)
 
     # --- payout ----------------------------------------------------------
 

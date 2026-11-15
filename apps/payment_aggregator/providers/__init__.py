@@ -23,6 +23,7 @@ from importlib import import_module
 PROVIDER_MODULES = (
     "apps.payment_aggregator.providers.rintisan",
     "apps.payment_aggregator.providers.dana",
+    "apps.payment_aggregator.providers.doku",
 )
 
 _registry = None

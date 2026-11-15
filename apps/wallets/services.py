@@ -545,7 +545,7 @@ def handle_disbursement_callback(raw_body, headers, provider=None, request_path=
         logger.warning("Rejected disbursement callback: %s", error)
         raise InvalidWebhook() from error
     status = _apply_disbursement_callback(provider, result)
-    return callback_reply(provider, "disbursement", {"status": status})
+    return callback_reply(provider, "disbursement", {"status": status}, result=result)
 
 
 def _apply_disbursement_callback(provider, result):

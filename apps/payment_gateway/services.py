@@ -250,7 +250,7 @@ def handle_payment_callback(raw_body, headers, provider=None, request_path=""):
         logger.warning("Rejected payment callback: %s", error)
         raise InvalidWebhook() from error
     status = _apply_payment_callback(provider, billing)
-    return callback_reply(provider, "payment", {"status": status})
+    return callback_reply(provider, "payment", {"status": status}, result=billing)
 
 
 def _apply_payment_callback(provider, billing):
