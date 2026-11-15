@@ -18,3 +18,11 @@ class SafeResponsePreviewTests(TestCase):
         self.assertNotIn("abc123", preview)
         self.assertIn("[REDACTED]", preview)
         self.assertTrue(preview.endswith("…[truncated]"))
+
+    def test_masks_payer_phone_in_request_body(self):
+        from payment_aggregator.utils import safe_preview
+
+        preview = safe_preview('{"additionalInfo":{"phoneNumber":"6281234567890"},"amount":"1"}')
+        self.assertNotIn("6281234567890", preview)
+        self.assertIn('"phoneNumber":"[REDACTED]"', preview)
+        self.assertIn('"amount":"1"', preview)
