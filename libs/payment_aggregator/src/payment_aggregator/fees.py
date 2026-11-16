@@ -67,7 +67,12 @@ def calculate_transaction_fee(channel, invoice_total):
             raise ChannelNotAvailable("Invalid flat fee")
         amount = ceil_rupiah(invoice_total + fee)
     elif channel.fee_type == FeeType.PERCENT:
-        amount = gross_up(invoice_total, fee)
+        # The provider deducts rate% of the paid amount plus the flat part:
+        # total = (net + flat) * 100 / (100 - rate).
+        flat = _to_decimal(channel.flat_fee) if channel.flat_fee is not None else Decimal("0")
+        if flat < 0:
+            raise ChannelNotAvailable("Invalid flat fee")
+        amount = gross_up(invoice_total + flat, fee)
     else:
         raise ChannelNotAvailable("Unknown fee type {}".format(channel.fee_type))
 

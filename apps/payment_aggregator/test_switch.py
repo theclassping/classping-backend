@@ -32,7 +32,7 @@ class OtherProvider:
             raise InvalidCallback("not signed by other")
         return self.billing
 
-    def callback_reply(self, event):
+    def callback_reply(self, event, result=None):
         return None
 
 
@@ -102,13 +102,26 @@ class ProviderModuleTests(SimpleTestCase):
     def test_every_provider_module_exposes_the_contract(self):
         from apps.payment_aggregator import providers
 
-        self.assertEqual(providers.names(), ("rintisan", "dana"))
+        self.assertEqual(providers.names(), ("rintisan", "dana", "doku"))
         for name, module in providers.registry().items():
             with self.subTest(provider=name):
                 self.assertEqual(module.NAME, name)
                 self.assertIsInstance(module.CHANNEL_FEES, dict)
                 self.assertTrue(hasattr(module, "DISBURSEMENT_FEE"))
                 self.assertTrue(callable(module.build))
+
+    def test_every_channel_code_fits_the_checkout_fields(self):
+        from apps.payment_aggregator import providers
+        from apps.payment_gateway.models import GatewayPayment
+        from apps.payment_gateway.serializers import CheckoutRequestSerializer
+
+        db_limit = GatewayPayment._meta.get_field("channel_code").max_length
+        request_limit = CheckoutRequestSerializer().fields["channel"].max_length
+        for name, module in providers.registry().items():
+            for code in module.CHANNEL_FEES:
+                with self.subTest(provider=name, channel=code):
+                    self.assertLessEqual(len(code), db_limit)
+                    self.assertLessEqual(len(code), request_limit)
 
     def test_dana_rates_include_vat(self):
         from apps.payment_aggregator.providers import dana
@@ -130,6 +143,64 @@ class ProviderModuleTests(SimpleTestCase):
         self.assertTrue(config.notify_url.endswith("/api/webhooks/payment/"))
         priced = {c.channel_code for c in PaymentAggregator.get_channels(Decimal("100000"))}
         self.assertEqual(priced, set(dana.CHANNEL_FEES))
+
+
+class DokuProviderModuleTests(SimpleTestCase):
+    def setUp(self):
+        self.addCleanup(set_provider, None)
+
+    def test_doku_rates_include_vat(self):
+        from apps.payment_aggregator.providers import doku
+
+        self.assertEqual(doku.CHANNEL_FEES["VIRTUAL_ACCOUNT_BCA"], Decimal("4995"))
+        self.assertEqual(doku.CHANNEL_FEES["VIRTUAL_ACCOUNT_BNI"], Decimal("4440"))
+        self.assertEqual(doku.CHANNEL_FEES["CREDIT_CARD"], Decimal("3.108"))
+        self.assertEqual(doku.CHANNEL_FLAT_FEES["CREDIT_CARD"], Decimal("2220"))
+        self.assertNotIn("QRIS", doku.CHANNEL_FEES)
+        self.assertEqual(doku.DISBURSEMENT_FEE, Decimal("2500"))
+        # E-wallets: one public rate, or the top of DOKU's published range.
+        self.assertEqual(doku.CHANNEL_FEES["EMONEY_DANA"], Decimal("1.665"))
+        self.assertEqual(doku.CHANNEL_FEES["EMONEY_OVO"], Decimal("3.5298"))
+        self.assertEqual(doku.CHANNEL_FEES["EMONEY_SHOPEE_PAY"], Decimal("4.44"))
+        self.assertEqual(doku.CHANNEL_FEES["EMONEY_LINKAJA"], Decimal("3.885"))
+
+    @override_settings(PAYMENT_PROVIDER="doku")
+    def test_doku_e_wallets_are_grouped_as_e_wallet(self):
+        set_provider(None)
+        channels = {c.channel_code: c for c in PaymentAggregator.get_channels(Decimal("100000"))}
+        self.assertEqual(channels["EMONEY_DANA"].payment_method, "e_wallet")
+        # ceil(100000 * 100 / 98.335) = 101694
+        self.assertEqual(channels["EMONEY_DANA"].amount, Decimal("101694.00"))
+
+    @override_settings(PAYMENT_PROVIDER="doku")
+    def test_doku_is_selectable_with_card_gross_up(self):
+        from apps.payment_aggregator.providers import doku
+
+        set_provider(None)
+        self.assertEqual(PaymentAggregator.provider_name(), "doku")
+        self.assertTrue(PaymentAggregator.provider.config.notify_url.endswith("/api/webhooks/payment/"))
+        channels = {c.channel_code: c for c in PaymentAggregator.get_channels(Decimal("1000000"))}
+        self.assertEqual(set(channels), set(doku.CHANNEL_FEES))
+        self.assertEqual(channels["VIRTUAL_ACCOUNT_BNI"].amount, Decimal("1004440.00"))
+        self.assertEqual(channels["CREDIT_CARD"].amount, Decimal("1034369.00"))
+        withdrawal = PaymentAggregator.calculate_withdrawal(Decimal("100000"))
+        self.assertEqual(withdrawal.transfer_amount, Decimal("97500.00"))
+        # Saved payout accounts keep their Classping bank codes.
+        self.assertTrue(PaymentAggregator.is_supported_bank("MANDIRI"))
+
+    def test_disbursement_reply_echoes_transaction_id(self):
+        from payment_aggregator.base import TransferResult, TransferStatus
+        from payment_aggregator.testing import make_doku_provider
+
+        from apps.payment_aggregator.aggregator import callback_reply
+
+        provider, _ = make_doku_provider()
+        set_provider(provider)
+        result = TransferResult("WDR-1", "", TransferStatus.SUCCESS, raw={"transactionId": "DK0018353"})
+        reply = callback_reply("doku", "disbursement", {"status": "ok"}, result=result)
+        self.assertEqual(reply.body["transactionId"], "DK0018353")
+        self.assertEqual(reply.body["responseCode"], "00")
+        self.assertEqual(callback_reply("doku", "payment", {"status": "ok"}), {"status": "ok"})
 
 
 class DanaCurlCommandTests(SimpleTestCase):

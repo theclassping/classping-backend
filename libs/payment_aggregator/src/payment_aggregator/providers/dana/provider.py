@@ -105,7 +105,7 @@ class DanaProvider(BaseProvider):
         body = self._verify_callback(raw_body, headers, request_path, constants.SNAP_PATH_FINISH_NOTIFY)
         return mapper.notify_result(body)
 
-    def callback_reply(self, event):
+    def callback_reply(self, event, result=None):
         ack = constants.ACK_TRANSFER_NOTIFY if event == "disbursement" else constants.ACK_FINISH_NOTIFY
         return dict(ack), {"X-TIMESTAMP": signing.timestamp()}
 
