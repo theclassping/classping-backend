@@ -6,9 +6,12 @@ from decimal import Decimal
 
 import requests
 
-from payment_aggregator.base import BillingRequest, BillingStatus, SettlementStatus
+from payment_aggregator.base import BillingRequest, BillingStatus, RefundRequest, RefundStatus, SettlementStatus
 from payment_aggregator.exceptions import (
+    BillingNotCancellable,
     BillingNotFound,
+    InvalidAmount,
+    RefundRejected,
     InvalidCallback,
     InvalidPayerPhone,
     ProviderAccessDenied,
@@ -319,6 +322,104 @@ class FinishNotifyTests(unittest.TestCase):
         self.assertEqual(self.provider.callback_reply("disbursement")[0]["responseCode"], "2004300")
 
 
+class CancelOrderTests(unittest.TestCase):
+    def cancel(self, body):
+        provider, session = make_dana_provider(FakeResponse(body=body))
+        return provider, session
+
+    def test_cancel_success(self):
+        provider, session = self.cancel({
+            "responseCode": "2005700",
+            "responseMessage": "Successful",
+            "originalPartnerReferenceNo": "PAY-1",
+            "originalReferenceNo": "DANA-1",
+            "cancelTime": "2026-11-16T17:07:25+07:00",
+        })
+        self.assertTrue(provider.supports_cancel_billing)
+        result = provider.cancel_billing("PAY-1", provider_trx_id="DANA-1", reason="Dibatalkan orang tua")
+        self.assertEqual((result.reference_no, result.provider_trx_id), ("PAY-1", "DANA-1"))
+        self.assertEqual(result.cancelled_at, datetime.datetime(2026, 11, 16, 17, 7, 25, tzinfo=WIB))
+        self.assertTrue(session.calls[0]["url"].endswith(constants.PATH_CANCEL_ORDER))
+        self.assertEqual(
+            session.last_json(),
+            {
+                "originalPartnerReferenceNo": "PAY-1",
+                "merchantId": "216620000000000000000",
+                "originalReferenceNo": "DANA-1",
+                "reason": "Dibatalkan orang tua",
+            },
+        )
+
+    def test_paid_or_expired_order_is_not_cancellable(self):
+        for code in ("4035700", "4045700"):
+            with self.subTest(code=code):
+                provider, _ = self.cancel({"responseCode": code, "responseMessage": "no"})
+                with self.assertRaises(BillingNotCancellable):
+                    provider.cancel_billing("PAY-1")
+
+    def test_not_found_and_pending(self):
+        provider, _ = self.cancel({"responseCode": "4045701", "responseMessage": "Transaction Not Found"})
+        with self.assertRaises(BillingNotFound):
+            provider.cancel_billing("PAY-1")
+        for code in ("2025700", "4295700", "5005701"):
+            with self.subTest(code=code):
+                provider, _ = self.cancel({"responseCode": code, "responseMessage": "later"})
+                with self.assertRaises(ProviderUnavailable):
+                    provider.cancel_billing("PAY-1")
+
+
+class RefundOrderTests(unittest.TestCase):
+    def request(self, **overrides):
+        values = dict(reference_no="PAY-1", refund_no="RF-PAY-1-1", amount=Decimal("130000"), provider_trx_id="DANA-1")
+        values.update(overrides)
+        return RefundRequest(**values)
+
+    def test_refund_success(self):
+        provider, session = make_dana_provider(FakeResponse(body={
+            "responseCode": "2005800",
+            "responseMessage": "Successful",
+            "originalPartnerReferenceNo": "PAY-1",
+            "refundNo": "REF993883",
+            "partnerRefundNo": "RF-PAY-1-1",
+            "refundAmount": {"value": "130000.00", "currency": "IDR"},
+            "refundTime": "2026-11-16T17:21:41+07:00",
+        }))
+        self.assertTrue(provider.supports_refund)
+        result = provider.refund_billing(self.request(reason="Sudah dibayar tunai"))
+        self.assertEqual(result.status, RefundStatus.SUCCESS)
+        self.assertEqual((result.refund_no, result.provider_refund_id), ("RF-PAY-1-1", "REF993883"))
+        self.assertEqual(result.amount, Decimal("130000.00"))
+        self.assertTrue(session.calls[0]["url"].endswith(constants.PATH_REFUND_ORDER))
+        sent = session.last_json()
+        self.assertEqual(sent["partnerRefundNo"], "RF-PAY-1-1")
+        self.assertEqual(sent["refundAmount"], {"value": "130000.00", "currency": "IDR"})
+        self.assertEqual(sent["originalReferenceNo"], "DANA-1")
+        self.assertEqual(
+            (sent["sourcePlatform"], sent["orderTerminalType"], sent["terminalType"]), ("IPG", "SYSTEM", "SYSTEM")
+        )
+        self.assertEqual(
+            sent["additionalInfo"]["actorContext"], {"actorId": "216620000000000000000", "actorType": "MERCHANT"}
+        )
+
+    def test_rejected_and_unknown_outcomes(self):
+        provider, _ = make_dana_provider(FakeResponse(body={"responseCode": "4045800", "responseMessage": "status"}))
+        with self.assertRaises(RefundRejected):
+            provider.refund_billing(self.request())
+        # In progress, rate limited, internal error, or same refund number with
+        # other content: outcome unknown, never "rejected".
+        for code in ("2025800", "4295800", "5005801", "4045818"):
+            with self.subTest(code=code):
+                provider, _ = make_dana_provider(FakeResponse(body={"responseCode": code, "responseMessage": "?"}))
+                with self.assertRaises(ProviderUnavailable):
+                    provider.refund_billing(self.request())
+
+    def test_refund_needs_whole_rupiah(self):
+        provider, session = make_dana_provider()
+        with self.assertRaises(InvalidAmount):
+            provider.refund_billing(self.request(amount=Decimal("100.50")))
+        self.assertEqual(session.calls, [])
+
+
 class NotYetSupportedTests(unittest.TestCase):
     def test_payouts_and_balance_are_not_configured(self):
         provider, _ = make_dana_provider()
@@ -332,6 +433,11 @@ class NotYetSupportedTests(unittest.TestCase):
             with self.assertRaises(ProviderNotConfigured):
                 call()
         self.assertEqual(provider.get_banks(), {})
+
+    def test_withdrawals_stay_off_with_a_fee_until_payout_exists(self):
+        provider, _ = make_dana_provider(disbursement_fee=Decimal("2500"))
+        with self.assertRaises(ProviderNotConfigured):
+            provider.get_withdrawal_rules()
 
     def test_unknown_channel_fee_is_rejected(self):
         with self.assertRaises(ProviderNotConfigured):

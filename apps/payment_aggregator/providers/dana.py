@@ -15,6 +15,7 @@ from decimal import Decimal
 from django.conf import settings
 from payment_aggregator.providers.dana import DanaConfig, DanaProvider
 
+from apps.payment_aggregator.constants import DISBURSEMENT_FEE as GENERAL_DISBURSEMENT_FEE
 from apps.payment_aggregator.constants import with_vat
 
 NAME = "dana"
@@ -53,10 +54,10 @@ CHANNEL_FEES = {
     "NETWORK_PAY_PG_LINKAJA": MDR_EWALLET,
 }
 
-# Fee per Transfer to Bank. Not in the fee calculator yet: None keeps
-# withdrawals through DANA disabled until DANA confirms the amount and whether
-# it is deducted from the transfer or charged separately.
-DISBURSEMENT_FEE = None
+# Fee per Transfer to Bank: Classping's general rate for every provider (see
+# constants.DISBURSEMENT_FEE). Withdrawals through DANA stay disabled anyway
+# until Transfer to Bank is implemented in the DANA provider.
+DISBURSEMENT_FEE = GENERAL_DISBURSEMENT_FEE
 
 
 # --- Account ---------------------------------------------------------------

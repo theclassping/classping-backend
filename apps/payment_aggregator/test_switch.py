@@ -148,7 +148,15 @@ class ProviderModuleTests(SimpleTestCase):
         self.assertEqual(set(dana.CHANNEL_FEES), set(constants.CHANNELS))
         for code in ("NETWORK_PAY_PG_OVO", "NETWORK_PAY_PG_GOPAY", "NETWORK_PAY_PG_SPAY", "NETWORK_PAY_PG_LINKAJA"):
             self.assertEqual(constants.CHANNELS[code]["method"], PaymentMethod.E_WALLET)
-        self.assertIsNone(dana.DISBURSEMENT_FEE)
+        self.assertEqual(dana.DISBURSEMENT_FEE, Decimal("2500"))
+
+    def test_every_provider_uses_the_general_disbursement_fee(self):
+        from apps.payment_aggregator import constants, providers
+
+        self.assertEqual(constants.DISBURSEMENT_FEE, Decimal("2500"))
+        for name in providers.names():
+            with self.subTest(provider=name):
+                self.assertEqual(providers.get(name).DISBURSEMENT_FEE, constants.DISBURSEMENT_FEE)
 
     @override_settings(PAYMENT_PROVIDER="dana")
     def test_dana_is_selectable_and_offers_only_priced_channels(self):

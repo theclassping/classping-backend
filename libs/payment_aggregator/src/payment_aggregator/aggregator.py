@@ -78,6 +78,20 @@ class PaymentAggregator:
         """(body, headers) the provider requires in reply to a notification, or None."""
         return self.provider.callback_reply(event, result=result)
 
+    # --- cancel / refund -------------------------------------------------
+
+    def can_cancel_billing(self):
+        return bool(self.provider.supports_cancel_billing)
+
+    def cancel_billing(self, reference_no, provider_trx_id="", reason=""):
+        return self.provider.cancel_billing(reference_no, provider_trx_id=provider_trx_id, reason=reason)
+
+    def can_refund(self):
+        return bool(self.provider.supports_refund)
+
+    def refund_billing(self, request):
+        return self.provider.refund_billing(request)
+
     # --- payout ----------------------------------------------------------
 
     def transfer_balance(self, request):

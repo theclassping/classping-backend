@@ -44,10 +44,11 @@ CHANNEL_FEES = {
     "BLIBLI CC": MDR_BLIBLI_CC,
 }
 
-# Fee per disbursement (incl. bank validator), borne by the school. Rintisan
-# deducts it from the sent amount: withdraw 100.000 -> the bank account
-# receives 97.500. There is no min/max disbursement amount.
-DISBURSEMENT_FEE = Decimal("2500")
+# Fee per disbursement: Classping's general rate for every provider (see
+# constants.DISBURSEMENT_FEE), borne by the school. Rintisan deducts it from
+# the sent amount: withdraw 100.000 -> the bank account receives 97.500.
+# There is no min/max disbursement amount.
+DISBURSEMENT_FEE = constants.DISBURSEMENT_FEE
 
 # --- Account ---------------------------------------------------------------
 

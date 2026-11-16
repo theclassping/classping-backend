@@ -80,6 +80,30 @@ class CancelForbidden(CodedAPIException):
     default_detail = "You cannot cancel this online payment."
 
 
+class RefundForbidden(CodedAPIException):
+    status_code = status.HTTP_403_FORBIDDEN
+    error_code = "REFUND_FORBIDDEN"
+    default_detail = "You cannot refund this online payment."
+
+
+class RefundNotAllowed(CodedAPIException):
+    status_code = status.HTTP_409_CONFLICT
+    error_code = "REFUND_NOT_ALLOWED"
+    default_detail = "Only a paid online payment flagged for refund, not refunded yet, can be refunded."
+
+
+class RefundNotSupported(CodedAPIException):
+    status_code = status.HTTP_409_CONFLICT
+    error_code = "REFUND_NOT_SUPPORTED"
+    default_detail = "This payment provider has no online refund; refund the payer manually."
+
+
+class RefundRejected(CodedAPIException):
+    status_code = status.HTTP_422_UNPROCESSABLE_ENTITY
+    error_code = "REFUND_REJECTED"
+    default_detail = "The payment provider refused the refund; the branch balance was restored."
+
+
 class GatewayPaymentNotPending(CodedAPIException):
     status_code = status.HTTP_409_CONFLICT
     error_code = "GATEWAY_PAYMENT_NOT_PENDING"

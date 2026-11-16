@@ -32,6 +32,18 @@ class PaymentAggregatorTests(TestCase):
         # 50000 * 100 / 98 = 51020.41 -> 51021
         self.assertEqual(breakdowns["CC"].amount, Decimal("51021.00"))
 
+    def test_provider_without_cancel_or_refund_says_so(self):
+        from payment_aggregator.base import RefundRequest
+        from payment_aggregator.exceptions import OperationNotSupported
+
+        self.assertFalse(self.aggregator.can_cancel_billing())
+        self.assertFalse(self.aggregator.can_refund())
+        with self.assertRaises(OperationNotSupported):
+            self.aggregator.cancel_billing("PAY-1")
+        with self.assertRaises(OperationNotSupported):
+            self.aggregator.refund_billing(RefundRequest("PAY-1", "RF-1", Decimal("1000")))
+        self.assertEqual(self.session.calls, [])
+
     def test_unpriced_channel_is_not_available(self):
         with self.assertRaises(ChannelNotAvailable):
             self.aggregator.calculate_transaction_fee("VABRI", Decimal("50000"))

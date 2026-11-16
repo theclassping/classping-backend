@@ -17,6 +17,8 @@ BASE_URL_PRODUCTION = "https://api.saas.dana.id"
 
 PATH_CREATE_ORDER = "/payment-gateway/v1.0/debit/payment-host-to-host.htm"
 PATH_QUERY_PAYMENT = "/payment-gateway/v1.0/debit/status.htm"
+PATH_CANCEL_ORDER = "/payment-gateway/v1.0/debit/cancel.htm"
+PATH_REFUND_ORDER = "/payment-gateway/v1.0/debit/refund.htm"
 
 # SNAP standard paths of OUR notify endpoints. DANA signs a callback over the
 # path it calls; the verifier also accepts these in case DANA signs the
@@ -122,6 +124,19 @@ RESPONSE_CREATE_INCONSISTENT = "4045418"
 RESPONSE_QUERY_SUCCESS = "2005500"
 RESPONSE_QUERY_NOT_FOUND = "4045501"
 
+# Cancel Order (service 57): unpaid orders, or paid ones within 24 hours.
+RESPONSE_CANCEL_SUCCESS = "2005700"
+RESPONSE_CANCEL_NOT_FOUND = "4045701"
+# Expired cancel window / status that does not allow cancelling (e.g. paid).
+RESPONSE_CANCEL_NOT_ALLOWED = ("4035700", "4045700")
+
+# Refund Order (service 58). partnerRefundNo makes a retry idempotent.
+RESPONSE_REFUND_SUCCESS = "2005800"
+# Same partnerRefundNo with different content: investigate, never resend blindly.
+RESPONSE_REFUND_INCONSISTENT = "4045818"
+# Who asks for the refund (additionalInfo.actorContext, required).
+REFUND_ACTOR_TYPE = "MERCHANT"
+
 # Acknowledgements we send back to DANA's notifications.
 ACK_FINISH_NOTIFY = {"responseCode": "2005600", "responseMessage": "Successful"}
 ACK_TRANSFER_NOTIFY = {"responseCode": "2004300", "responseMessage": "Successful"}
@@ -132,7 +147,7 @@ STATUS_NOT_FOUND = "07"
 
 # Response code prefixes meaning "outcome unknown, retry" (DANA: mark Pending).
 RETRYABLE_PREFIXES = ("202", "429")
-RETRYABLE_CODES = ("5005401", "5005501")
+RETRYABLE_CODES = ("5005401", "5005501", "5005701", "5005801")
 
 ORDER_TITLE_MAX = 64
 PHONE_MAX = 15

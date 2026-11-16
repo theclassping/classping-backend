@@ -192,6 +192,9 @@ class LedgerEntry(models.Model):
         WITHDRAWAL_REVERSAL = "withdrawal_reversal", "Withdrawal reversal"
         WITHDRAWAL_FEE_REVERSAL = "withdrawal_fee_reversal", "Withdrawal fee reversal"
         ADJUSTMENT = "adjustment", "Adjustment"
+        # Online refund of a paid checkout to the payer (full paid amount).
+        REFUND = "refund", "Refund"
+        REFUND_REVERSAL = "refund_reversal", "Refund reversal"
 
     class SettlementStatus(models.TextChoices):
         PENDING_SETTLEMENT = "pending_settlement", "Pending settlement"

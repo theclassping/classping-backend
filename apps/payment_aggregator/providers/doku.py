@@ -14,6 +14,7 @@ from decimal import Decimal
 from django.conf import settings
 from payment_aggregator.providers.doku import DokuConfig, DokuProvider
 
+from apps.payment_aggregator.constants import DISBURSEMENT_FEE as GENERAL_DISBURSEMENT_FEE
 from apps.payment_aggregator.constants import with_vat
 
 NAME = "doku"
@@ -63,9 +64,9 @@ CHANNEL_FLAT_FEES = {
     "CREDIT_CARD": MDR_CARD_FLAT,
 }
 
-# Fee per Kirim DOKU transfer, VAT included (decided 2026-11-15; general rate
-# for every transfer). The branch account receives amount - fee.
-DISBURSEMENT_FEE = Decimal("2500")
+# Fee per Kirim DOKU transfer: Classping's general rate for every provider
+# (see constants.DISBURSEMENT_FEE). The branch account receives amount - fee.
+DISBURSEMENT_FEE = GENERAL_DISBURSEMENT_FEE
 
 
 # --- Account ---------------------------------------------------------------

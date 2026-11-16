@@ -8,9 +8,18 @@ latestTransactionStatus codes.
 import datetime
 from decimal import Decimal, InvalidOperation
 
-from payment_aggregator.base import BillingResult, BillingStatus, SettlementStatus
+from payment_aggregator.base import (
+    BillingResult,
+    BillingStatus,
+    CancelResult,
+    RefundResult,
+    RefundStatus,
+    SettlementStatus,
+)
 from payment_aggregator.exceptions import (
+    BillingNotCancellable,
     BillingNotFound,
+    RefundRejected,
     InvalidAmount,
     InvalidPayerPhone,
     ProviderAccessDenied,
@@ -171,6 +180,89 @@ def query_result(body):
         settlement_status=SettlementStatus.NOT_SETTLED,
         amount=money_value(body.get("amount")),
         paid_at=parse_datetime(body.get("paidTime")) if status == BillingStatus.PAID else None,
+        raw=body,
+    )
+
+
+# --- cancel / refund ------------------------------------------------------
+
+
+def cancel_payload(reference_no, provider_trx_id, reason, config):
+    payload = {"originalPartnerReferenceNo": reference_no, "merchantId": config.merchant_id}
+    if provider_trx_id:
+        payload["originalReferenceNo"] = provider_trx_id
+    if reason:
+        payload["reason"] = reason[:256]
+    return payload
+
+
+def raise_for_cancel_response(body):
+    code = _code(body)
+    if code == c.RESPONSE_CANCEL_SUCCESS:
+        return
+    _raise_for_common(body, "cancel")
+    if code == c.RESPONSE_CANCEL_NOT_FOUND:
+        raise BillingNotFound("DANA order not found", provider_message=_message(body), raw=body)
+    if code in c.RESPONSE_CANCEL_NOT_ALLOWED:
+        raise BillingNotCancellable(
+            "DANA cannot cancel this order ({})".format(code), provider_message=_message(body), raw=body
+        )
+    raise ProviderRejected("DANA rejected the cancel ({})".format(code), provider_message=_message(body), raw=body)
+
+
+def cancel_result(body, reference_no):
+    return CancelResult(
+        reference_no=str(body.get("originalPartnerReferenceNo") or reference_no),
+        provider_trx_id=str(body.get("originalReferenceNo") or ""),
+        cancelled_at=parse_datetime(body.get("cancelTime")),
+        raw=body,
+    )
+
+
+def refund_payload(request, config):
+    payload = {
+        "merchantId": config.merchant_id,
+        "originalPartnerReferenceNo": request.reference_no,
+        "partnerRefundNo": request.refund_no,
+        "refundAmount": money(request.amount),
+        "sourcePlatform": "IPG",
+        "orderTerminalType": "SYSTEM",
+        "terminalType": "SYSTEM",
+        "additionalInfo": {
+            "actorContext": {"actorId": config.merchant_id, "actorType": c.REFUND_ACTOR_TYPE},
+        },
+    }
+    if request.provider_trx_id:
+        payload["originalReferenceNo"] = request.provider_trx_id
+    if request.reason:
+        payload["reason"] = request.reason[:256]
+    return payload
+
+
+def raise_for_refund_response(body):
+    code = _code(body)
+    if code == c.RESPONSE_REFUND_SUCCESS:
+        return
+    _raise_for_common(body, "refund")
+    if code == c.RESPONSE_REFUND_INCONSISTENT:
+        # Same refund number, different content: a previous attempt may have
+        # gone through. Outcome unknown, never "failed".
+        raise ProviderUnavailable(
+            "DANA refund inconsistent with an earlier request ({})".format(code),
+            provider_message=_message(body),
+            raw=body,
+        )
+    raise RefundRejected("DANA rejected the refund ({})".format(code), provider_message=_message(body), raw=body)
+
+
+def refund_result(body, request):
+    return RefundResult(
+        refund_no=str(body.get("partnerRefundNo") or request.refund_no),
+        provider_refund_id=str(body.get("refundNo") or ""),
+        status=RefundStatus.SUCCESS,
+        amount=money_value(body.get("refundAmount")) or request.amount,
+        refunded_at=parse_datetime(body.get("refundTime")),
+        provider_message=_message(body),
         raw=body,
     )
 

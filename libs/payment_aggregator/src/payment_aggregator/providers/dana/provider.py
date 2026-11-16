@@ -73,6 +73,9 @@ class DanaProvider(BaseProvider):
         ]
 
     def get_withdrawal_rules(self):
+        # Transfer to Bank is not implemented yet: withdrawals stay off even
+        # with a fee configured, so no withdrawal is accepted that would fail.
+        self._payout_not_ready()
         if self.disbursement_fee is None:
             raise ProviderNotConfigured("DANA disbursement_fee is not set")
         return WithdrawalRules(fee=self.disbursement_fee)
@@ -104,6 +107,25 @@ class DanaProvider(BaseProvider):
     def parse_billing_callback(self, raw_body, headers, request_path=""):
         body = self._verify_callback(raw_body, headers, request_path, constants.SNAP_PATH_FINISH_NOTIFY)
         return mapper.notify_result(body)
+
+    # --- cancel / refund -------------------------------------------------
+
+    supports_cancel_billing = True
+    supports_refund = True
+
+    def cancel_billing(self, reference_no, provider_trx_id="", reason=""):
+        self.config.require_order_settings()
+        body = self.client.post(
+            constants.PATH_CANCEL_ORDER, mapper.cancel_payload(reference_no, provider_trx_id, reason, self.config)
+        )
+        mapper.raise_for_cancel_response(body)
+        return mapper.cancel_result(body, reference_no)
+
+    def refund_billing(self, request):
+        self.config.require_order_settings()
+        body = self.client.post(constants.PATH_REFUND_ORDER, mapper.refund_payload(request, self.config))
+        mapper.raise_for_refund_response(body)
+        return mapper.refund_result(body, request)
 
     def callback_reply(self, event, result=None):
         ack = constants.ACK_TRANSFER_NOTIFY if event == "disbursement" else constants.ACK_FINISH_NOTIFY

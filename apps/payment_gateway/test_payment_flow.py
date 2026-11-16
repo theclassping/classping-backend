@@ -1,5 +1,6 @@
 """Step 5: payment callback, settlement into the branch ledger, cancel."""
 
+import json
 import threading
 from decimal import Decimal
 from unittest import mock
@@ -331,6 +332,165 @@ class CancelApiTests(PaymentFlowMixin, TestCase):
         response = self.cancel(self.parent_user)
         self.assertEqual(response.status_code, 409)
         self.assertEqual(response.data["code"], "GATEWAY_PAYMENT_NOT_PENDING")
+
+
+class ProviderCancelTests(CheckoutFixtureMixin, TestCase):
+    """A cancelled checkout also cancels the provider order when the provider can."""
+
+    def setUp(self):
+        super().setUp()
+        self.checkout_row = self.make_payment(
+            "PAY-1", "k1", provider="dana", provider_trx_id="DANA-1", channel_code="VIRTUAL_ACCOUNT_BCA"
+        )
+        self.add_item(self.checkout_row, self.invoice)
+
+    def use_dana(self, *responses):
+        from payment_aggregator.testing import FakeResponse, make_dana_provider
+
+        provider, session = make_dana_provider(*[FakeResponse(body=body) for body in responses])
+        set_provider(provider)
+        self.addCleanup(set_provider, None)
+        return session
+
+    def test_cancel_cancels_the_dana_order(self):
+        session = self.use_dana({"responseCode": "2005700", "responseMessage": "Successful"})
+        services.cancel_at_provider(self.checkout_row, "Bayar tunai")
+        self.assertTrue(session.calls[0]["url"].endswith("/payment-gateway/v1.0/debit/cancel.htm"))
+        self.assertEqual(session.last_json()["originalPartnerReferenceNo"], "PAY-1")
+        self.assertFalse(GatewayPayment.objects.get(pk=self.checkout_row.pk).needs_review)
+
+    def test_refused_cancel_is_flagged_for_review(self):
+        self.use_dana({"responseCode": "4045700", "responseMessage": "Invalid Transaction Status"})
+        services.cancel_at_provider(self.checkout_row)
+        checkout = GatewayPayment.objects.get(pk=self.checkout_row.pk)
+        self.assertTrue(checkout.needs_review)
+        self.assertIn("refused to cancel", checkout.review_note)
+
+    def test_provider_down_never_breaks_the_cancel(self):
+        self.use_dana({"responseCode": "5005701", "responseMessage": "Internal Server Error"})
+        services.cancel_at_provider(self.checkout_row)  # no exception
+        self.assertFalse(GatewayPayment.objects.get(pk=self.checkout_row.pk).needs_review)
+
+    def test_provider_without_cancel_api_is_not_called(self):
+        provider, session = make_provider()
+        set_provider(provider)
+        self.addCleanup(set_provider, None)
+        GatewayPayment.objects.filter(pk=self.checkout_row.pk).update(provider="rintisan")
+        services.cancel_at_provider(GatewayPayment.objects.get(pk=self.checkout_row.pk))
+        self.assertEqual(session.calls, [])
+
+
+REFUND_OK = {
+    "responseCode": "2005800",
+    "responseMessage": "Successful",
+    "originalPartnerReferenceNo": "PAY-1",
+    "refundNo": "REF-1",
+    "partnerRefundNo": "RF-PAY-1",
+    "refundAmount": {"value": "130000.00", "currency": "IDR"},
+    "refundTime": "2026-11-16T17:21:41+07:00",
+}
+
+
+class RefundTests(CheckoutFixtureMixin, TestCase):
+    """Online refund of a paid checkout flagged needs_refund (DANA)."""
+
+    def setUp(self):
+        super().setUp()
+        self.checkout_row = self.make_payment(
+            "PAY-1", "k1", provider="dana", provider_trx_id="DANA-1", channel_code="VIRTUAL_ACCOUNT_BCA",
+            status=GatewayPayment.Status.PAID, needs_refund=True,
+        )
+        self.set_available(Decimal("200000"))
+
+    def set_available(self, amount):
+        BranchWallet.objects.update_or_create(branch=self.branch, defaults={"available_balance": amount})
+
+    def available(self):
+        return BranchWallet.objects.get(branch=self.branch).available_balance
+
+    def use_dana(self, *bodies):
+        from payment_aggregator.testing import FakeResponse, make_dana_provider
+
+        provider, session = make_dana_provider(*[FakeResponse(body=body) for body in bodies])
+        set_provider(provider)
+        self.addCleanup(set_provider, None)
+        return session
+
+    def refund(self, user=None):
+        client = APIClient()
+        client.force_authenticate(user=user or self.staff_user)
+        return client.post(f"/api/gateway/payments/{self.checkout_row.pk}/refund/", {"reason": "Sudah bayar tunai"}, format="json")
+
+    def reload(self):
+        return GatewayPayment.objects.get(pk=self.checkout_row.pk)
+
+    def test_branch_staff_refunds_the_full_paid_amount(self):
+        session = self.use_dana(REFUND_OK)
+        response = self.refund()
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["refund_status"], "refunded")
+        checkout = self.reload()
+        self.assertFalse(checkout.needs_refund)
+        self.assertEqual((checkout.refund_no, checkout.refund_provider_id), ("RF-PAY-1", "REF-1"))
+        self.assertEqual(checkout.refund_amount, Decimal("130000"))  # invoices + channel fee
+        self.assertEqual(checkout.refunded_by, self.staff_user)
+        self.assertEqual(self.available(), Decimal("70000"))
+        entry = LedgerEntry.objects.get(gateway_payment=checkout, entry_type=LedgerEntry.EntryType.REFUND)
+        self.assertEqual(entry.amount, Decimal("-130000"))
+        sent = session.last_json()
+        self.assertEqual((sent["partnerRefundNo"], sent["refundAmount"]["value"]), ("RF-PAY-1", "130000.00"))
+
+    def test_short_balance_is_rejected_before_calling_the_provider(self):
+        session = self.use_dana()
+        self.set_available(Decimal("100000"))
+        response = self.refund()
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data["code"], "INSUFFICIENT_BALANCE")
+        self.assertEqual(session.calls, [])
+        self.assertEqual(self.reload().refund_status, "")
+        self.assertEqual(self.available(), Decimal("100000"))
+
+    def test_refused_refund_restores_the_balance(self):
+        self.use_dana({"responseCode": "4045800", "responseMessage": "Invalid Transaction Status"})
+        response = self.refund()
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.data["code"], "REFUND_REJECTED")
+        checkout = self.reload()
+        self.assertEqual(checkout.refund_status, GatewayPayment.RefundStatus.FAILED)
+        self.assertTrue(checkout.needs_refund)
+        self.assertEqual(self.available(), Decimal("200000"))
+        self.assertEqual(
+            sorted(LedgerEntry.objects.filter(gateway_payment=checkout).values_list("amount", flat=True)),
+            [Decimal("-130000"), Decimal("130000")],
+        )
+        # Not retried online: the school refunds manually.
+        self.assertEqual(self.refund().data["code"], "REFUND_NOT_ALLOWED")
+
+    def test_unknown_outcome_stays_processing_and_resends_the_same_refund(self):
+        session = self.use_dana({"responseCode": "2025800", "responseMessage": "Request In Progress"}, REFUND_OK)
+        self.assertEqual(self.refund().data["refund_status"], "processing")
+        self.assertEqual(self.available(), Decimal("70000"))
+        self.assertEqual(self.refund().data["refund_status"], "refunded")
+        self.assertEqual(self.available(), Decimal("70000"))  # debited once
+        self.assertEqual(
+            [json.loads(call["data"])["partnerRefundNo"] for call in session.calls], ["RF-PAY-1", "RF-PAY-1"]
+        )
+
+    def test_who_and_what_can_be_refunded(self):
+        self.use_dana()
+        self.assertIn(self.refund(self.parent_user).status_code, (403,))
+        self.assertEqual(self.refund(self.other_branch_staff).status_code, 404)
+        GatewayPayment.objects.filter(pk=self.checkout_row.pk).update(needs_refund=False)
+        self.assertEqual(self.refund().data["code"], "REFUND_NOT_ALLOWED")
+
+    def test_provider_without_refund_api(self):
+        provider, session = make_provider()
+        set_provider(provider)
+        self.addCleanup(set_provider, None)
+        GatewayPayment.objects.filter(pk=self.checkout_row.pk).update(provider="rintisan")
+        response = self.refund()
+        self.assertEqual(response.data["code"], "REFUND_NOT_SUPPORTED")
+        self.assertEqual(session.calls, [])
 
 
 class GatewayAdminWebTests(PaymentFlowMixin, TestCase):

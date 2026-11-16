@@ -122,6 +122,28 @@ def mark_payment_settled(gateway_payment, settled_at=None):
     return True
 
 
+def post_refund_debit(gateway_payment, amount):
+    """Debit a refund from the branch's AVAILABLE balance (call inside the
+    transaction that starts the refund). Rejected when the balance is short:
+    the balance never goes negative."""
+    wallet = lock_wallet(gateway_payment.branch_id)
+    _ensure_available_balance(wallet, amount)
+    _post_entry(
+        wallet, LedgerEntry.EntryType.REFUND, -amount, gateway_payment=gateway_payment, note=gateway_payment.payment_no
+    )
+
+
+def post_refund_reversal(gateway_payment, amount):
+    """The provider refused the refund: give the debited amount back."""
+    _post_entry(
+        lock_wallet(gateway_payment.branch_id),
+        LedgerEntry.EntryType.REFUND_REVERSAL,
+        amount,
+        gateway_payment=gateway_payment,
+        note=gateway_payment.payment_no,
+    )
+
+
 def _post_withdrawal_entries(wallet, withdrawal, entries):
     """``entries``: [(entry_type, signed amount)]; the wallet must be locked."""
     for entry_type, amount in entries:

@@ -15,6 +15,11 @@ from decimal import Decimal
 # Indonesian VAT (PPN) a provider may add on top of its own fee.
 VAT_RATE = Decimal("0.11")
 
+# Fee per withdrawal (disbursement to the school's bank account), the same for
+# every provider: Rp2.500, the BI transfer fee (BI-FAST). Borne by the school:
+# the bank account receives amount - fee. Each provider module uses this value.
+DISBURSEMENT_FEE = Decimal("2500")
+
 # Classping's no-reply address, given to providers instead of the guardian's
 # email so payers never receive provider emails (all emails come from Classping).
 PAYER_EMAIL = "no-reply@hamanto.com"
