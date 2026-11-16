@@ -57,6 +57,14 @@ class GatewayFixtureMixin:
     def setUp(self):
         location = Location.objects.create(name="GW Province", code="GWP", location_type="PROVINCE")
         school = School.objects.create(name="GW School", register_number="GW-001")
+        # Active provider: DANA with Classping's rates; no HTTP unless a test
+        # queues responses or mocks the call.
+        from apps.payment_aggregator.aggregator import set_provider
+        from apps.payment_aggregator.testing import make_provider
+
+        set_provider(make_provider()[0])
+        if hasattr(self, "addCleanup"):  # also used by plain fixture objects (admin_web tests)
+            self.addCleanup(set_provider, None)
         self.branch = make_branch(school, location, "GW-A")
         self.other_branch = make_branch(school, location, "GW-B")
 
@@ -101,8 +109,8 @@ class GatewayFixtureMixin:
             branch=self.branch,
             student=self.student,
             guardian=guardian or self.guardian,
-            provider="rintisan",
-            channel_code="VABCA",
+            provider="dana",
+            channel_code="VIRTUAL_ACCOUNT_BCA",
             payment_method=Payment.PaymentMethod.VIRTUAL_ACCOUNT,
             invoice_total=Decimal("125000"),
             transaction_fee=Decimal("5000"),

@@ -32,7 +32,7 @@ class GatewayPayment(models.Model):
     def can_transition_to(self, status):
         return status in self.TRANSITIONS.get(self.status, set())
 
-    # Sent to the provider as its transaction reference (Rintisan partner_trx_id).
+    # Sent to the provider as its transaction reference (DANA partnerReferenceNo).
     payment_no = models.CharField(max_length=50, unique=True)
 
     branch = models.ForeignKey(
@@ -103,6 +103,32 @@ class GatewayPayment(models.Model):
     needs_refund = models.BooleanField(default=False)
     needs_review = models.BooleanField(default=False)
     review_note = models.TextField(blank=True, default="")
+
+    # Online refund through the provider (payment_gateway.services.refund_gateway_payment).
+    class RefundStatus(models.TextChoices):
+        # Branch debited, provider asked; outcome not known yet (retry sends
+        # the same refund_no, never a second refund).
+        PROCESSING = "processing", "Processing"
+        REFUNDED = "refunded", "Refunded"
+        # Provider refused; the branch debit was reversed.
+        FAILED = "failed", "Failed"
+
+    refund_status = models.CharField(max_length=20, choices=RefundStatus.choices, blank=True, default="")
+    # Our refund reference sent to the provider (DANA partnerRefundNo).
+    refund_no = models.CharField(max_length=60, unique=True, blank=True, null=True)
+    refund_amount = models.DecimalField(max_digits=14, decimal_places=2, blank=True, null=True)
+    refund_provider_id = models.CharField(max_length=100, blank=True, default="")
+    refund_reason = models.TextField(blank=True, default="")
+    refunded_by = models.ForeignKey(
+        "users.User",
+        on_delete=models.SET_NULL,
+        related_name="refunded_gateway_payments",
+        blank=True,
+        null=True,
+    )
+    refund_requested_at = models.DateTimeField(blank=True, null=True)
+    refunded_at = models.DateTimeField(blank=True, null=True)
+    refund_response = models.JSONField(blank=True, null=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

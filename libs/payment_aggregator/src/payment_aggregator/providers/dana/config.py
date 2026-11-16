@@ -15,6 +15,8 @@ DANA_PUBLIC_KEY     DANA's RSA public key, PEM text, verifies notifications
 DANA_NOTIFY_URL     our Finish Notify URL, sent with every order
 DANA_RETURN_URL     page the payer returns to after paying (PAY_RETURN)
 DANA_MCC            merchant category code (default: from_env(default_mcc=...))
+DANA_PAYOUT_PHONE   merchant business phone (628...), the customerNumber of
+                    the Transfer to Bank account inquiry; required for payouts
 """
 
 import os
@@ -37,6 +39,7 @@ class DanaConfig:
     return_url: str = ""
     mcc: str = ""
     client_secret: str = ""
+    payout_phone: str = ""
     timeout: int = constants.REQUEST_TIMEOUT_SECONDS
     # Only used to name the missing setting in ProviderNotConfigured.
     private_key_env: str = "DANA_PRIVATE_KEY"
@@ -56,6 +59,7 @@ class DanaConfig:
             notify_url=(os.environ.get("DANA_NOTIFY_URL") or default_notify_url).strip(),
             return_url=(os.environ.get("DANA_RETURN_URL") or default_return_url).strip(),
             mcc=(os.environ.get("DANA_MCC") or default_mcc).strip(),
+            payout_phone=os.environ.get("DANA_PAYOUT_PHONE", "").strip(),
             private_key_env=private_key_env,
         )
 
@@ -74,6 +78,9 @@ class DanaConfig:
 
     def require_order_settings(self):
         self._require(DANA_NOTIFY_URL=self.notify_url, DANA_RETURN_URL=self.return_url, DANA_MCC=self.mcc)
+
+    def require_payout_settings(self):
+        self._require(DANA_PAYOUT_PHONE=self.payout_phone)
 
     def require_callback_credentials(self):
         self._require(DANA_PUBLIC_KEY=self.public_key)

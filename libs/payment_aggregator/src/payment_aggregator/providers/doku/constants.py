@@ -8,6 +8,7 @@ DokuProvider(channel_fees=..., channel_flat_fees=...).
 """
 
 from payment_aggregator.base import FeeType, PaymentMethod
+from payment_aggregator.banks import BANKS as SHARED_BANKS
 
 PROVIDER_NAME = "doku"
 
@@ -172,42 +173,8 @@ NOTIFY_ACK = {"responseCode": "00", "responseMessage": "Successfully processed",
 ACCOUNT_NAME_MAX = 64
 REMARK_MAX = 255
 
-# Classping bank codes (shared by every provider, as stored on payout
-# accounts) -> (DOKU bank ID = BI code, display name). All are on DOKU's
-# supported-bank list with Online and BI-FAST routes.
-BANKS = {
-    "BCA": ("014", "BCA"),
-    "BNI": ("009", "BNI"),
-    "BRI": ("002", "BRI"),
-    "MANDIRI": ("008", "Bank Mandiri"),
-    "CIMB": ("022", "CIMB Niaga"),
-    "SEABANK": ("535", "SeaBank"),
-    "UOB": ("023", "UOB Indonesia"),
-    "OCBC": ("028", "OCBC"),
-    "DBS": ("046", "DBS Indonesia"),
-    "MAYBANK": ("016", "Maybank Indonesia"),
-    "MASPION": ("157", "Bank Maspion"),
-    "STANCAR": ("050", "Standard Chartered"),
-    "PERMATA": ("013", "Bank Permata"),
-    "MAYAPADA": ("097", "Bank Mayapada"),
-    "MEGA_SYR": ("506", "Bank Mega Syariah"),
-    "ARTHA": ("037", "Bank Artha Graha"),
-    "BCASYARIAH": ("536", "BCA Syariah"),
-    "DANAMON": ("011", "Bank Danamon"),
-    "BSI": ("451", "Bank Syariah Indonesia"),
-    "MEGA": ("426", "Bank Mega"),
-    "SINARMAS": ("153", "Bank Sinarmas"),
-    "JAGO": ("542", "Bank Jago"),
-    "BNC": ("490", "Bank Neo Commerce"),
-    "SAHABAT_SAMPOERNA": ("523", "Bank Sahabat Sampoerna"),
-    "BCA_DIGITAL": ("501", "BCA Digital (blu)"),
-    "BISNIS_INTERNASIONAL": ("459", "Krom Bank (Bisnis Internasional)"),
-    "INA_PERDANA": ("513", "Bank Ina Perdana"),
-    "ALLO": ("567", "Allo Bank"),
-    "HANA": ("484", "Bank KEB Hana"),
-    "NOBU": ("503", "Nobu Bank"),
-    "BTPN": ("213", "SMBC Indonesia (BTPN)"),
-}
+# Payout banks: Classping bank code -> (BI code = DOKU bank ID, display name).
+BANKS = SHARED_BANKS
 
 # --- Protocol -------------------------------------------------------------
 

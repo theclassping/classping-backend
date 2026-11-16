@@ -3,7 +3,7 @@ Generic inbound webhooks:
 
     POST /api/webhooks/payment/                 any payment provider
     POST /api/webhooks/disbursement/            (sender found by signature)
-    POST /api/webhooks/<source>/<event>/        e.g. /rintisan/payment/
+    POST /api/webhooks/<source>/<event>/        e.g. /dana/payment/
     POST /api/webhooks/v1.0/debit/notify        SNAP-standard paths (DANA):
     POST /api/webhooks/v1.0/debit/emoney/transfer-bank/notify.htm
                                                 same as payment / disbursement
@@ -24,8 +24,8 @@ from django.views.decorators.http import require_POST
 from apps.payment_aggregator.aggregator import provider_names
 
 # Provider-neutral: give these to every provider (/api/webhooks/<event>/).
-# Each provider also keeps /api/webhooks/<provider>/<event>/ (already
-# registered at Rintisan), also when it is not the active one.
+# Each provider also keeps /api/webhooks/<provider>/<event>/, also when
+# it is not the active one.
 PROVIDER_WEBHOOK_EVENTS = {
     "payment": "apps.payment_gateway.services.handle_payment_callback",
     "disbursement": "apps.wallets.services.handle_disbursement_callback",

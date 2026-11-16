@@ -11,6 +11,8 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any, Dict, Mapping, Optional, Sequence, Tuple
 
+from payment_aggregator.exceptions import OperationNotSupported
+
 
 class PaymentMethod:
     VIRTUAL_ACCOUNT = "virtual_account"
@@ -38,6 +40,12 @@ class SettlementStatus:
 
 class TransferStatus:
     PROCESSING = "processing"
+    SUCCESS = "success"
+    FAILED = "failed"
+
+
+class RefundStatus:
+    PROCESSING = "processing"  # accepted, result comes later (check again)
     SUCCESS = "success"
     FAILED = "failed"
 
@@ -96,11 +104,11 @@ class BillingRequest:
     amount: Decimal
     invoice_date: datetime.date
     # Application payment window end (aware datetime); the provider decides how
-    # to express it (Rintisan: deadline_date + expiry time).
+    # to express it (DANA: validUpTo).
     expires_at: datetime.datetime
     payer_name: str
     payer_phone: str
-    # Providers may replace it (Rintisan: RintisanConfig.payer_email, when set).
+    # Providers may ignore or replace it.
     payer_email: str = ""
     identifier: str = ""
     payer_address: str = ""
@@ -119,6 +127,40 @@ class BillingResult:
     payment_link: str = ""
     billing_url: str = ""
     paid_at: Optional[datetime.datetime] = None
+    raw: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class CancelResult:
+    """A pending billing the provider has cancelled (it can no longer be paid)."""
+
+    reference_no: str
+    provider_trx_id: str = ""
+    cancelled_at: Optional[datetime.datetime] = None
+    raw: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class RefundRequest:
+    # The paid billing: our reference (BillingRequest.reference_no) and the
+    # provider's id when known.
+    reference_no: str
+    # Our own unique reference for this refund. Reusing it for a retry is
+    # how a refund whose response was lost is sent again without refunding twice.
+    refund_no: str
+    amount: Decimal
+    provider_trx_id: str = ""
+    reason: str = ""
+
+
+@dataclass(frozen=True)
+class RefundResult:
+    refund_no: str
+    provider_refund_id: str
+    status: str
+    amount: Optional[Decimal] = None
+    refunded_at: Optional[datetime.datetime] = None
+    provider_message: str = ""
     raw: Dict[str, Any] = field(default_factory=dict)
 
 
@@ -190,6 +232,24 @@ class BaseProvider(abc.ABC):
         """Verify and parse a payment notification. ``request_path`` is the URL
         path it was received on (providers that sign it need it)."""
         ...
+
+    # Cancel / refund (optional: a provider without them keeps these defaults,
+    # which raise OperationNotSupported; check supports_* first).
+    supports_cancel_billing = False
+    supports_refund = False
+
+    def cancel_billing(self, reference_no: str, provider_trx_id: str = "", reason: str = "") -> CancelResult:
+        """Cancel an unpaid billing so it can no longer be paid.
+
+        Raises BillingNotCancellable when the provider refuses (already paid,
+        expired), BillingNotFound, or ProviderUnavailable when the outcome is
+        unknown (safe to call again)."""
+        raise OperationNotSupported("{} has no cancel billing API".format(self.name or "This provider"))
+
+    def refund_billing(self, request: RefundRequest) -> RefundResult:
+        """Refund (part of) a paid billing to the payer. Calling again with the
+        same refund_no after ProviderUnavailable never refunds twice."""
+        raise OperationNotSupported("{} has no refund API".format(self.name or "This provider"))
 
     # Payout
     @abc.abstractmethod

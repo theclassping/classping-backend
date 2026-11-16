@@ -159,6 +159,10 @@ class GatewayPaymentDetailSerializer(serializers.ModelSerializer):
             "cancelled_at",
             "cancel_reason",
             "review_note",
+            "refund_status",
+            "refund_amount",
+            "refund_reason",
+            "refunded_at",
             "items",
         ]
         read_only_fields = fields

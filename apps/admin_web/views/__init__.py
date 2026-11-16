@@ -14,7 +14,8 @@ from .payments import (
     student_invoice_detail, student_invoice_list,
 )
 from .gateway_payments import (
-    gateway_payment_cancel, gateway_payment_detail, gateway_payment_list, gateway_payment_sync,
+    gateway_payment_cancel, gateway_payment_detail, gateway_payment_list, gateway_payment_refund,
+    gateway_payment_sync,
 )
 from .settings import (
     role_permissions, settings_delete, settings_detail, settings_form, settings_list,

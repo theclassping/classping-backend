@@ -11,7 +11,7 @@ with Classping's providers, rates and credentials.
     PaymentAggregator.transfer_balance(TransferRequest(...))
 
 ``PaymentAggregator`` is the ACTIVE provider, chosen with env
-PAYMENT_PROVIDER (settings.PAYMENT_PROVIDER, default "rintisan"). Every new
+PAYMENT_PROVIDER (settings.PAYMENT_PROVIDER, default "dana"). Every new
 checkout and withdrawal goes to it and stores its name in ``provider``.
 
 A record that already exists must keep talking to the provider that created

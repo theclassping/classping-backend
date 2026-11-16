@@ -6,9 +6,12 @@ from decimal import Decimal
 
 import requests
 
-from payment_aggregator.base import BillingRequest, BillingStatus, SettlementStatus
+from payment_aggregator.base import BillingRequest, BillingStatus, RefundRequest, RefundStatus, SettlementStatus
 from payment_aggregator.exceptions import (
+    BillingNotCancellable,
     BillingNotFound,
+    InvalidAmount,
+    RefundRejected,
     InvalidCallback,
     InvalidPayerPhone,
     ProviderAccessDenied,
@@ -156,7 +159,8 @@ class CreateOrderTests(unittest.TestCase):
         provider, session = make_dana_provider(FakeResponse(body=body), channel_fees=FEES)
         result = provider.create_billing(billing_request("NETWORK_PAY_PG_CARD"))
         option = session.last_json()["payOptionDetails"][0]
-        self.assertEqual(option["payMethod"], "NETWORK_PAY")
+        self.assertEqual(option["payMethod"], "CREDIT_CARD")
+        self.assertEqual(option["payOption"], "NETWORK_PAY_PG_CARD")
         self.assertEqual(option["additionalInfo"], {"phoneNumber": "6281234567890"})
         self.assertEqual(result.payment_link, "https://m.sandbox.dana.id/pay?x=1")
 
@@ -329,7 +333,7 @@ class FinishNotifyTests(unittest.TestCase):
         with self.assertRaises(InvalidCallback):
             self.parse(raw, dana_notify_headers("/somewhere/else/", raw))
         with self.assertRaises(InvalidCallback):
-            # Another provider's callback (Rintisan headers): rejected before crypto.
+            # Another provider's callback (no DANA headers): rejected before crypto.
             self.parse(raw, {"x-callback-token": "t", "x-signature": "abc"})
         bad_key = dana_notify_headers(OUR_PATH, raw)
         bad_key["X-SIGNATURE"] = signing.sign("POST", OUR_PATH, raw, bad_key["X-TIMESTAMP"], key_pair("merchant")[0])
@@ -343,19 +347,319 @@ class FinishNotifyTests(unittest.TestCase):
         self.assertEqual(self.provider.callback_reply("disbursement")[0]["responseCode"], "2004300")
 
 
-class NotYetSupportedTests(unittest.TestCase):
-    def test_payouts_and_balance_are_not_configured(self):
+class CancelOrderTests(unittest.TestCase):
+    def cancel(self, body):
+        provider, session = make_dana_provider(FakeResponse(body=body))
+        return provider, session
+
+    def test_cancel_success(self):
+        provider, session = self.cancel({
+            "responseCode": "2005700",
+            "responseMessage": "Successful",
+            "originalPartnerReferenceNo": "PAY-1",
+            "originalReferenceNo": "DANA-1",
+            "cancelTime": "2026-11-16T17:07:25+07:00",
+        })
+        self.assertTrue(provider.supports_cancel_billing)
+        result = provider.cancel_billing("PAY-1", provider_trx_id="DANA-1", reason="Dibatalkan orang tua")
+        self.assertEqual((result.reference_no, result.provider_trx_id), ("PAY-1", "DANA-1"))
+        self.assertEqual(result.cancelled_at, datetime.datetime(2026, 11, 16, 17, 7, 25, tzinfo=WIB))
+        self.assertTrue(session.calls[0]["url"].endswith(constants.PATH_CANCEL_ORDER))
+        self.assertEqual(
+            session.last_json(),
+            {
+                "originalPartnerReferenceNo": "PAY-1",
+                "merchantId": "216620000000000000000",
+                "originalReferenceNo": "DANA-1",
+                "reason": "Dibatalkan orang tua",
+            },
+        )
+
+    def test_paid_or_expired_order_is_not_cancellable(self):
+        for code in ("4035700", "4045700"):
+            with self.subTest(code=code):
+                provider, _ = self.cancel({"responseCode": code, "responseMessage": "no"})
+                with self.assertRaises(BillingNotCancellable):
+                    provider.cancel_billing("PAY-1")
+
+    def test_not_found_and_pending(self):
+        provider, _ = self.cancel({"responseCode": "4045701", "responseMessage": "Transaction Not Found"})
+        with self.assertRaises(BillingNotFound):
+            provider.cancel_billing("PAY-1")
+        for code in ("2025700", "4295700", "5005701"):
+            with self.subTest(code=code):
+                provider, _ = self.cancel({"responseCode": code, "responseMessage": "later"})
+                with self.assertRaises(ProviderUnavailable):
+                    provider.cancel_billing("PAY-1")
+
+
+class RefundOrderTests(unittest.TestCase):
+    def request(self, **overrides):
+        values = dict(reference_no="PAY-1", refund_no="RF-PAY-1-1", amount=Decimal("130000"), provider_trx_id="DANA-1")
+        values.update(overrides)
+        return RefundRequest(**values)
+
+    def test_refund_success(self):
+        provider, session = make_dana_provider(FakeResponse(body={
+            "responseCode": "2005800",
+            "responseMessage": "Successful",
+            "originalPartnerReferenceNo": "PAY-1",
+            "refundNo": "REF993883",
+            "partnerRefundNo": "RF-PAY-1-1",
+            "refundAmount": {"value": "130000.00", "currency": "IDR"},
+            "refundTime": "2026-11-16T17:21:41+07:00",
+        }))
+        self.assertTrue(provider.supports_refund)
+        result = provider.refund_billing(self.request(reason="Sudah dibayar tunai"))
+        self.assertEqual(result.status, RefundStatus.SUCCESS)
+        self.assertEqual((result.refund_no, result.provider_refund_id), ("RF-PAY-1-1", "REF993883"))
+        self.assertEqual(result.amount, Decimal("130000.00"))
+        self.assertTrue(session.calls[0]["url"].endswith(constants.PATH_REFUND_ORDER))
+        sent = session.last_json()
+        self.assertEqual(sent["partnerRefundNo"], "RF-PAY-1-1")
+        self.assertEqual(sent["refundAmount"], {"value": "130000.00", "currency": "IDR"})
+        self.assertEqual(sent["originalReferenceNo"], "DANA-1")
+        self.assertEqual(
+            (sent["sourcePlatform"], sent["orderTerminalType"], sent["terminalType"]), ("IPG", "SYSTEM", "SYSTEM")
+        )
+        self.assertEqual(
+            sent["additionalInfo"]["actorContext"], {"actorId": "216620000000000000000", "actorType": "MERCHANT"}
+        )
+
+    def test_rejected_and_unknown_outcomes(self):
+        provider, _ = make_dana_provider(FakeResponse(body={"responseCode": "4045800", "responseMessage": "status"}))
+        with self.assertRaises(RefundRejected):
+            provider.refund_billing(self.request())
+        # In progress, rate limited, internal error, or same refund number with
+        # other content: outcome unknown, never "rejected".
+        for code in ("2025800", "4295800", "5005801", "4045818"):
+            with self.subTest(code=code):
+                provider, _ = make_dana_provider(FakeResponse(body={"responseCode": code, "responseMessage": "?"}))
+                with self.assertRaises(ProviderUnavailable):
+                    provider.refund_billing(self.request())
+
+    def test_refund_needs_whole_rupiah(self):
+        provider, session = make_dana_provider()
+        with self.assertRaises(InvalidAmount):
+            provider.refund_billing(self.request(amount=Decimal("100.50")))
+        self.assertEqual(session.calls, [])
+
+
+INQUIRY_OK = {
+    "responseCode": "2004200",
+    "responseMessage": "Successful",
+    "referenceNo": "DANA-INQ-1",
+    "partnerReferenceNo": "WD-1",
+    "beneficiaryAccountNumber": "1234567890",
+    "beneficiaryAccountName": "YAYASAN SEKOLAH",
+    "beneficiaryBankCode": "014",
+    "amount": {"currency": "IDR", "value": "97500.00"},
+    "additionalInfo": {"feeAmount": {"currency": "IDR", "value": "2500.00"}},
+}
+TRANSFER_OK = {
+    "responseCode": "2004300",
+    "responseMessage": "Successful",
+    "referenceNo": "DANA-TRF-1",
+    "partnerReferenceNo": "WD-1",
+    "referenceNumber": "DANA-TRF-1",
+}
+
+
+def transfer_request(**overrides):
+    from payment_aggregator.base import TransferRequest
+
+    values = dict(
+        reference_no="WD-1", amount=Decimal("100000"), bank_code="BCA",
+        account_number="1234567890", account_name="Yayasan Sekolah",
+    )
+    values.update(overrides)
+    return TransferRequest(**values)
+
+
+class TransferToBankTests(unittest.TestCase):
+    def provider(self, *bodies, **overrides):
+        overrides.setdefault("disbursement_fee", Decimal("2500"))
+        responses = [body if isinstance(body, Exception) else FakeResponse(body=body) for body in bodies]
+        return make_dana_provider(*responses, **overrides)
+
+    def test_withdrawal_rules_need_fee_and_payout_phone(self):
+        with self.assertRaises(ProviderNotConfigured):
+            make_dana_provider()[0].get_withdrawal_rules()  # no fee
+        with self.assertRaisesRegex(ProviderNotConfigured, "DANA_PAYOUT_PHONE"):
+            self.provider(payout_phone="")[0].get_withdrawal_rules()
+        self.assertEqual(self.provider()[0].get_withdrawal_rules().fee, Decimal("2500"))
+        self.assertEqual(self.provider()[0].get_banks()["BCA"], "BCA")
+
+    def test_inquiry_then_transfer(self):
+        from payment_aggregator.base import TransferStatus
+
+        provider, session = self.provider(INQUIRY_OK, TRANSFER_OK)
+        result = provider.transfer_balance(transfer_request())
+        self.assertEqual(result.status, TransferStatus.SUCCESS)
+        self.assertEqual(result.provider_transfer_id, "WD-1")  # status is keyed by our reference
+        self.assertEqual((result.fee, result.amount_received), (Decimal("2500.00"), Decimal("97500")))
+        inquiry, transfer = (json.loads(call["data"]) for call in session.calls)
+        self.assertTrue(session.calls[0]["url"].endswith("/v1.0/emoney/bank-account-inquiry.htm"))
+        self.assertTrue(session.calls[1]["url"].endswith("/v1.0/emoney/transfer-bank.htm"))
+        self.assertEqual(inquiry["customerNumber"], "6281234567890")
+        self.assertEqual(inquiry["additionalInfo"]["beneficiaryBankCode"], "014")
+        self.assertEqual(
+            transfer,
+            {
+                "partnerReferenceNo": "WD-1",
+                "customerNumber": "6281234567890",
+                "beneficiaryAccountNumber": "1234567890",
+                "beneficiaryBankCode": "014",
+                "amount": {"value": "97500.00", "currency": "IDR"},
+                "additionalInfo": {
+                    "fundType": "MERCHANT_WITHDRAW_FOR_CORPORATE",
+                    "chargeTarget": "MERCHANT",
+                    "needNotify": True,
+                    "beneficiaryAccountName": "Yayasan Sekolah",
+                },
+            },
+        )
+
+    def test_in_progress_transfer_is_processing(self):
+        from payment_aggregator.base import TransferStatus
+
+        provider, _ = self.provider(INQUIRY_OK, dict(TRANSFER_OK, responseCode="2024300"))
+        self.assertEqual(provider.transfer_balance(transfer_request()).status, TransferStatus.PROCESSING)
+
+    def test_inquiry_failures_send_nothing(self):
+        from payment_aggregator.exceptions import InsufficientProviderBalance, InvalidDestinationAccount
+
+        cases = [
+            ({"responseCode": "4044211", "responseMessage": "Invalid Account"}, InvalidDestinationAccount),
+            ({"responseCode": "4034214", "responseMessage": "Insufficient Funds"}, InsufficientProviderBalance),
+            ({"responseCode": "5004201", "responseMessage": "Internal"}, ProviderRejected),
+        ]
+        for body, error in cases:
+            with self.subTest(code=body["responseCode"]):
+                provider, session = self.provider(body)
+                with self.assertRaises(error):
+                    provider.transfer_balance(transfer_request())
+                self.assertEqual(len(session.calls), 1)  # no transfer sent
+        provider, session = self.provider(requests.Timeout("slow"))
+        with self.assertRaises(ProviderRejected):
+            provider.transfer_balance(transfer_request())
+
+    def test_transfer_errors(self):
+        from payment_aggregator.exceptions import (
+            DuplicateTransfer,
+            InsufficientProviderBalance,
+            InvalidDestinationAccount,
+        )
+
+        cases = [
+            ("4034314", InsufficientProviderBalance),
+            ("4044303", InvalidDestinationAccount),
+            ("4044311", InvalidDestinationAccount),
+            ("4044318", DuplicateTransfer),
+            ("4034320", ProviderRejected),
+            ("5004300", ProviderRejected),
+            ("4294300", ProviderUnavailable),  # outcome unknown
+            ("5004301", ProviderUnavailable),
+        ]
+        for code, error in cases:
+            with self.subTest(code=code):
+                provider, _ = self.provider(INQUIRY_OK, {"responseCode": code, "responseMessage": "x"})
+                with self.assertRaises(error):
+                    provider.transfer_balance(transfer_request())
+        provider, _ = self.provider(INQUIRY_OK, requests.Timeout("slow"))
+        with self.assertRaises(ProviderUnavailable):
+            provider.transfer_balance(transfer_request())
+
+    def test_unknown_bank_and_amount_below_fee(self):
+        from payment_aggregator.exceptions import InvalidDestinationAccount
+
+        provider, session = self.provider()
+        with self.assertRaises(InvalidDestinationAccount):
+            provider.transfer_balance(transfer_request(bank_code="NOPE"))
+        with self.assertRaises(ProviderRejected):
+            provider.transfer_balance(transfer_request(amount=Decimal("2500")))
+        self.assertEqual(session.calls, [])
+
+    def test_transfer_id_is_our_reference(self):
+        provider, _ = self.provider()
+        self.assertEqual(provider.transfer_id_for(transfer_request()), "WD-1")
+
+
+class TransferStatusTests(unittest.TestCase):
+    def status(self, body):
+        provider, session = make_dana_provider(FakeResponse(body=body))
+        return provider.get_transfer_status("WD-1"), session
+
+    def body(self, status, code="2000000"):
+        return {
+            "responseCode": code,
+            "responseMessage": "Successful",
+            "originalPartnerReferenceNo": "WD-1",
+            "serviceCode": "00",
+            "amount": {"value": "97500.00", "currency": "IDR"},
+            "latestTransactionStatus": status,
+            "transactionStatusDesc": "desc",
+        }
+
+    def test_statuses(self):
+        from payment_aggregator.base import TransferStatus
+
+        expected = {
+            "00": TransferStatus.SUCCESS,
+            "01": TransferStatus.PROCESSING,
+            "02": TransferStatus.PROCESSING,
+            "03": TransferStatus.PROCESSING,
+            "04": TransferStatus.FAILED,
+            "05": TransferStatus.FAILED,
+            "06": TransferStatus.FAILED,
+        }
+        for raw, status in expected.items():
+            with self.subTest(status=raw):
+                result, session = self.status(self.body(raw))
+                self.assertEqual(result.status, status)
+                self.assertEqual(result.reference_no, "WD-1")
+        self.assertTrue(session.calls[0]["url"].endswith("/v1.0/emoney/transfer-bank-status.htm"))
+        self.assertEqual(session.last_json(), {"originalPartnerReferenceNo": "WD-1", "serviceCode": "00"})
+
+    def test_not_found_and_unknown(self):
+        from payment_aggregator.exceptions import TransferNotFound
+
+        for body in (self.body("07"), {"responseCode": "4040001", "responseMessage": "Transaction Not Found"}):
+            with self.assertRaises(TransferNotFound):
+                self.status(body)
+        for code in ("4000000", "4290000", "5000001"):
+            with self.subTest(code=code):
+                with self.assertRaises(ProviderUnavailable):
+                    self.status({"responseCode": code, "responseMessage": "x"})
+
+
+class TransferNotifyTests(unittest.TestCase):
+    def test_signed_notification_identifies_the_withdrawal(self):
+        from payment_aggregator.base import TransferStatus
+
         provider, _ = make_dana_provider()
-        for call in (
-            lambda: provider.transfer_balance(None),
-            lambda: provider.get_transfer_status("x"),
-            lambda: provider.parse_transfer_callback(b"{}", {}),
-            provider.get_balance,
-            provider.get_withdrawal_rules,
-        ):
-            with self.assertRaises(ProviderNotConfigured):
-                call()
-        self.assertEqual(provider.get_banks(), {})
+        self.assertTrue(provider.confirm_transfer_callbacks)
+        raw = json.dumps({"originalPartnerReferenceNo": "WD-1", "latestTransactionStatus": "00"}).encode()
+        path = "/api/webhooks/disbursement/"
+        result = provider.parse_transfer_callback(raw, dana_notify_headers(path, raw), request_path=path)
+        self.assertEqual((result.reference_no, result.status), ("WD-1", TransferStatus.SUCCESS))
+
+    def test_unsigned_or_unreferenced_notification_is_rejected(self):
+        provider, _ = make_dana_provider()
+        raw = b'{"originalPartnerReferenceNo": "WD-1"}'
+        with self.assertRaises(InvalidCallback):
+            provider.parse_transfer_callback(raw, {}, request_path="/x/")
+        path = "/api/webhooks/disbursement/"
+        raw = b'{"latestTransactionStatus": "00"}'
+        with self.assertRaises(InvalidCallback):
+            provider.parse_transfer_callback(raw, dana_notify_headers(path, raw), request_path=path)
+
+
+class NotYetSupportedTests(unittest.TestCase):
+    def test_balance_is_not_configured(self):
+        provider, _ = make_dana_provider()
+        with self.assertRaises(ProviderNotConfigured):
+            provider.get_balance()
 
     def test_unknown_channel_fee_is_rejected(self):
         with self.assertRaises(ProviderNotConfigured):

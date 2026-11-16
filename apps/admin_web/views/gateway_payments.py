@@ -3,6 +3,7 @@
 from ..views_common import *
 from apps.core.exceptions import CodedAPIException
 from payment_aggregator.exceptions import PaymentAggregatorError
+from apps.payment_aggregator import PaymentAggregator
 from apps.payment_gateway import services as gateway_services
 from apps.payment_gateway.models import GatewayPayment
 
@@ -59,8 +60,43 @@ def gateway_payment_detail(request, pk):
             "payments": gateway_payment.payments.select_related("student_invoice"),
             "ledger_entries": gateway_payment.ledger_entries.all(),
             "can_cancel": gateway_payment.status == GatewayPayment.Status.PENDING,
+            "can_refund": _refund_offered(gateway_payment),
         },
     )
+
+
+def _refund_offered(gateway_payment):
+    """Show the Refund button: flagged checkout, not refunded yet (or a
+    PROCESSING refund to resend), provider with an online refund."""
+    if gateway_payment.refund_status == GatewayPayment.RefundStatus.PROCESSING:
+        pass
+    elif not (
+        gateway_payment.status == GatewayPayment.Status.PAID
+        and gateway_payment.needs_refund
+        and not gateway_payment.refund_status
+    ):
+        return False
+    try:
+        return PaymentAggregator.using(gateway_payment.provider).can_refund()
+    except PaymentAggregatorError:
+        return False
+
+
+@platform_admin_required
+def gateway_payment_refund(request, pk):
+    if request.method == "POST":
+        try:
+            gateway_payment = gateway_services.refund_gateway_payment(request.user, pk, request.POST.get("reason", ""))
+        except CodedAPIException as error:
+            messages.error(request, error.message)
+        else:
+            if gateway_payment.refund_status == GatewayPayment.RefundStatus.REFUNDED:
+                messages.success(request, "Refunded {} to the payer.".format(gateway_payment.refund_amount))
+            else:
+                messages.warning(
+                    request, "Refund sent; the provider has not confirmed it yet. Press Refund again later to resend."
+                )
+    return redirect("admin_web:gateway_payment_detail", pk=pk)
 
 
 @platform_admin_required
