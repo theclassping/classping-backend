@@ -457,6 +457,66 @@ class DisbursementResultTests(WalletFixtureMixin, TestCase):
 
 
 @override_settings(MAILJET_TEMPLATES=TEMPLATES)
+class DanaWithdrawalTests(WalletFixtureMixin, TestCase):
+    """A withdrawal through DANA Transfer to Bank, settled by its notification."""
+
+    def setUp(self):
+        super().setUp()
+        from decimal import Decimal as D
+
+        from payment_aggregator.testing import FakeResponse, make_dana_provider
+
+        from apps.payment_aggregator.aggregator import set_provider
+
+        self.provider, self.session = make_dana_provider(
+            FakeResponse(body={
+                "responseCode": "2004200", "responseMessage": "Successful",
+                "beneficiaryAccountName": "YAYASAN PENDIDIKAN",
+                "additionalInfo": {"feeAmount": {"value": "2500.00", "currency": "IDR"}},
+            }),
+            FakeResponse(body={"responseCode": "2024300", "responseMessage": "Request In Progress"}),
+            FakeResponse(body={
+                "responseCode": "2000000", "responseMessage": "Successful",
+                "originalPartnerReferenceNo": "set-below", "latestTransactionStatus": "00",
+                "amount": {"value": "97500.00", "currency": "IDR"},
+            }),
+            disbursement_fee=D("2500"),
+        )
+        set_provider(self.provider)
+        self.addCleanup(set_provider, None)
+        otp = WithdrawalOtp.objects.create(
+            reference="ref-dana", branch=self.branch, user=self.officer, amount=Decimal("100000"),
+            code_hash="x", sent_to=self.branch.email, expires_at=timezone.now(), **NEW_ACCOUNT,
+        )
+        with mock.patch(MAILER):
+            self.withdrawal = services._send_to_provider(
+                services._create_processing_withdrawal(self.officer, otp, timezone.now())
+            )
+
+    def test_transfer_then_notification_confirmed_by_status_check(self):
+        import json
+
+        from payment_aggregator.testing import dana_notify_headers
+
+        withdrawal = Withdrawal.objects.get()
+        self.assertEqual((withdrawal.provider, withdrawal.status), ("dana", Withdrawal.Status.PROCESSING))
+        self.assertEqual(withdrawal.provider_disbursement_id, withdrawal.withdrawal_no)
+        sent = json.loads(self.session.calls[1]["data"])
+        self.assertEqual((sent["beneficiaryBankCode"], sent["amount"]["value"]), ("014", "97500.00"))
+
+        path = "/api/webhooks/v1.0/debit/emoney/transfer-bank/notify.htm"
+        raw = json.dumps({"originalPartnerReferenceNo": withdrawal.withdrawal_no, "latestTransactionStatus": "06"}).encode()
+        headers = {"HTTP_" + k.upper().replace("-", "_"): v for k, v in dana_notify_headers(path, raw).items()}
+        with mock.patch(MAILER):
+            response = APIClient().post(path, raw, content_type="application/json", **headers)
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["responseCode"], "2004300")
+        # The status inquiry (00 = success) decides, not the notification body (06).
+        self.assertEqual(json.loads(self.session.calls[2]["data"])["originalPartnerReferenceNo"], withdrawal.withdrawal_no)
+        self.assertEqual(Withdrawal.objects.get().status, Withdrawal.Status.SUCCESS)
+        self.assertEqual(self.wallet().available_balance, Decimal("50000"))
+
+
 class WithdrawalRaceTests(NoMailjetMixin, WalletFixtureMixin, TransactionTestCase):
     """Two withdrawals at once never take the balance below zero."""
 

@@ -107,6 +107,7 @@ def make_dana_config(**overrides):
         notify_url="https://api.example.com/api/webhooks/payment/",
         return_url="https://app.example.com/payment/finish",
         mcc="8211",
+        payout_phone="6281234567890",
     )
     values.update(overrides)
     return DanaConfig(**values)

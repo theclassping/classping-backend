@@ -3,8 +3,9 @@ DANA (Gapura Custom Checkout + Disbursement to Bank): Classping's rates and
 account settings.
 
 Env: DANA_ENV, DANA_MERCHANT_ID, DANA_CLIENT_ID, DANA_CLIENT_SECRET,
-DANA_CHANNEL_ID, CLASSPING_DANA_PRIVATE_KEY, DANA_PUBLIC_KEY, DANA_RETURN_URL, and
-optionally DANA_NOTIFY_URL, DANA_MCC, DANA_BASE_URL.
+DANA_CHANNEL_ID, CLASSPING_DANA_PRIVATE_KEY, DANA_PUBLIC_KEY, DANA_RETURN_URL,
+DANA_PAYOUT_PHONE (withdrawals), and optionally DANA_NOTIFY_URL, DANA_MCC,
+DANA_BASE_URL.
 
 Custom Checkout, not Hosted Checkout: the parent pays the channel fee on top
 of the bill, so the channel must be known before the order is created.
@@ -55,8 +56,10 @@ CHANNEL_FEES = {
 }
 
 # Fee per Transfer to Bank: Classping's general rate for every provider (see
-# constants.DISBURSEMENT_FEE). Withdrawals through DANA stay disabled anyway
-# until Transfer to Bank is implemented in the DANA provider.
+# constants.DISBURSEMENT_FEE). The bank account receives amount - fee; DANA's
+# own transfer charge is billed to the Merchant Disbursement Account (MDA).
+# Withdrawals need env DANA_PAYOUT_PHONE and a funded MDA (topped up by ops
+# via the VA in DANA's Merchant Portal: Gapura settlement does not fund it).
 DISBURSEMENT_FEE = GENERAL_DISBURSEMENT_FEE
 
 

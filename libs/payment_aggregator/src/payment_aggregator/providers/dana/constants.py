@@ -18,6 +18,11 @@ BASE_URL_PRODUCTION = "https://api.saas.dana.id"
 PATH_CREATE_ORDER = "/payment-gateway/v1.0/debit/payment-host-to-host.htm"
 PATH_QUERY_PAYMENT = "/payment-gateway/v1.0/debit/status.htm"
 PATH_CANCEL_ORDER = "/payment-gateway/v1.0/debit/cancel.htm"
+
+# Disbursement to Bank (debits the Merchant Disbursement Account, MDA).
+PATH_BANK_ACCOUNT_INQUIRY = "/v1.0/emoney/bank-account-inquiry.htm"  # service 42
+PATH_TRANSFER_BANK = "/v1.0/emoney/transfer-bank.htm"  # service 43
+PATH_TRANSFER_STATUS = "/v1.0/emoney/transfer-bank-status.htm"
 PATH_REFUND_ORDER = "/payment-gateway/v1.0/debit/refund.htm"
 
 # SNAP standard paths of OUR notify endpoints. DANA signs a callback over the
@@ -137,6 +142,36 @@ RESPONSE_REFUND_INCONSISTENT = "4045818"
 # Who asks for the refund (additionalInfo.actorContext, required).
 REFUND_ACTOR_TYPE = "MERCHANT"
 
+# --- Disbursement to Bank ---------------------------------------------------
+
+FUND_TYPE_BANK = "MERCHANT_WITHDRAW_FOR_CORPORATE"
+# Who bears DANA's transfer charge: the merchant (billed to the MDA), so the
+# bank account receives exactly the amount sent.
+CHARGE_TARGET = "MERCHANT"
+
+RESPONSE_INQUIRY_SUCCESS = "2004200"
+# Bank account invalid / blacklisted.
+RESPONSE_INQUIRY_INVALID_ACCOUNT = ("4044211",)
+RESPONSE_INQUIRY_INSUFFICIENT = "4034214"
+
+RESPONSE_TRANSFER_SUCCESS = "2004300"
+RESPONSE_TRANSFER_IN_PROGRESS = "2024300"
+RESPONSE_TRANSFER_INSUFFICIENT = "4034314"  # MDA balance too low: top it up
+RESPONSE_TRANSFER_INVALID_ACCOUNT = ("4044303", "4044311")  # bank unsupported / account invalid
+# Same partnerReferenceNo, other content: DANA says treat as done and check.
+RESPONSE_TRANSFER_INCONSISTENT = "4044318"
+
+# Transfer status inquiry (serviceCode always "00").
+SERVICE_CODE_TRANSFER_STATUS = "00"
+RESPONSE_TRANSFER_STATUS_SUCCESS = "2000000"
+RESPONSE_TRANSFER_STATUS_NOT_FOUND = "4040001"
+TRANSFER_STATUS_SUCCESS = ("00",)
+TRANSFER_STATUS_PROCESSING = ("01", "02", "03")
+TRANSFER_STATUS_FAILED = ("04", "05", "06")
+TRANSFER_STATUS_NOT_FOUND = "07"
+
+ACCOUNT_NAME_MAX = 64
+
 # Acknowledgements we send back to DANA's notifications.
 ACK_FINISH_NOTIFY = {"responseCode": "2005600", "responseMessage": "Successful"}
 ACK_TRANSFER_NOTIFY = {"responseCode": "2004300", "responseMessage": "Successful"}
@@ -147,7 +182,7 @@ STATUS_NOT_FOUND = "07"
 
 # Response code prefixes meaning "outcome unknown, retry" (DANA: mark Pending).
 RETRYABLE_PREFIXES = ("202", "429")
-RETRYABLE_CODES = ("5005401", "5005501", "5005701", "5005801")
+RETRYABLE_CODES = ("5005401", "5005501", "5005701", "5005801", "5004301", "5000001")
 
 ORDER_TITLE_MAX = 64
 PHONE_MAX = 15

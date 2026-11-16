@@ -1,15 +1,24 @@
 """
-DANA implementation of BaseProvider: Gapura Custom Checkout pay-in.
+DANA implementation of BaseProvider: Gapura Custom Checkout pay-in, cancel,
+refund, and Disbursement to Bank payouts.
 
-Payouts (Transfer to Bank) and the provider balance are not implemented yet:
-they raise ProviderNotConfigured, so withdrawals through DANA stay disabled.
+Payouts are paid from the Merchant Disbursement Account (MDA), which is only
+funded by top-up (VA in the Merchant Portal), not by Gapura settlement.
+The provider balance (Check Disbursement Account, a DANA Open API) is not
+implemented yet: get_balance raises ProviderNotConfigured.
 """
 
 import json
 import logging
 
+from payment_aggregator.banks import BANKS
 from payment_aggregator.base import BaseProvider, Channel, WithdrawalRules
-from payment_aggregator.exceptions import InvalidCallback, ProviderNotConfigured
+from payment_aggregator.exceptions import (
+    InvalidCallback,
+    ProviderNotConfigured,
+    ProviderRejected,
+    ProviderUnavailable,
+)
 from payment_aggregator.providers.dana import constants, mapper, signing
 from payment_aggregator.providers.dana.client import DanaClient
 from payment_aggregator.providers.dana.config import DanaConfig
@@ -26,8 +35,15 @@ class DanaProvider(BaseProvider):
     ``channel_fees``: contract rate per payOption in constants.CHANNELS (IDR for
     flat channels, percent for percent channels, VAT included). Channels
     without a rate are not offered.
-    ``disbursement_fee``: not used until Transfer to Bank is implemented.
+    ``disbursement_fee``: fee per Transfer to Bank kept from the withdrawn
+    amount (the bank account receives amount - fee); DANA's own transfer
+    charge is billed to the MDA (chargeTarget MERCHANT). None keeps
+    withdrawals disabled.
     """
+
+    # Transfer notifications only prompt a status inquiry (their body is not
+    # documented); the status inquiry decides.
+    confirm_transfer_callbacks = True
 
     name = constants.PROVIDER_NAME
 
@@ -73,16 +89,14 @@ class DanaProvider(BaseProvider):
         ]
 
     def get_withdrawal_rules(self):
-        # Transfer to Bank is not implemented yet: withdrawals stay off even
-        # with a fee configured, so no withdrawal is accepted that would fail.
-        self._payout_not_ready()
         if self.disbursement_fee is None:
             raise ProviderNotConfigured("DANA disbursement_fee is not set")
+        # Withdrawals stay off until the payout settings are present.
+        self.config.require_payout_settings()
         return WithdrawalRules(fee=self.disbursement_fee)
 
     def get_banks(self):
-        # Transfer to Bank is not implemented yet: no payout bank is offered.
-        return {}
+        return {code: name for code, (_bi_code, name) in BANKS.items()}
 
     # --- pay-in ----------------------------------------------------------
 
@@ -131,22 +145,53 @@ class DanaProvider(BaseProvider):
         ack = constants.ACK_TRANSFER_NOTIFY if event == "disbursement" else constants.ACK_FINISH_NOTIFY
         return dict(ack), {"X-TIMESTAMP": signing.timestamp()}
 
-    # --- payout (not implemented yet) -------------------------------------
-
-    def _payout_not_ready(self):
-        raise ProviderNotConfigured("DANA Transfer to Bank is not implemented yet")
+    # --- payout: Disbursement to Bank -------------------------------------
 
     def transfer_balance(self, request):
-        self._payout_not_ready()
+        rules = self.get_withdrawal_rules()  # fee + payout settings
+        bank_code = mapper.dana_bank(request.bank_code)
+        amount_sent = mapper.whole_rupiah(request.amount) - mapper.whole_rupiah(rules.fee)
+        if amount_sent <= 0:
+            raise ProviderRejected("Amount does not cover the transfer fee")
+
+        # 1. Bank account inquiry: validates the account before any money
+        #    moves. Nothing is sent yet, so no answer is a plain rejection.
+        try:
+            inquiry = self.client.post(
+                constants.PATH_BANK_ACCOUNT_INQUIRY,
+                mapper.bank_inquiry_payload(request, self.config, bank_code, amount_sent),
+            )
+        except ProviderUnavailable as error:
+            raise ProviderRejected(
+                "DANA account inquiry did not answer; nothing was sent", provider_message=error.message, raw=error.raw
+            ) from error
+        mapper.raise_for_bank_inquiry(inquiry)
+
+        # 2. Transfer to Bank. From here no answer means outcome unknown; a
+        #    retry must reuse partnerReferenceNo (our reference_no).
+        body = self.client.post(
+            constants.PATH_TRANSFER_BANK, mapper.transfer_payload(request, self.config, bank_code, amount_sent)
+        )
+        mapper.raise_for_transfer(body)
+        return mapper.transfer_result(body, inquiry, request, amount_sent)
+
+    def transfer_id_for(self, request):
+        """The status inquiry is keyed by our partnerReferenceNo, so the id is
+        known even when the Transfer to Bank response was lost."""
+        return request.reference_no or None
 
     def get_transfer_status(self, provider_transfer_id):
-        self._payout_not_ready()
+        body = self.client.post(constants.PATH_TRANSFER_STATUS, mapper.transfer_status_payload(provider_transfer_id))
+        return mapper.transfer_status_result(body, provider_transfer_id)
 
     def parse_transfer_callback(self, raw_body, headers, request_path=""):
-        self._payout_not_ready()
+        body = self._verify_callback(raw_body, headers, request_path, constants.SNAP_PATH_TRANSFER_NOTIFY)
+        return mapper.notify_transfer_result(body)
 
     def get_balance(self):
-        self._payout_not_ready()
+        # Check Disbursement Account is a DANA Open API (other envelope and
+        # signature than SNAP); not implemented yet.
+        raise ProviderNotConfigured("DANA disbursement balance check is not implemented yet")
 
     # --- callbacks -------------------------------------------------------
 
