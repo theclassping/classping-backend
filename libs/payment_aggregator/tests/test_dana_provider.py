@@ -93,6 +93,16 @@ class SigningTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             signing.load_private_key(b"not a key!")
 
+    def test_public_key_loads_from_mangled_pem(self):
+        from cryptography.hazmat.primitives import serialization
+
+        public = key_pair("dana")[1]
+        pem = public.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
+        pkcs1 = public.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.PKCS1)
+        one_line = b" ".join(pem.split())
+        for key in (pem, one_line, b'"' + one_line + b'"', pem.replace(b"\n", b"\r\n"), pkcs1, b" ".join(pkcs1.split())):
+            self.assertEqual(signing.load_public_key(key).public_numbers(), public.public_numbers(), key)
+
     def test_timestamp_is_jakarta_time(self):
         now = datetime.datetime(2026, 11, 12, 3, 4, 5, tzinfo=datetime.timezone.utc)
         self.assertEqual(signing.timestamp(now), "2026-11-12T10:04:05+07:00")
@@ -129,6 +139,7 @@ class CreateOrderTests(unittest.TestCase):
         self.assertEqual(headers["X-PARTNER-ID"], DANA_PARTNER_ID)
         self.assertEqual(headers["CHANNEL-ID"], "95221")
         self.assertLessEqual(len(headers["X-EXTERNAL-ID"]), 36)
+        self.assertRegex(headers["X-EXTERNAL-ID"], r"^[0-9]{32}$")
         self.assertTrue(
             signing.verify(
                 "POST",
@@ -148,6 +159,20 @@ class CreateOrderTests(unittest.TestCase):
         self.assertEqual(option["payMethod"], "NETWORK_PAY")
         self.assertEqual(option["additionalInfo"], {"phoneNumber": "6281234567890"})
         self.assertEqual(result.payment_link, "https://m.sandbox.dana.id/pay?x=1")
+
+    def test_request_is_logged_without_signature_or_phone(self):
+        body = dict(CREATE_OK, webRedirectUrl="https://m.sandbox.dana.id/pay?x=1", additionalInfo={})
+        provider, session = make_dana_provider(FakeResponse(body=body), channel_fees=FEES)
+        with self.assertLogs("payment_aggregator.providers.dana.client", level="INFO") as logs:
+            provider.create_billing(billing_request("NETWORK_PAY_PG_CARD"))
+        request_log = next(line for line in logs.output if " request: " in line)
+        response_log = next(line for line in logs.output if " response: " in line)
+        external_id = session.calls[-1]["headers"]["X-EXTERNAL-ID"]
+        self.assertIn("external_id=" + external_id, request_log)
+        self.assertIn("external_id=" + external_id, response_log)
+        self.assertIn('"partnerReferenceNo":"PAY-20261112-000001"', request_log)
+        self.assertNotIn("6281234567890", request_log)
+        self.assertNotIn(session.calls[-1]["headers"]["X-SIGNATURE"], request_log)
 
     def test_card_order_rejects_non_indonesian_phone_before_sending(self):
         provider, session = make_dana_provider(channel_fees=FEES)

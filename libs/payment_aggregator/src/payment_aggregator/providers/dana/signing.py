@@ -16,6 +16,7 @@ import binascii
 import datetime
 import hashlib
 import json
+import re
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes, serialization
@@ -45,32 +46,32 @@ def string_to_sign(method, path, body, x_timestamp):
     return "{}:{}:{}:{}".format(method.upper(), path, body_hash, x_timestamp)
 
 
+_PEM_ARMOR = re.compile(r"-----(?:BEGIN|END)[A-Z0-9 ]*-----")
+
+
 def _der(key_bytes):
-    """Raw base64 key data (no -----BEGIN----- lines, as DANA's dashboard shows
-    keys) -> DER bytes; None when the key is PEM."""
-    text = key_bytes.decode("utf-8").strip()
-    if "-----BEGIN" in text:
-        return None
+    """Key text -> DER bytes. Accepts PEM in any layout (real newlines, a
+    single line with spaces, surrounding quotes, as env dashboards often
+    mangle it) or raw base64 (as DANA's dashboard shows keys)."""
+    text = key_bytes.decode("utf-8") if isinstance(key_bytes, bytes) else key_bytes
+    text = _PEM_ARMOR.sub("", text.strip().strip("'\""))
     try:
-        return base64.b64decode("".join(text.split()), validate=True)
+        der = base64.b64decode("".join(text.split()), validate=True)
     except (binascii.Error, ValueError):
+        der = b""
+    if not der:
         raise ValueError("Key is neither PEM nor base64")
+    return der
 
 
 def load_private_key(key_bytes):
     """PEM, or raw base64 of a PKCS#8 / PKCS#1 key."""
-    der = _der(key_bytes)
-    if der is None:
-        return serialization.load_pem_private_key(key_bytes, password=None)
-    return serialization.load_der_private_key(der, password=None)
+    return serialization.load_der_private_key(_der(key_bytes), password=None)
 
 
 def load_public_key(key_bytes):
-    """PEM, or raw base64 of a SubjectPublicKeyInfo key."""
-    der = _der(key_bytes)
-    if der is None:
-        return serialization.load_pem_public_key(key_bytes)
-    return serialization.load_der_public_key(der)
+    """PEM, or raw base64 of a SubjectPublicKeyInfo / PKCS#1 key."""
+    return serialization.load_der_public_key(_der(key_bytes))
 
 
 def sign(method, path, body, x_timestamp, private_key):
