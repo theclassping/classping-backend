@@ -73,13 +73,18 @@ def parse_callback(method, raw_body, headers, provider=None, request_path=""):
     tried first, then every other one: the provider whose signature/token
     verifies the body is the sender. Providers without credentials are
     skipped. Raises InvalidCallback when no provider accepts the body.
+
+    The error raised is the FIRST provider's (with ``provider``: that one;
+    otherwise the active one): the others only cover late callbacks for
+    records made before a switch, and their "not my notification" would hide
+    why the active provider rejected it.
     """
     if provider:
         names = [provider]
     else:
         active = active_provider_name()
         names = [active] + [name for name in _known_names() if name != active]
-    last_error = None
+    first_error = None
     for name in names:
         try:
             # Through the proxy, so mock.patch on PaymentAggregator applies.
@@ -87,8 +92,9 @@ def parse_callback(method, raw_body, headers, provider=None, request_path=""):
                 raw_body, headers, request_path=request_path
             )
         except (InvalidCallback, ProviderNotConfigured) as error:
-            last_error = error
-    raise last_error or InvalidCallback("No payment provider accepted the callback")
+            if first_error is None:
+                first_error = error
+    raise first_error or InvalidCallback("No payment provider accepted the callback")
 
 
 def callback_reply(provider, event, default, result=None):

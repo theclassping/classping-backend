@@ -88,6 +88,14 @@ class ProviderSwitchTests(SimpleTestCase):
         with self.assertRaises(InvalidCallback):
             parse_callback("parse_billing_callback", b"{}", {})
 
+    def test_parse_callback_reports_the_active_providers_reason(self):
+        other = OtherProvider()
+        set_provider(other)  # active, tried first
+        rintisan, _ = make_provider()
+        add_provider(rintisan)  # tried after it, rejects too
+        with self.assertRaisesMessage(InvalidCallback, "not signed by other"):
+            parse_callback("parse_billing_callback", b"{}", {})
+
     def test_parse_callback_with_provider_tries_only_that_one(self):
         rintisan, _ = make_provider()
         set_provider(rintisan)

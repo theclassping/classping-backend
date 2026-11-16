@@ -143,6 +143,15 @@ class DanaProvider(BaseProvider):
             headers.get("x-signature"),
             self._load_public_key(),
         ):
+            # TEMPORARY (sandbox debugging): everything needed to replay the
+            # verification offline. Remove once notifications verify.
+            logger.warning(
+                "DANA signature mismatch: paths=%r x-timestamp=%r x-signature=%r body=%r",
+                (request_path, snap_path),
+                headers.get("x-timestamp"),
+                headers.get("x-signature"),
+                raw_body[:4000].decode("utf-8", "replace"),
+            )
             raise InvalidCallback("Invalid DANA notification signature")
         try:
             body = json.loads(raw_body.decode("utf-8"))
