@@ -65,16 +65,44 @@ CHANNELS = {
         "method": PaymentMethod.VIRTUAL_ACCOUNT,
         "fee_type": FeeType.FLAT,
     },
+    # Card: payMethod CREDIT_CARD (DEBIT_CARD also accepted) with payOption
+    # NETWORK_PAY_PG_CARD (DANA integration team, 2026-11-16); the card input
+    # page is DANA's webRedirectUrl.
     "NETWORK_PAY_PG_CARD": {
         "name": "Kartu Kredit/Debit",
-        "pay_method": "NETWORK_PAY",
+        "pay_method": "CREDIT_CARD",
         "method": PaymentMethod.CREDIT_CARD,
+        "fee_type": FeeType.PERCENT,
+    },
+    # E-wallets (payOption values from DANA's Consult Pay / Create Order docs).
+    "NETWORK_PAY_PG_OVO": {
+        "name": "OVO",
+        "pay_method": "NETWORK_PAY",
+        "method": PaymentMethod.E_WALLET,
+        "fee_type": FeeType.PERCENT,
+    },
+    "NETWORK_PAY_PG_GOPAY": {
+        "name": "GoPay",
+        "pay_method": "NETWORK_PAY",
+        "method": PaymentMethod.E_WALLET,
+        "fee_type": FeeType.PERCENT,
+    },
+    "NETWORK_PAY_PG_SPAY": {
+        "name": "ShopeePay",
+        "pay_method": "NETWORK_PAY",
+        "method": PaymentMethod.E_WALLET,
+        "fee_type": FeeType.PERCENT,
+    },
+    "NETWORK_PAY_PG_LINKAJA": {
+        "name": "LinkAja",
+        "pay_method": "NETWORK_PAY",
+        "method": PaymentMethod.E_WALLET,
         "fee_type": FeeType.PERCENT,
     },
 }
 
 # Channels whose payOptionDetails need additionalInfo.phoneNumber.
-PHONE_REQUIRED_PAY_METHODS = ("NETWORK_PAY",)
+PHONE_REQUIRED_PAY_METHODS = ("NETWORK_PAY", "CREDIT_CARD")
 
 # --- Protocol -------------------------------------------------------------
 

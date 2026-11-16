@@ -32,16 +32,25 @@ MDR_VA = with_vat(Decimal("2500"))  # 2775
 # Cards (Visa, Mastercard, AMEX, JCB): 2.9% + VAT = 3.219%.
 MDR_CARD = with_vat(Decimal("2.9"))  # 3.219
 
+# E-wallets (OVO, GoPay, ShopeePay, LinkAja): DANA quotes 1.5% or 2% + VAT.
+# The tier is not confirmed, so the higher one is charged (2% + VAT = 2.22%):
+# the parent never pays less than DANA deducts.
+MDR_EWALLET = with_vat(Decimal("2"))  # 2.22
+
 # Rate per DANA payOption. A channel left out is not offered. QRIS is
 # intentionally not offered (BI forbids charging QRIS MDR to the payer).
-# E-wallets (1.5% or 2% + VAT) are left out until DANA says which tier is ours.
 CHANNEL_FEES = {
     "VIRTUAL_ACCOUNT_BCA": MDR_VA,
     "VIRTUAL_ACCOUNT_BNI": MDR_VA,
     "VIRTUAL_ACCOUNT_BRI": MDR_VA,
     "VIRTUAL_ACCOUNT_MANDIRI": MDR_VA,
     "VIRTUAL_ACCOUNT_PERMATA": MDR_VA,
+    "VIRTUAL_ACCOUNT_CIMB": MDR_VA,
     "NETWORK_PAY_PG_CARD": MDR_CARD,
+    "NETWORK_PAY_PG_OVO": MDR_EWALLET,
+    "NETWORK_PAY_PG_GOPAY": MDR_EWALLET,
+    "NETWORK_PAY_PG_SPAY": MDR_EWALLET,
+    "NETWORK_PAY_PG_LINKAJA": MDR_EWALLET,
 }
 
 # Fee per Transfer to Bank. Not in the fee calculator yet: None keeps

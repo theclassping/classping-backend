@@ -136,7 +136,18 @@ class ProviderModuleTests(SimpleTestCase):
 
         self.assertEqual(dana.CHANNEL_FEES["VIRTUAL_ACCOUNT_BCA"], Decimal("2775"))
         self.assertEqual(dana.CHANNEL_FEES["NETWORK_PAY_PG_CARD"], Decimal("3.219"))
+        self.assertEqual(dana.CHANNEL_FEES["NETWORK_PAY_PG_OVO"], Decimal("2.22"))
         self.assertNotIn("NETWORK_PAY_PG_QRIS", dana.CHANNEL_FEES)
+
+    def test_every_dana_channel_except_qris_is_offered(self):
+        from payment_aggregator.base import PaymentMethod
+        from payment_aggregator.providers.dana import constants
+
+        from apps.payment_aggregator.providers import dana
+
+        self.assertEqual(set(dana.CHANNEL_FEES), set(constants.CHANNELS))
+        for code in ("NETWORK_PAY_PG_OVO", "NETWORK_PAY_PG_GOPAY", "NETWORK_PAY_PG_SPAY", "NETWORK_PAY_PG_LINKAJA"):
+            self.assertEqual(constants.CHANNELS[code]["method"], PaymentMethod.E_WALLET)
         self.assertIsNone(dana.DISBURSEMENT_FEE)
 
     @override_settings(PAYMENT_PROVIDER="dana")
