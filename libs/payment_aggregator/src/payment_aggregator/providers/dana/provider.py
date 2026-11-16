@@ -46,13 +46,19 @@ class DanaProvider(BaseProvider):
 
     def _load_private_key(self):
         if self._private_key is None:
-            self._private_key = signing.load_private_key(self.config.private_key.encode("utf-8"))
+            try:
+                self._private_key = signing.load_private_key(self.config.private_key.encode("utf-8"))
+            except ValueError as exc:
+                raise ProviderNotConfigured("Invalid {}: {}".format(self.config.private_key_env, exc)) from exc
         return self._private_key
 
     def _load_public_key(self):
         if self._public_key is None:
             self.config.require_callback_credentials()
-            self._public_key = signing.load_public_key(self.config.public_key.encode("utf-8"))
+            try:
+                self._public_key = signing.load_public_key(self.config.public_key.encode("utf-8"))
+            except ValueError as exc:
+                raise ProviderNotConfigured("Invalid DANA_PUBLIC_KEY: {}".format(exc)) from exc
         return self._public_key
 
     # --- fee configuration ----------------------------------------------

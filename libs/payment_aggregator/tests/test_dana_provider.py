@@ -93,6 +93,16 @@ class SigningTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             signing.load_private_key(b"not a key!")
 
+    def test_public_key_loads_from_mangled_pem(self):
+        from cryptography.hazmat.primitives import serialization
+
+        public = key_pair("dana")[1]
+        pem = public.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
+        pkcs1 = public.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.PKCS1)
+        one_line = b" ".join(pem.split())
+        for key in (pem, one_line, b'"' + one_line + b'"', pem.replace(b"\n", b"\r\n"), pkcs1, b" ".join(pkcs1.split())):
+            self.assertEqual(signing.load_public_key(key).public_numbers(), public.public_numbers(), key)
+
     def test_timestamp_is_jakarta_time(self):
         now = datetime.datetime(2026, 11, 12, 3, 4, 5, tzinfo=datetime.timezone.utc)
         self.assertEqual(signing.timestamp(now), "2026-11-12T10:04:05+07:00")
