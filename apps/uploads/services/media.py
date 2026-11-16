@@ -16,6 +16,7 @@ import boto3
 from botocore.exceptions import ClientError
 from django.conf import settings
 from django.core.cache import cache
+from django.db import transaction
 
 from apps.uploads.paths import MediaLocation, build_key_for_location
 from apps.uploads.storage import get_storage, validate_file_key
@@ -34,12 +35,37 @@ ALLOWED_IMAGE_TYPES = {
 }
 
 
+def remove_partial_file(path: str) -> None:
+    """Best-effort removal of a file a failed write may have left half-written."""
+    try:
+        os.remove(path)
+    except FileNotFoundError:
+        pass
+    except OSError:
+        logger.exception("Unable to remove partial upload %s", path)
+
+
 class MediaInputError(ValueError):
     """Raised when client-supplied image_data cannot be attached to a record."""
 
 
 class FileTooLargeError(MediaInputError):
     """Raised when a stored upload is bigger than settings.MAX_UPLOAD_BYTES."""
+
+
+class StorageFullError(MediaInputError):
+    """Raised when an upload would take its branch past its storage capacity."""
+
+    code = "storage_full"
+
+    def __init__(self, branch_id: int, used_bytes: int, capacity_bytes: int, incoming_bytes: int):
+        self.branch_id = branch_id
+        self.used_bytes = used_bytes
+        self.capacity_bytes = capacity_bytes
+        self.incoming_bytes = incoming_bytes
+        super().__init__(
+            "This branch's storage is full. Delete unused files or add more storage before uploading."
+        )
 
 
 class UploadStoreUnavailable(RuntimeError):
@@ -150,6 +176,18 @@ class MediaService:
         # The pending entry is what lets the user attach the file, so the URL
         # must not outlive it.
         expires_in = min(int(expires_in), settings.UPLOAD_METADATA_TTL)
+
+        # The capacity check and the pending row commit together under a lock
+        # on the branch, so concurrent presigns cannot both fit the last bytes.
+        # A Redis outage rolls the row back, so it never leaves one behind.
+        from apps.uploads.usage import ensure_capacity
+        with transaction.atomic():
+            ensure_capacity(location.branch_id, size)
+            return cls._sign_and_record(storage, file_key, filename, content_type, size, user_id, location, expires_in)
+
+    @classmethod
+    def _sign_and_record(cls, storage, file_key, filename, content_type, size, user_id, location, expires_in):
+        from apps.uploads.tracking import record_presigned
         presigned_url = storage.generate_presigned_url(
             file_key,
             expires_in,
@@ -188,8 +226,6 @@ class MediaService:
         else:
             cls._pending_uploads[file_key] = upload_info
 
-        # After the pending entry, so a Redis outage leaves no row behind.
-        from apps.uploads.tracking import record_presigned
         record_presigned(file_key, location, size, content_type, user_id)
 
         return {
@@ -534,7 +570,12 @@ class MediaService:
         object_key = validate_file_key(object_key)
         dest_path = os.path.join(settings.MEDIA_ROOT, object_key)
         os.makedirs(os.path.dirname(dest_path), exist_ok=True)
-        shutil.copy2(file_path, dest_path)
+        try:
+            shutil.copy2(file_path, dest_path)
+        except OSError:
+            # e.g. the disk is full: don't leave a truncated file behind.
+            remove_partial_file(dest_path)
+            raise
         width, height = cls._get_image_dimensions(dest_path)
 
         return {

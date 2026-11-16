@@ -30,6 +30,7 @@
             <span class="status status-{{ storage.status }}">{{ storage.status|title }}</span>
             {{ storage.used_bytes|filesizeformat }} of {{ storage.capacity_bytes|filesizeformat }}{% if storage.percent is not None %} ({{ storage.percent }}%){% endif %}
             {% if storage.capacity_is_default %}<span class="text-muted">· default capacity</span>{% endif %}
+            {% if storage.addon_bytes %}<span class="text-muted">· includes {{ storage.addon_bytes|filesizeformat }} of add-ons</span>{% endif %}
             {% if storage.pending_bytes %}<span class="text-muted">· {{ storage.pending_bytes|filesizeformat }} awaiting upload</span>{% endif %}
         </p>
         {% if storage.by_category %}
@@ -51,6 +52,26 @@
         {% elif not storage.by_category %}
         <p class="text-muted">No stored media yet.</p>
         {% endif %}
+    </div>
+    <div class="detail-section"><h3>Storage add-ons</h3>
+        {% for addon in storage_addons %}
+        <div class="detail-row">
+            <div>
+                <span class="status status-{{ addon.status }}">{{ addon.get_status_display }}</span>
+                {{ addon.size_bytes|filesizeformat }} · requested {{ addon.created_at|date:"d M Y H:i" }}{% if addon.requested_by %} by {{ addon.requested_by.email }}{% endif %}
+                {% if addon.note %}<br><small class="text-muted">{{ addon.note }}</small>{% endif %}
+                {% if addon.reviewed_by %}<br><small class="text-muted">{{ addon.get_status_display }} by {{ addon.reviewed_by.email }} on {{ addon.reviewed_at|date:"d M Y H:i" }}{% if addon.review_note %}: {{ addon.review_note }}{% endif %}</small>{% endif %}
+            </div>
+            {% if request.user.is_superuser and addon.status == "pending" %}
+            <form method="post" action="{% url 'admin_web:storage_addon_review' school.pk branch.pk addon.pk %}" class="form-actions">
+                {% csrf_token %}
+                <input type="text" name="review_note" placeholder="Note (e.g. payment reference)">
+                <button class="btn" type="submit" name="decision" value="approve" onclick="return confirm('Approve this add-on? The branch capacity increases permanently.');">Approve</button>
+                <button class="btn" type="submit" name="decision" value="reject">Reject</button>
+            </form>
+            {% endif %}
+        </div>
+        {% empty %}<p class="text-muted">No add-on requests.</p>{% endfor %}
     </div>
     <div class="detail-section"><h3>Academic years</h3>
         {% for year in branch.academic_years.all %}<p>{{ year.name }} · {{ year.start_date|date:"d M Y" }} to {{ year.end_date|date:"d M Y" }}{% if year.is_current %} · Current{% endif %}</p>

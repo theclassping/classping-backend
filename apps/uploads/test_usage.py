@@ -156,3 +156,113 @@ class AdminWebStorageTests(BranchFixture, TestCase):
         detail = self.client.get(reverse("admin_web:branch_detail", args=[self.school.pk, self.branch_b.pk]))
         self.assertContains(detail, self.class_b.name)
         self.assertContains(detail, "Activities")
+
+
+@override_settings(STORAGE_TYPE="local", DEFAULT_BRANCH_STORAGE_BYTES=1000, ENFORCE_BRANCH_STORAGE_CAPACITY=True)
+class StorageCapacityEnforcementTests(BranchFixture, TestCase):
+    """A full branch gets no new uploads; deleted files free their space."""
+
+    def setUp(self):
+        from unittest.mock import patch
+        from apps.uploads.services.media import MediaService
+        from apps.uploads.storage import StorageFactory
+
+        self.make_fixture()
+        StorageFactory.reset()
+        self.addCleanup(StorageFactory.reset)
+        patch.object(MediaService, "_redis", return_value=None).start()
+        self.addCleanup(patch.stopall)
+        self.addCleanup(MediaService._pending_uploads.clear)
+        MediaObject.objects.create(file_key="used", branch=self.branch_a, category="students", size_bytes=700)
+
+    def presign(self, size, branch=None):
+        client = APIClient()
+        client.force_authenticate(user=self.admin)
+        return client.post("/api/media/presign/", {
+            "filename": "photo.jpg", "content_type": "image/jpeg", "size": size,
+            "purpose": "student", "branch_id": (branch or self.branch_a).pk,
+        }, format="json")
+
+    def test_upload_that_fits_exactly_is_allowed_and_counted(self):
+        self.assertEqual(self.presign(300).status_code, 200)
+        # The pending upload now fills the branch, so the next byte is refused.
+        response = self.presign(1)
+        self.assertEqual(response.status_code, 403, response.data)
+        self.assertEqual(
+            (response.data["code"], response.data["used_bytes"], response.data["capacity_bytes"]),
+            ("storage_full", 1000, 1000),
+        )
+
+    def test_upload_over_capacity_is_refused_without_a_pending_row(self):
+        response = self.presign(301)
+        self.assertEqual(response.status_code, 403, response.data)
+        self.assertEqual(response.data["requested_bytes"], 301)
+        self.assertEqual(MediaObject.objects.filter(branch=self.branch_a).count(), 1)
+
+    def test_other_branches_and_deleted_files_do_not_count(self):
+        self.assertEqual(self.presign(1000, branch=self.branch_b).status_code, 200)
+        MediaObject.objects.filter(file_key="used").update(status=Status.DELETED)
+        self.assertEqual(self.presign(1000).status_code, 200)
+
+    def test_custom_capacity_raises_the_limit(self):
+        self.branch_a.storage_capacity_bytes = 2000
+        self.branch_a.save()
+        self.assertEqual(self.presign(1300).status_code, 200)
+
+    def test_enforcement_can_be_switched_off(self):
+        with override_settings(ENFORCE_BRANCH_STORAGE_CAPACITY=False):
+            self.assertEqual(self.presign(5000).status_code, 200)
+
+
+class LocalDiskFullTests(SimpleTestCase):
+    def test_disk_full_returns_507_and_removes_partial_file(self):
+        import errno
+        import os
+        import tempfile
+        from unittest.mock import mock_open, patch
+        from apps.uploads.storage import make_upload_token
+
+        key = "branch_1/general/full.jpg"
+        with tempfile.TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
+            target = os.path.join(media_root, key)
+            os.makedirs(os.path.dirname(target))
+            open(target, "wb").close()  # what a failed write leaves behind
+            token = make_upload_token(key, 600, content_type="image/jpeg", content_length=3)
+            failing = mock_open()
+            failing.return_value.write.side_effect = OSError(errno.ENOSPC, "No space left on device")
+            with patch("apps.uploads.views.open", failing, create=True):
+                response = APIClient().put(
+                    f"/api/media/upload/{key}?token={token}", data=b"abc", content_type="image/jpeg",
+                )
+            self.assertEqual(response.status_code, 507)
+            self.assertEqual(response.data["code"], "server_storage_full")
+            self.assertFalse(os.path.exists(target))
+
+
+@override_settings(DEFAULT_BRANCH_STORAGE_BYTES=1000, ENFORCE_BRANCH_STORAGE_CAPACITY=True)
+class AdminWebUploadCapacityTests(BranchFixture, TestCase):
+    def setUp(self):
+        self.make_fixture()
+        MediaObject.objects.create(file_key="used", branch=self.branch_a, category="students", size_bytes=700)
+
+    def form_errors(self, size):
+        from unittest.mock import patch
+        from django import forms
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from apps.admin_web.forms import SearchableImageUploadMixin
+        from apps.uploads.paths import MediaLocation
+
+        class UploadForm(SearchableImageUploadMixin, forms.Form):
+            image_file = forms.FileField(required=False)
+
+        form = UploadForm(data={}, files={"image_file": SimpleUploadedFile("a.jpg", b"x" * size, "image/jpeg")})
+        form.instance = object()
+        location = MediaLocation(self.branch_a.pk, None, "students")
+        with patch("apps.admin_web.forms.instance_media_location", return_value=location):
+            form.is_valid()
+        return form.errors.get("image_file", [])
+
+    def test_upload_into_a_full_branch_is_a_form_error(self):
+        self.assertEqual(self.form_errors(300), [])
+        [message] = self.form_errors(301)
+        self.assertIn("storage is full", message)

@@ -1,9 +1,13 @@
 from apps.core.access import ScopedQuerysetMixin
-from rest_framework import permissions, viewsets
+from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.generics import get_object_or_404
 from rest_framework.response import Response
 from django.db.models import Q
+from apps.uploads.models import StorageAddOn
+from apps.uploads.serializers import StorageAddOnSerializer
+from apps.uploads.services import quota
 from apps.uploads.usage import branch_storage_report, branches_by_usage
 from apps.users.permissions import RoleBasedAccessPermission
 
@@ -69,3 +73,71 @@ class BranchViewSet(ScopedQuerysetMixin, viewsets.ModelViewSet):
         """One branch's usage, broken down per category and per class."""
         self._require_storage_access()
         return Response(branch_storage_report(self.get_object()))
+
+    # Storage actions use their own role check (can_view_storage) instead of
+    # the "schools" module grants, which branch staff don't have for writes.
+    # get_object() still limits them to branches the user can see.
+
+    def _storage_branch(self):
+        self._require_storage_access()
+        return self.get_object()
+
+    @action(detail=True, methods=["post"], url_path="storage-reset", permission_classes=[permissions.IsAuthenticated])
+    def storage_reset(self, request, pk=None):
+        """
+        Clear stored images of one category (optionally one class) to free space.
+
+        Body: {"category": "activities", "class_id": 12, "dry_run": true}
+        dry_run (default false) only returns what would be freed.
+        Records are kept; only their images are removed. Payment proofs
+        cannot be reset.
+        """
+        branch = self._storage_branch()
+        category = request.data.get("category")
+        class_id = request.data.get("class_id")
+        dry_run = request.data.get("dry_run") in (True, "true", "1", 1)
+        if class_id not in (None, ""):
+            try:
+                class_id = int(class_id)
+            except (TypeError, ValueError):
+                raise ValidationError({"class_id": "Must be an integer."})
+        else:
+            class_id = None
+        try:
+            if dry_run:
+                summary = quota.summarize(quota.reset_candidates(branch, category, class_id))
+            else:
+                summary = quota.reset_branch_media(branch, category, class_id, request.user)
+        except quota.StorageActionError as error:
+            raise ValidationError({"error": str(error)})
+        body = {"category": category, "class_id": class_id, "dry_run": dry_run, **summary}
+        return Response(body, status=status.HTTP_200_OK if dry_run else status.HTTP_202_ACCEPTED)
+
+    @action(detail=True, methods=["get", "post"], url_path="storage-addons", permission_classes=[permissions.IsAuthenticated])
+    def storage_addons(self, request, pk=None):
+        """
+        GET: the branch's add-on requests, newest first.
+        POST {"size_gb": 10, "note": "..."}: request more storage. A superadmin
+        approves it after payment; approved add-ons are permanent.
+        """
+        branch = self._storage_branch()
+        if request.method == "GET":
+            return Response(StorageAddOnSerializer(branch.storage_addons.all(), many=True).data)
+        try:
+            addon = quota.request_addon(branch, request.data.get("size_gb"), request.data.get("note", ""), request.user)
+        except quota.StorageActionError as error:
+            raise ValidationError({"error": str(error)})
+        return Response(StorageAddOnSerializer(addon).data, status=status.HTTP_201_CREATED)
+
+    @action(
+        detail=True, methods=["post"], url_path=r"storage-addons/(?P<addon_id>\d+)/cancel",
+        permission_classes=[permissions.IsAuthenticated],
+    )
+    def storage_addon_cancel(self, request, pk=None, addon_id=None):
+        branch = self._storage_branch()
+        addon = get_object_or_404(StorageAddOn, pk=addon_id, branch=branch)
+        try:
+            addon = quota.cancel_addon(addon)
+        except quota.StorageActionError as error:
+            raise ValidationError({"error": str(error)})
+        return Response(StorageAddOnSerializer(addon).data)

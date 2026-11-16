@@ -133,6 +133,11 @@ urlpatterns = [
         name="branch_detail",
     ),
     path(
+        "schools/<int:school_pk>/branches/<int:branch_pk>/storage-addons/<int:pk>/review/",
+        views.storage_addon_review,
+        name="storage_addon_review",
+    ),
+    path(
         "schools/<int:school_pk>/branches/<int:pk>/edit/",
         views.branch_edit,
         name="branch_edit",
