@@ -2,7 +2,7 @@
 Classping's provider-neutral payment aggregator settings.
 
 Each provider's contract rates and account settings live in their own module
-under apps/payment_aggregator/providers/ (rintisan.py, dana.py, ...). The
+under apps/payment_aggregator/providers/ (dana.py, doku.py). The
 active provider is chosen with env PAYMENT_PROVIDER (config/settings.py).
 
 Checkout rules live in apps/payment_gateway/constants.py, withdrawal rules in
@@ -19,10 +19,6 @@ VAT_RATE = Decimal("0.11")
 # every provider: Rp2.500, the BI transfer fee (BI-FAST). Borne by the school:
 # the bank account receives amount - fee. Each provider module uses this value.
 DISBURSEMENT_FEE = Decimal("2500")
-
-# Classping's no-reply address, given to providers instead of the guardian's
-# email so payers never receive provider emails (all emails come from Classping).
-PAYER_EMAIL = "no-reply@hamanto.com"
 
 
 def with_vat(fee):

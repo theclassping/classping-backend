@@ -3,17 +3,17 @@ PaymentAggregator: the single entry point business code uses.
 
     from decimal import Decimal
     from payment_aggregator import PaymentAggregator
-    from payment_aggregator.providers.rintisan import RintisanConfig, RintisanProvider
+    from payment_aggregator.providers.dana import DanaConfig, DanaProvider
 
-    provider = RintisanProvider(
-        RintisanConfig.from_env(),
-        channel_fees={"VABCA": Decimal("5000"), "CC": Decimal("2")},
+    provider = DanaProvider(
+        DanaConfig.from_env(),
+        channel_fees={"VIRTUAL_ACCOUNT_BCA": Decimal("2775"), "NETWORK_PAY_PG_CARD": Decimal("3.219")},
         disbursement_fee=Decimal("2500"),
     )
     aggregator = PaymentAggregator(provider)
 
     aggregator.get_channels(invoice_total)
-    aggregator.calculate_transaction_fee("VABCA", invoice_total)
+    aggregator.calculate_transaction_fee("VIRTUAL_ACCOUNT_BCA", invoice_total)
     aggregator.create_billing(BillingRequest(...))
     aggregator.calculate_withdrawal(amount)
     aggregator.transfer_balance(TransferRequest(...))

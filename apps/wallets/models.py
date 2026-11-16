@@ -126,7 +126,7 @@ class Withdrawal(DestinationMixin, models.Model):
         SUCCESS = "success", "Success"
         FAILED = "failed", "Failed"
 
-    # Sent to the provider as its reference (Rintisan reference_id).
+    # Sent to the provider as its reference (DANA partnerReferenceNo).
     withdrawal_no = models.CharField(max_length=50, unique=True)
     branch = models.ForeignKey("schools.Branch", on_delete=models.PROTECT, related_name="withdrawals")
     payout_account = models.ForeignKey(

@@ -8,15 +8,10 @@ from functools import lru_cache
 
 from cryptography.hazmat.primitives.asymmetric import rsa
 
-from payment_aggregator.providers.rintisan.config import RintisanConfig
-from payment_aggregator.providers.rintisan.provider import RintisanProvider
-
-CLIENT_ID = "merchant-test"
-
 
 @lru_cache(maxsize=None)
 def key_pair(name):
-    """Cached RSA key pairs: 'merchant' (our side) and 'rintisan' (theirs)."""
+    """Cached RSA key pairs: 'merchant' (our side) and one per provider (theirs)."""
     private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     return private_key, private_key.public_key()
 
@@ -58,35 +53,6 @@ class FakeSession:
 
     def last_json(self):
         return json.loads(self.calls[-1]["data"].decode("utf-8"))
-
-
-def make_config(**overrides):
-    values = dict(
-        base_url="https://api.sandbox.rintisan.co.id/api/v1/billing/payin/partner",
-        client_id=CLIENT_ID,
-        api_key="api-key",
-        private_key="unused",
-        public_key="unused",
-        callback_token="callback-token",
-        require_transfer_callback_signature=True,
-    )
-    values.update(overrides)
-    return RintisanConfig(**values)
-
-
-def make_provider(*responses, channel_fees=None, disbursement_fee=None, **config_overrides):
-    """A real RintisanProvider talking to a FakeSession that returns ``responses``
-    (FakeResponse objects, or exceptions to raise), with test key pairs loaded."""
-    session = FakeSession(*responses)
-    provider = RintisanProvider(
-        config=make_config(**config_overrides),
-        channel_fees=channel_fees,
-        disbursement_fee=disbursement_fee,
-        session=session,
-    )
-    provider._private_key = key_pair("merchant")[0]
-    provider._public_key = key_pair("rintisan")[1]
-    return provider, session
 
 
 # --- DANA -------------------------------------------------------------------

@@ -308,7 +308,7 @@ class FinishNotifyTests(unittest.TestCase):
         with self.assertRaises(InvalidCallback):
             self.parse(raw, dana_notify_headers("/somewhere/else/", raw))
         with self.assertRaises(InvalidCallback):
-            # Another provider's callback (Rintisan headers): rejected before crypto.
+            # Another provider's callback (no DANA headers): rejected before crypto.
             self.parse(raw, {"x-callback-token": "t", "x-signature": "abc"})
         bad_key = dana_notify_headers(OUR_PATH, raw)
         bad_key["X-SIGNATURE"] = signing.sign("POST", OUR_PATH, raw, bad_key["X-TIMESTAMP"], key_pair("merchant")[0])

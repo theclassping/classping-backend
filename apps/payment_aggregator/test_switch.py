@@ -7,7 +7,7 @@ from unittest import mock
 from django.test import SimpleTestCase, override_settings
 from payment_aggregator.base import BillingResult, BillingStatus
 from payment_aggregator.exceptions import InvalidCallback, ProviderNotConfigured
-from payment_aggregator.providers.rintisan import RintisanProvider
+from payment_aggregator.providers.dana import DanaProvider
 
 from apps.payment_aggregator import PaymentAggregator
 from apps.payment_aggregator.aggregator import add_provider, get_provider, parse_callback, set_provider
@@ -40,11 +40,11 @@ class ProviderSwitchTests(SimpleTestCase):
     def setUp(self):
         self.addCleanup(set_provider, None)
 
-    @override_settings(PAYMENT_PROVIDER="rintisan")
+    @override_settings(PAYMENT_PROVIDER="dana")
     def test_active_provider_follows_setting(self):
         set_provider(None)
-        self.assertIsInstance(get_provider(), RintisanProvider)
-        self.assertEqual(PaymentAggregator.provider_name(), "rintisan")
+        self.assertIsInstance(get_provider(), DanaProvider)
+        self.assertEqual(PaymentAggregator.provider_name(), "dana")
 
     @override_settings(PAYMENT_PROVIDER="nope")
     def test_unknown_provider_setting_raises(self):
@@ -53,19 +53,19 @@ class ProviderSwitchTests(SimpleTestCase):
             PaymentAggregator.provider_name()
 
     def test_using_active_or_blank_is_the_active_aggregator(self):
-        rintisan, _ = make_provider()
-        set_provider(rintisan)
-        self.assertIs(PaymentAggregator.using("rintisan"), PaymentAggregator)
+        dana_provider, _ = make_provider()
+        set_provider(dana_provider)
+        self.assertIs(PaymentAggregator.using("dana"), PaymentAggregator)
         self.assertIs(PaymentAggregator.using(""), PaymentAggregator)
 
     def test_using_routes_to_the_stored_provider_after_a_switch(self):
-        rintisan, _ = make_provider()
+        dana_provider, _ = make_provider()
         other = OtherProvider(billing=BillingResult("PAY-1", "OTH-1"))
         set_provider(other)  # switched: "other" is active now
-        add_provider(rintisan)
+        add_provider(dana_provider)
 
         self.assertEqual(PaymentAggregator.provider_name(), "other")
-        self.assertIs(PaymentAggregator.using("rintisan").provider, rintisan)
+        self.assertIs(PaymentAggregator.using("dana").provider, dana_provider)
         self.assertIs(PaymentAggregator.using("other").provider, other)
 
     def test_using_unknown_provider_raises(self):
@@ -74,16 +74,16 @@ class ProviderSwitchTests(SimpleTestCase):
             PaymentAggregator.using("gone").get_billing_status("X")
 
     def test_parse_callback_finds_the_provider_that_signed_it(self):
-        rintisan, _ = make_provider()
+        dana_provider, _ = make_provider()
         other = OtherProvider(billing=BillingResult("PAY-1", "OTH-1"))
-        set_provider(rintisan)
+        set_provider(dana_provider)
         add_provider(other)
         name, billing = parse_callback("parse_billing_callback", b"{}", {"X-Other-Token": "other-token"})
         self.assertEqual((name, billing.provider_trx_id), ("other", "OTH-1"))
 
     def test_parse_callback_rejects_a_body_no_provider_verifies(self):
-        rintisan, _ = make_provider()
-        set_provider(rintisan)
+        dana_provider, _ = make_provider()
+        set_provider(dana_provider)
         add_provider(OtherProvider())
         with self.assertRaises(InvalidCallback):
             parse_callback("parse_billing_callback", b"{}", {})
@@ -91,17 +91,17 @@ class ProviderSwitchTests(SimpleTestCase):
     def test_parse_callback_reports_the_active_providers_reason(self):
         other = OtherProvider()
         set_provider(other)  # active, tried first
-        rintisan, _ = make_provider()
-        add_provider(rintisan)  # tried after it, rejects too
+        dana_provider, _ = make_provider()
+        add_provider(dana_provider)  # tried after it, rejects too
         with self.assertRaisesMessage(InvalidCallback, "not signed by other"):
             parse_callback("parse_billing_callback", b"{}", {})
 
     def test_parse_callback_with_provider_tries_only_that_one(self):
-        rintisan, _ = make_provider()
-        set_provider(rintisan)
+        dana_provider, _ = make_provider()
+        set_provider(dana_provider)
         add_provider(OtherProvider(billing=BillingResult("PAY-1", "OTH-1")))
         with self.assertRaises(InvalidCallback):
-            parse_callback("parse_billing_callback", b"{}", {"X-Other-Token": "other-token"}, provider="rintisan")
+            parse_callback("parse_billing_callback", b"{}", {"X-Other-Token": "other-token"}, provider="dana")
 
 
 class ProviderModuleTests(SimpleTestCase):
@@ -110,7 +110,7 @@ class ProviderModuleTests(SimpleTestCase):
     def test_every_provider_module_exposes_the_contract(self):
         from apps.payment_aggregator import providers
 
-        self.assertEqual(providers.names(), ("rintisan", "dana", "doku"))
+        self.assertEqual(providers.names(), ("dana", "doku"))
         for name, module in providers.registry().items():
             with self.subTest(provider=name):
                 self.assertEqual(module.NAME, name)

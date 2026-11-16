@@ -25,7 +25,7 @@ NAME = "dana"
 # DANA adds 11% VAT on top of its fee, so each rate is the listed fee + VAT.
 # DANA deducts the fee from the paid amount (settlement file: SETTLE_AMOUNT =
 # TXN_AMOUNT - commission - tax), so percent channels are grossed up and paid
-# by the parent, as with Rintisan.
+# by the parent.
 
 # Virtual account: Rp2.500 + VAT = Rp2.775 flat. Excludes the bank's own fee
 # (agreed between Classping and each bank); add it per bank once known.

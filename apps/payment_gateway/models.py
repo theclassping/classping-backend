@@ -32,7 +32,7 @@ class GatewayPayment(models.Model):
     def can_transition_to(self, status):
         return status in self.TRANSITIONS.get(self.status, set())
 
-    # Sent to the provider as its transaction reference (Rintisan partner_trx_id).
+    # Sent to the provider as its transaction reference (DANA partnerReferenceNo).
     payment_no = models.CharField(max_length=50, unique=True)
 
     branch = models.ForeignKey(

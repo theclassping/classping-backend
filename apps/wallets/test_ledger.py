@@ -34,7 +34,7 @@ class LedgerFixtureMixin(GatewayFixtureMixin):
         self.withdrawal = Withdrawal.objects.create(
             withdrawal_no="WDR-T-1", branch=self.branch, bank_code="BCA", account_number="5271234567",
             account_holder_name="YAYASAN", amount=Decimal("20000"), fee=Decimal("2500"),
-            transfer_amount=Decimal("17500"), provider="rintisan", fee_acknowledged_at=timezone.now(),
+            transfer_amount=Decimal("17500"), provider="dana", fee_acknowledged_at=timezone.now(),
         )
         with transaction.atomic():
             services._post_withdrawal_debit(services.lock_wallet(self.branch.pk), self.withdrawal)

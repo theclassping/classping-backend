@@ -104,11 +104,11 @@ class BillingRequest:
     amount: Decimal
     invoice_date: datetime.date
     # Application payment window end (aware datetime); the provider decides how
-    # to express it (Rintisan: deadline_date + expiry time).
+    # to express it (DANA: validUpTo).
     expires_at: datetime.datetime
     payer_name: str
     payer_phone: str
-    # Providers may replace it (Rintisan: RintisanConfig.payer_email, when set).
+    # Providers may ignore or replace it.
     payer_email: str = ""
     identifier: str = ""
     payer_address: str = ""

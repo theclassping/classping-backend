@@ -57,6 +57,12 @@ class WalletFixtureMixin:
         self.other_officer = make_staff(self.other_branch, "wl-officer-b@example.com", Staff.StaffType.OFFICER)
         self.parent, _ = make_parent("wl-parent@example.com", "Parent")
         BranchWallet.objects.create(branch=self.branch, available_balance=Decimal("150000"))
+        # Active provider: DANA with Classping's rates (no HTTP unless a test queues responses).
+        from apps.payment_aggregator.aggregator import set_provider
+        from apps.payment_aggregator.testing import make_provider
+
+        set_provider(make_provider()[0])
+        self.addCleanup(set_provider, None)
 
     def client_for(self, user):
         client = APIClient()
@@ -313,6 +319,13 @@ class WithdrawalApiTests(WalletFixtureMixin, TestCase):
 class DisbursementResultTests(WalletFixtureMixin, TestCase):
     def setUp(self):
         super().setUp()
+        # These tests apply callbacks as is; the confirm-by-status path is
+        # tested explicitly below (DANA itself confirms every callback).
+        patcher = mock.patch(
+            "apps.wallets.services.PaymentAggregator.confirm_transfer_callbacks", return_value=False
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
         otp = WithdrawalOtp.objects.create(
             reference="ref-1", branch=self.branch, user=self.officer, amount=Decimal("100000"),
             code_hash="x", sent_to=self.branch.email, expires_at=timezone.now(), **NEW_ACCOUNT,
@@ -329,9 +342,14 @@ class DisbursementResultTests(WalletFixtureMixin, TestCase):
         )
 
     def post_callback(self, result):
+        # Reply with the app's own status (DANA would always send its ACK).
+        def reply(provider, event, default, result=None):
+            return default
+
         with mock.patch("apps.wallets.services.PaymentAggregator.parse_transfer_callback", return_value=result), \
+                mock.patch("apps.wallets.services.callback_reply", side_effect=reply), \
                 mock.patch(MAILER) as mailer:
-            response = APIClient().post("/api/webhooks/rintisan/disbursement/", b"{}", content_type="application/json")
+            response = APIClient().post("/api/webhooks/dana/disbursement/", b"{}", content_type="application/json")
         self.mailer = mailer
         return response
 
@@ -381,7 +399,7 @@ class DisbursementResultTests(WalletFixtureMixin, TestCase):
             "apps.wallets.services.PaymentAggregator.parse_transfer_callback",
             side_effect=provider_errors.InvalidCallback("bad"),
         ), self.assertLogs("apps.wallets.services", "WARNING"):
-            response = APIClient().post("/api/webhooks/rintisan/disbursement/", b"{}", content_type="application/json")
+            response = APIClient().post("/api/webhooks/dana/disbursement/", b"{}", content_type="application/json")
         self.assertEqual(response.status_code, 401)
 
     def test_unsigned_callback_applied_only_after_status_check(self):
@@ -439,7 +457,8 @@ class DisbursementResultTests(WalletFixtureMixin, TestCase):
         Withdrawal.objects.filter(pk=self.withdrawal.pk).update(
             provider_disbursement_id="", created_at=timezone.now() - datetime.timedelta(hours=1)
         )
-        with mock.patch("apps.wallets.services.PaymentAggregator.get_transfer_status") as status:
+        with mock.patch("apps.wallets.services.PaymentAggregator.get_transfer_status") as status, \
+                mock.patch("apps.wallets.services.PaymentAggregator.transfer_id_for", return_value=None):
             self.assertEqual(services.poll_processing_withdrawals(), 0)
         status.assert_not_called()
 

@@ -22,7 +22,7 @@ NAME = "doku"
 # --- Contract rates (doku.com/pricing, 2026-11; listed before 11% VAT) ------
 # DOKU deducts its fee from the paid amount (split settlement works on the
 # net settlement amount), so percent channels are grossed up and paid by the
-# parent, as with Rintisan and DANA.
+# parent, as with DANA.
 
 # Virtual accounts: Rp4.000 (BCA Rp4.500) + VAT.
 MDR_VA = with_vat(Decimal("4000"))  # 4440

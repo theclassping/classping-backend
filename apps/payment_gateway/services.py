@@ -223,7 +223,7 @@ def cancel_at_provider(gateway_payment, reason=""):
         )
     except provider_errors.BillingNotFound:
         pass  # never created at the provider: nothing to cancel
-    except provider_errors.PaymentAggregatorError as error:
+    except Exception as error:  # best effort: the cancel here already stands
         logger.warning("Provider cancel failed for %s: %s", gateway_payment.payment_no, error)
     else:
         logger.info("Provider order cancelled for %s", gateway_payment.payment_no)
@@ -390,8 +390,8 @@ def apply_billing_result(gateway_payment, billing):
 
 def handle_payment_callback(raw_body, headers, provider=None, request_path=""):
     """Webhook /api/webhooks/payment/ (any provider, identified by its
-    signature) or /api/webhooks/<provider>/payment/. Rintisan calls back only
-    when a billing is paid; expiry is decided by Classping's expiry job.
+    signature) or /api/webhooks/<provider>/payment/. Expiry is decided by
+    Classping's expiry job, not by provider callbacks.
     Replies in the format the provider requires (DANA: responseCode)."""
     try:
         provider, billing = parse_callback(

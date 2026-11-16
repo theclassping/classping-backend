@@ -12,8 +12,7 @@ from rest_framework.test import APIClient
 
 from apps.payment_aggregator.aggregator import set_provider
 from payment_aggregator.base import BillingResult, BillingStatus, SettlementStatus
-from payment_aggregator.providers.rintisan import signing
-from apps.payment_aggregator.testing import CLIENT_ID, key_pair, make_provider
+from apps.payment_aggregator.testing import dana_notify_headers, make_provider
 from apps.payments.models import Payment, PaymentProof
 from apps.student_invoices.models import StudentInvoice
 from apps.users.models import User
@@ -25,17 +24,26 @@ from .tasks import send_payment_completed_email_task
 from .test_checkout import CheckoutFixtureMixin
 from .tests import NoMailjetMixin
 
-WEBHOOK_URL = "/api/webhooks/rintisan/payment/"
+WEBHOOK_URL = "/api/webhooks/dana/payment/"
 GENERIC_WEBHOOK_URL = "/api/webhooks/payment/"
 EMAIL_TASK = "apps.payment_gateway.tasks.send_payment_completed_email_task.delay"
 
 
-def callback_body(payment_no="PAY-1", amount=130000, code="200", message="success", trx="PPI-1"):
-    return (
-        '{"timestamp":"2026-11-07 10:30:00","paid_at":"2026-11-07 10:02:41",'
-        '"partner_trx_id":"%s","trx_id":"%s","payment_code":"988111",'
-        '"total_amount":%d,"status":{"code":"%s","message":"%s"}}' % (payment_no, trx, amount, code, message)
-    ).encode()
+ACK = {"responseCode": "2005600", "responseMessage": "Successful"}
+
+
+def callback_body(payment_no="PAY-1", amount=130000, status="00", trx="PPI-1"):
+    """A DANA Finish Notify body (latestTransactionStatus 00 = paid)."""
+    return json.dumps({
+        "originalPartnerReferenceNo": payment_no,
+        "originalReferenceNo": trx,
+        "merchantId": "216620000000000000000",
+        "amount": {"value": "%d.00" % amount, "currency": "IDR"},
+        "latestTransactionStatus": status,
+        "createdTime": "2026-11-07T10:00:00+07:00",
+        "finishedTime": "2026-11-07T10:02:41+07:00",
+        "additionalInfo": {"paymentInfo": {"paidTime": "2026-11-07T10:02:41+07:00"}},
+    }).encode()
 
 
 class PaymentFlowMixin(CheckoutFixtureMixin):
@@ -48,11 +56,15 @@ class PaymentFlowMixin(CheckoutFixtureMixin):
         self.add_item(self.checkout_row, self.invoice)
         self.add_item(self.checkout_row, self.invoice_2)
 
-    def post_callback(self, raw, signed=True, token="callback-token"):
-        headers = {"HTTP_X_CALLBACK_TOKEN": token}
+    def post_callback(self, raw, signed=True, signed_path=WEBHOOK_URL, url=WEBHOOK_URL):
+        """POST a DANA notification, signed (with DANA's test key) over ``signed_path``."""
+        headers = {}
         if signed:
-            headers["HTTP_X_SIGNATURE"] = signing.sign(CLIENT_ID, raw, key_pair("rintisan")[0])
-        return self.client.post(WEBHOOK_URL, raw, content_type="application/json", **headers)
+            headers = {
+                "HTTP_" + name.upper().replace("-", "_"): value
+                for name, value in dana_notify_headers(signed_path, raw).items()
+            }
+        return self.client.post(url, raw, content_type="application/json", **headers)
 
     def reload(self):
         self.checkout_row.refresh_from_db()
@@ -70,13 +82,13 @@ class PaymentCallbackTests(PaymentFlowMixin, TestCase):
             with self.captureOnCommitCallbacks(execute=True):
                 response = self.post_callback(callback_body())
         self.assertEqual(response.status_code, 200, response.content)
-        self.assertEqual(response.json(), {"status": "ok"})
+        self.assertEqual(response.json(), ACK)
 
         checkout = self.reload()
         self.assertEqual(checkout.status, GatewayPayment.Status.PAID)
         self.assertIsNotNone(checkout.paid_at)
         self.assertIsNotNone(checkout.callback_received_at)
-        self.assertEqual(checkout.callback_payload["partner_trx_id"], "PAY-1")
+        self.assertEqual(checkout.callback_payload["originalPartnerReferenceNo"], "PAY-1")
         self.assertFalse(checkout.items.filter(is_active=True).exists())
 
         for invoice in (self.invoice, self.invoice_2):
@@ -101,9 +113,9 @@ class PaymentCallbackTests(PaymentFlowMixin, TestCase):
             sorted(Payment.objects.filter(gateway_payment=checkout).values_list("pk", flat=True)),
         )
 
-    def test_invalid_signature_or_token_is_rejected(self):
+    def test_invalid_signature_is_rejected(self):
         self.assertEqual(self.post_callback(callback_body(), signed=False).status_code, 401)
-        self.assertEqual(self.post_callback(callback_body(), token="wrong").status_code, 401)
+        self.assertEqual(self.post_callback(callback_body(), signed_path="/elsewhere/").status_code, 401)
         self.assertEqual(self.reload().status, GatewayPayment.Status.PENDING)
         self.assertFalse(LedgerEntry.objects.exists())
 
@@ -123,17 +135,19 @@ class PaymentCallbackTests(PaymentFlowMixin, TestCase):
         self.assertFalse(Payment.objects.exists())
 
     def test_non_paid_callback_changes_nothing(self):
-        # Rintisan sends no expiry callback; any non-paid body is ignored and
-        # the expiry job decides.
-        for code, message in (("201", "processing"), ("400", "expired")):
-            self.post_callback(callback_body(code=code, message=message))
+        # A non-paid notification (waiting, cancelled) is ignored: the expiry
+        # job decides.
+        for status in ("01", "05"):
+            self.post_callback(callback_body(status=status))
             self.assertEqual(self.reload().status, GatewayPayment.Status.PENDING)
             self.assertTrue(self.checkout_row.items.filter(is_active=True).exists())
 
     def test_unknown_checkout_is_ignored(self):
-        response = self.post_callback(callback_body(payment_no="PAY-NOPE", trx="PPI-NOPE"))
+        with self.assertLogs("apps.payment_gateway.services", "ERROR"):
+            response = self.post_callback(callback_body(payment_no="PAY-NOPE", trx="PPI-NOPE"))
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {"status": "ignored"})
+        self.assertEqual(response.json(), ACK)  # acknowledged so DANA stops retrying
+        self.assertFalse(Payment.objects.exists())
 
 
 class SettlementRulesTests(PaymentFlowMixin, TestCase):
@@ -372,10 +386,12 @@ class ProviderCancelTests(CheckoutFixtureMixin, TestCase):
         self.assertFalse(GatewayPayment.objects.get(pk=self.checkout_row.pk).needs_review)
 
     def test_provider_without_cancel_api_is_not_called(self):
-        provider, session = make_provider()
+        from payment_aggregator.testing import make_doku_provider
+
+        provider, session = make_doku_provider()  # DOKU: no cancel / refund API
         set_provider(provider)
         self.addCleanup(set_provider, None)
-        GatewayPayment.objects.filter(pk=self.checkout_row.pk).update(provider="rintisan")
+        GatewayPayment.objects.filter(pk=self.checkout_row.pk).update(provider="doku")
         services.cancel_at_provider(GatewayPayment.objects.get(pk=self.checkout_row.pk))
         self.assertEqual(session.calls, [])
 
@@ -484,10 +500,12 @@ class RefundTests(CheckoutFixtureMixin, TestCase):
         self.assertEqual(self.refund().data["code"], "REFUND_NOT_ALLOWED")
 
     def test_provider_without_refund_api(self):
-        provider, session = make_provider()
+        from payment_aggregator.testing import make_doku_provider
+
+        provider, session = make_doku_provider()  # DOKU: no cancel / refund API
         set_provider(provider)
         self.addCleanup(set_provider, None)
-        GatewayPayment.objects.filter(pk=self.checkout_row.pk).update(provider="rintisan")
+        GatewayPayment.objects.filter(pk=self.checkout_row.pk).update(provider="doku")
         response = self.refund()
         self.assertEqual(response.data["code"], "REFUND_NOT_SUPPORTED")
         self.assertEqual(session.calls, [])
@@ -573,27 +591,27 @@ class PaymentRaceTests(NoMailjetMixin, PaymentFlowMixin, TransactionTestCase):
 
 
 class ProviderSwitchFlowTests(PaymentFlowMixin, TestCase):
-    """PAYMENT_PROVIDER switched while a Rintisan checkout is pending."""
+    """PAYMENT_PROVIDER switched while a DANA checkout is pending."""
 
     def setUp(self):
         super().setUp()
         from apps.payment_aggregator.aggregator import add_provider
         from apps.payment_aggregator.test_switch import OtherProvider
 
-        rintisan, _ = make_provider()
+        dana, _ = make_provider()
         self.other = OtherProvider(
             billing=BillingResult("PAY-1", "OTH-1", status=BillingStatus.PAID, amount=Decimal("130000"))
         )
         set_provider(self.other)  # the new active provider
-        add_provider(rintisan)  # still reachable for its own records
+        add_provider(dana)  # still reachable for its own records
 
-    def test_rintisan_callback_still_settles_its_checkout(self):
+    def test_dana_callback_still_settles_its_checkout(self):
         self.assertEqual(self.post_callback(callback_body()).status_code, 200)
         self.assertEqual(self.reload().status, GatewayPayment.Status.PAID)
 
     def test_sync_asks_the_provider_that_created_the_checkout(self):
         paid = BillingResult("PAY-1", "PPI-1", status=BillingStatus.PAID, amount=Decimal("130000"))
-        with mock.patch.object(type(self.rintisan_aggregator()), "get_billing_status", return_value=paid) as status:
+        with mock.patch.object(type(self.dana_aggregator()), "get_billing_status", return_value=paid) as status:
             services.sync_gateway_payment(self.checkout_row.pk)
         status.assert_called_once_with("PPI-1")
         self.assertEqual(self.other.calls, [])
@@ -604,14 +622,9 @@ class ProviderSwitchFlowTests(PaymentFlowMixin, TestCase):
         self.assertEqual(result, {"status": "ignored"})
         self.assertEqual(self.reload().status, GatewayPayment.Status.PENDING)
 
-    def test_generic_url_finds_rintisan_while_another_is_active(self):
-        raw = callback_body()
-        headers = {
-            "HTTP_X_CALLBACK_TOKEN": "callback-token",
-            "HTTP_X_SIGNATURE": signing.sign(CLIENT_ID, raw, key_pair("rintisan")[0]),
-        }
-        response = self.client.post(GENERIC_WEBHOOK_URL, raw, content_type="application/json", **headers)
-        self.assertEqual(response.json(), {"status": "ok"})
+    def test_generic_url_finds_dana_while_another_is_active(self):
+        response = self.post_callback(callback_body(), signed_path=GENERIC_WEBHOOK_URL, url=GENERIC_WEBHOOK_URL)
+        self.assertEqual(response.json(), ACK)
         self.assertEqual(self.reload().status, GatewayPayment.Status.PAID)
 
     def test_generic_url_rejects_unsigned_body(self):
@@ -619,10 +632,10 @@ class ProviderSwitchFlowTests(PaymentFlowMixin, TestCase):
         self.assertEqual(response.status_code, 401)
         self.assertEqual(self.reload().status, GatewayPayment.Status.PENDING)
 
-    def rintisan_aggregator(self):
+    def dana_aggregator(self):
         from apps.payment_aggregator.aggregator import get_aggregator
 
-        return get_aggregator("rintisan")
+        return get_aggregator("dana")
 
 
 class DanaCallbackTests(CheckoutFixtureMixin, TestCase):
