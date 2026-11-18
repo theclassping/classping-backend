@@ -740,12 +740,37 @@ def get_checkout_quote(user, invoice_ids):
         _ensure_payable(get_invoice_payability(invoice))
 
     invoice_total = sum((invoice.total_amount for invoice in invoices), Decimal("0"))
+    channels = PaymentAggregator.get_channels(invoice_total)
+    if PaymentAggregator.provider_name() == "dana":
+        # DANA is the source of truth for which payOptions are currently
+        # available. Keep Classping's configured channels and fees as the
+        # pricing source, and intersect the two lists.
+        try:
+            payment_infos = PaymentAggregator.consult_pay(invoice_total)
+        except provider_errors.ProviderRejected as error:
+            response_code = (error.raw or {}).get("responseCode", "missing")
+            logger.warning(
+                "DANA Consult Pay returned an unsuccessful response (code=%s, message=%s)",
+                response_code,
+                error.provider_message or error.message,
+            )
+            raise errors.ProviderRejected(error.message, provider_code=response_code)
+        except provider_errors.PaymentAggregatorError as error:
+            logger.warning("DANA Consult Pay failed while quoting checkout channels: %s", error)
+            raise ProviderUnavailable()
+        available_options = {
+            str(info.get("payOption") or "")
+            for info in payment_infos
+            if isinstance(info, dict)
+        }
+        channels = [channel for channel in channels if channel.channel_code in available_options]
+
     return CheckoutQuote(
         student=invoices[0].class_student.student,
         branch_id=invoices[0].class_student.class_obj.branch_id,
         invoices=invoices,
         invoice_total=invoice_total,
-        channels=PaymentAggregator.get_channels(invoice_total),
+        channels=channels,
         expires_at=payment_expires_at(),
     )
 

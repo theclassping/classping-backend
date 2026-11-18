@@ -199,6 +199,7 @@ class CreateOrderTests(unittest.TestCase):
             provider.create_billing(billing_request("NETWORK_PAY_PG_CARD", payer_phone="081234"))
         self.assertEqual(session.calls, [])
 
+
     def test_error_codes(self):
         cases = [
             ({"responseCode": "4045418", "responseMessage": "Inconsistent Request"}, ProviderRejected),
@@ -256,6 +257,36 @@ def query_body(status, **extra):
     }
     body.update(extra)
     return body
+
+
+class ConsultPayTests(unittest.TestCase):
+    def test_consult_pay_sends_amount_and_returns_payment_options(self):
+        options = [
+            {"payMethod": "NETWORK_PAY", "payOption": "NETWORK_PAY_PG_OVO"},
+            {"payMethod": "VIRTUAL_ACCOUNT", "payOption": "VIRTUAL_ACCOUNT_BCA"},
+        ]
+        provider, session = make_dana_provider(
+            FakeResponse(body={"responseCode": "2005700", "responseMessage": "Successful", "paymentInfos": options})
+        )
+
+        self.assertEqual(provider.consult_pay(Decimal("10000")), options)
+        self.assertTrue(session.calls[0]["url"].endswith("/v1.0/payment-gateway/consult-pay.htm"))
+        self.assertEqual(session.calls[0]["timeout"], 8)
+        self.assertEqual(
+            session.last_json(),
+            {
+                "merchantId": "216620000000000000000",
+                "amount": {"value": "10000.00", "currency": "IDR"},
+                "additionalInfo": {"envInfo": {"sourcePlatform": "IPG", "terminalType": "SYSTEM"}},
+            },
+        )
+
+    def test_consult_pay_rejects_failed_response(self):
+        provider, _ = make_dana_provider(
+            FakeResponse(body={"responseCode": "4000002", "responseMessage": "Invalid Mandatory Field"})
+        )
+        with self.assertRaises(ProviderRejected):
+            provider.consult_pay(Decimal("10000"))
 
 
 class QueryPaymentTests(unittest.TestCase):

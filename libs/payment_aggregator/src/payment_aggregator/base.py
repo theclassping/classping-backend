@@ -219,6 +219,10 @@ class BaseProvider(abc.ABC):
         ...
 
     # Pay-in
+    def consult_pay(self, amount):
+        """List provider payment options for an amount, when supported."""
+        raise OperationNotSupported("{} has no Consult Pay API".format(self.name or "This provider"))
+
     @abc.abstractmethod
     def create_billing(self, request: BillingRequest) -> BillingResult:
         ...

@@ -67,7 +67,7 @@ class DanaClient:
         }
         return self.config.base_url + path, headers, body
 
-    def post(self, path, payload):
+    def post(self, path, payload, timeout=None):
         url, headers, body = self.signed_request(path, payload)
         # X-EXTERNAL-ID / X-TIMESTAMP let DANA support trace the request;
         # the signature is never logged and the payer phone is masked.
@@ -85,7 +85,7 @@ class DanaClient:
             )
         try:
             response = self.session.request(
-                "POST", url, timeout=self.config.timeout, data=body.encode("utf-8"), headers=headers
+                "POST", url, timeout=timeout or self.config.timeout, data=body.encode("utf-8"), headers=headers
             )
         except requests.RequestException as exc:
             if debug_logging:

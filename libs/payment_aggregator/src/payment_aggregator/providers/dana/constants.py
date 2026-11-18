@@ -16,6 +16,7 @@ BASE_URL_PRODUCTION = "https://api.saas.dana.id"
 # --- Paths ----------------------------------------------------------------
 
 PATH_CREATE_ORDER = "/payment-gateway/v1.0/debit/payment-host-to-host.htm"
+PATH_CONSULT_PAY = "/v1.0/payment-gateway/consult-pay.htm"
 PATH_QUERY_PAYMENT = "/payment-gateway/v1.0/debit/status.htm"
 PATH_CANCEL_ORDER = "/payment-gateway/v1.0/debit/cancel.htm"
 
@@ -77,7 +78,7 @@ CHANNELS = {
     # page is DANA's webRedirectUrl.
     "NETWORK_PAY_PG_CARD": {
         "name": "Kartu Kredit/Debit",
-        "pay_method": "CREDIT_CARD",
+        "pay_method": "NETWORK_PAY",
         "method": PaymentMethod.CREDIT_CARD,
         "fee_type": FeeType.PERCENT,
     },
@@ -114,6 +115,7 @@ PHONE_REQUIRED_PAY_METHODS = ("NETWORK_PAY", "CREDIT_CARD")
 # --- Protocol -------------------------------------------------------------
 
 REQUEST_TIMEOUT_SECONDS = 15
+CONSULT_PAY_TIMEOUT_SECONDS = 8
 
 # CHANNEL-ID header. Not a per-merchant credential: DANA's official SDKs and
 # every documentation sample send this fixed value.
@@ -124,6 +126,10 @@ CURRENCY = "IDR"
 SERVICE_CODE_PAYMENT = "54"
 RESPONSE_CREATE_SUCCESS = "2005400"
 RESPONSE_CREATE_INCONSISTENT = "4045418"
+
+# Consult Pay. The docs specify 2000000, while DANA Sandbox currently returns
+# 2005700 for /v1.0/payment-gateway/consult-pay.htm.
+RESPONSE_CONSULT_PAY_SUCCESS_CODES = ("2000000", "2005700")
 
 # Query Payment (service 55)
 RESPONSE_QUERY_SUCCESS = "2005500"

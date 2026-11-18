@@ -106,6 +106,16 @@ class DanaProvider(BaseProvider):
 
     # --- pay-in ----------------------------------------------------------
 
+    def consult_pay(self, amount):
+        """Return DANA's available payment options for the given IDR amount."""
+        self.config.require_request_credentials()
+        payload = mapper.consult_pay_payload(amount, self.config)
+        body = self.client.post(
+            constants.PATH_CONSULT_PAY, payload, timeout=constants.CONSULT_PAY_TIMEOUT_SECONDS
+        )
+        mapper.raise_for_consult_pay_response(body)
+        return body.get("paymentInfos") or []
+
     def order_request(self, request):
         """(url, headers, body) of the signed Create Order, without sending it."""
         self.config.require_order_settings()

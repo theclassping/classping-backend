@@ -65,6 +65,10 @@ class PaymentAggregator:
 
     # --- pay-in ----------------------------------------------------------
 
+    def consult_pay(self, amount):
+        """Return provider payment options for an amount, if supported."""
+        return self.provider.consult_pay(amount)
+
     def create_billing(self, request):
         return self.provider.create_billing(request)
 
