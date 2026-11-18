@@ -15,7 +15,7 @@ from .payments import (
 )
 from .gateway_payments import (
     gateway_payment_cancel, gateway_payment_detail, gateway_payment_list, gateway_payment_refund,
-    gateway_payment_sync,
+    gateway_payment_settle, gateway_payment_sync,
 )
 from .settings import (
     role_permissions, settings_delete, settings_detail, settings_form, settings_list,
@@ -33,7 +33,7 @@ from .staff_mutations import staff_activate, staff_create, staff_deactivate, sta
 from .branches import branch_detail, branch_create, branch_edit, branch_deactivate, branch_set_active, storage_overview
 from .payout_accounts import payout_account_delete, payout_account_edit
 from .wallets import (
-    wallet_detail, wallet_list, withdrawal_detail, withdrawal_list, withdrawal_resend, withdrawal_resolve,
+    wallet_detail, wallet_list, wallet_settle, withdrawal_detail, withdrawal_list, withdrawal_resend, withdrawal_resolve,
     withdrawal_sync,
 )
 

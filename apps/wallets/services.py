@@ -324,6 +324,9 @@ def preview_withdrawal(user, amount, payout_account_id=None, bank_code="", accou
         logger.exception("Withdrawal OTP email to branch %s failed", branch.pk)
         raise errors.OtpNotSent()
     otp.save()
+    if settings.DEBUG:
+        # Local testing only: never log a live OTP outside DEBUG.
+        logger.warning("[DEBUG] Withdrawal OTP for branch %s: %s (reference %s)", branch.pk, code, reference)
     return WithdrawalPreview(otp=otp, breakdown=breakdown)
 
 

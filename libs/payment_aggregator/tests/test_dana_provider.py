@@ -2,6 +2,7 @@ import datetime
 import hashlib
 import json
 import unittest
+from unittest import mock
 from decimal import Decimal
 
 import requests
@@ -167,8 +168,9 @@ class CreateOrderTests(unittest.TestCase):
     def test_request_is_logged_without_signature_or_phone(self):
         body = dict(CREATE_OK, webRedirectUrl="https://m.sandbox.dana.id/pay?x=1", additionalInfo={})
         provider, session = make_dana_provider(FakeResponse(body=body), channel_fees=FEES)
-        with self.assertLogs("payment_aggregator.providers.dana.client", level="INFO") as logs:
-            provider.create_billing(billing_request("NETWORK_PAY_PG_CARD"))
+        with mock.patch("payment_aggregator.providers.dana.client._debug_logging_enabled", return_value=True):
+            with self.assertLogs("payment_aggregator.providers.dana.client", level="INFO") as logs:
+                provider.create_billing(billing_request("NETWORK_PAY_PG_CARD"))
         request_log = next(line for line in logs.output if " request: " in line)
         response_log = next(line for line in logs.output if " response: " in line)
         external_id = session.calls[-1]["headers"]["X-EXTERNAL-ID"]
@@ -177,6 +179,19 @@ class CreateOrderTests(unittest.TestCase):
         self.assertIn('"partnerReferenceNo":"PAY-20261112-000001"', request_log)
         self.assertNotIn("6281234567890", request_log)
         self.assertNotIn(session.calls[-1]["headers"]["X-SIGNATURE"], request_log)
+        self.assertNotIn("X-SIGNATURE", request_log)
+        # URL and the trace headers DANA support asks for.
+        self.assertIn("url=" + session.calls[-1]["url"], request_log)
+        self.assertIn("'X-PARTNER-ID': '{}'".format(session.calls[-1]["headers"]["X-PARTNER-ID"]), request_log)
+        self.assertIn("'CHANNEL-ID': ", request_log)
+
+    def test_request_and_response_are_not_logged_without_debug(self):
+        provider, _ = make_dana_provider(FakeResponse(body=CREATE_OK), channel_fees=FEES)
+        with mock.patch("payment_aggregator.providers.dana.client._debug_logging_enabled", return_value=False):
+            with mock.patch("payment_aggregator.providers.dana.client.logger") as logger:
+                provider.create_billing(billing_request())
+        logger.info.assert_not_called()
+        logger.warning.assert_not_called()
 
     def test_card_order_rejects_non_indonesian_phone_before_sending(self):
         provider, session = make_dana_provider(channel_fees=FEES)

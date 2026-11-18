@@ -459,6 +459,34 @@ def mark_gateway_payment_settled(gateway_payment_id):
     return gateway_payment
 
 
+def settle_gateway_payment_manually(user, gateway_payment_id, note=""):
+    """Admin web: mark a paid checkout settled by hand (providers whose
+    status API reports no settlement, e.g. DANA). Returns True when it was
+    settled now, False when it is not paid or already settled."""
+    with transaction.atomic():
+        gateway_payment = _lock(gateway_payment_id)
+        if gateway_payment.status != GatewayPayment.Status.PAID or gateway_payment.settled_at:
+            return False
+        mark_gateway_payment_settled(gateway_payment.pk)
+        gateway_payment.refresh_from_db()
+        audit = "Settlement marked manually by {}".format(getattr(user, "email", "") or user.pk)
+        note = (note or "").strip()
+        gateway_payment.review_note = append_note(
+            gateway_payment.review_note, "{}: {}".format(audit, note) if note else audit + "."
+        )
+        gateway_payment.save(update_fields=["review_note", "updated_at"])
+    logger.info("Gateway payment %s settled manually by user %s", gateway_payment_id, user.pk)
+    return True
+
+
+def settle_branch_payments_manually(user, branch_id, note=""):
+    """Admin web: settle every paid, unsettled checkout of a branch."""
+    unsettled = GatewayPayment.objects.filter(
+        branch_id=branch_id, status=GatewayPayment.Status.PAID, settled_at__isnull=True
+    ).values_list("pk", flat=True)
+    return sum(1 for pk in list(unsettled) if settle_gateway_payment_manually(user, pk, note))
+
+
 def reconcile_settlements():
     """Hourly job: settle paid checkouts the provider has disbursed."""
     settled = 0

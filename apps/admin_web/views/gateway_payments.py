@@ -61,6 +61,7 @@ def gateway_payment_detail(request, pk):
             "ledger_entries": gateway_payment.ledger_entries.all(),
             "can_cancel": gateway_payment.status == GatewayPayment.Status.PENDING,
             "can_refund": _refund_offered(gateway_payment),
+            "can_settle": gateway_payment.status == GatewayPayment.Status.PAID and not gateway_payment.settled_at,
         },
     )
 
@@ -108,6 +109,17 @@ def gateway_payment_sync(request, pk):
             messages.error(request, "Provider check failed: {}".format(error.provider_message or error))
         else:
             messages.success(request, "Status synced: {}.".format(gateway_payment.get_status_display()))
+    return redirect("admin_web:gateway_payment_detail", pk=pk)
+
+
+@platform_admin_required
+def gateway_payment_settle(request, pk):
+    if request.method == "POST":
+        get_object_or_404(GatewayPayment, pk=pk)
+        if gateway_services.settle_gateway_payment_manually(request.user, pk, request.POST.get("note", "")):
+            messages.success(request, "Marked settled; the amount moved to the branch available balance.")
+        else:
+            messages.error(request, "Only a paid, unsettled online payment can be marked settled.")
     return redirect("admin_web:gateway_payment_detail", pk=pk)
 
 

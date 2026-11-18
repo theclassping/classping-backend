@@ -33,6 +33,9 @@
     <div class="detail-row"><div class="detail-label">Payment code / link</div><div>{{ gateway_payment.payment_code|default:"-" }} {% if gateway_payment.payment_link %}· <a href="{{ gateway_payment.payment_link }}" target="_blank" rel="noopener">link</a>{% endif %}</div></div>
     <div class="detail-row"><div class="detail-label">Created / Expires</div><div>{{ gateway_payment.created_at|date:"Y-m-d H:i" }} / {{ gateway_payment.expires_at|date:"Y-m-d H:i" }}</div></div>
     <div class="detail-row"><div class="detail-label">Paid / Settled</div><div>{{ gateway_payment.paid_at|date:"Y-m-d H:i"|default:"-" }} / {{ gateway_payment.settled_at|date:"Y-m-d H:i"|default:"-" }}</div></div>
+    {% if gateway_payment.review_note and not gateway_payment.needs_refund and not gateway_payment.needs_review %}
+        <div class="detail-row"><div class="detail-label">Notes</div><div>{{ gateway_payment.review_note|linebreaksbr }}</div></div>
+    {% endif %}
     {% if gateway_payment.cancelled_at %}
         <div class="detail-row"><div class="detail-label">Cancelled</div><div>{{ gateway_payment.cancelled_at|date:"Y-m-d H:i" }} by {{ gateway_payment.cancelled_by.email|default:"-" }}{% if gateway_payment.cancel_reason %} · {{ gateway_payment.cancel_reason }}{% endif %}</div></div>
     {% endif %}
@@ -78,6 +81,11 @@
     {% if can_cancel %}
         <form method="post" action="{% url 'admin_web:gateway_payment_cancel' gateway_payment.pk %}" class="detail-actions inline-actions" onsubmit="return confirm('Cancel this online payment? The invoices become open for manual payment. The provider order is cancelled too where the provider allows it (DANA); otherwise the VA / link may still accept a payment until the provider deadline.');">
             {% csrf_token %}<label for="cancel-reason">Reason</label><input id="cancel-reason" name="reason" maxlength="500"><button class="btn danger-button" type="submit">Cancel online payment</button>
+        </form>
+    {% endif %}
+    {% if can_settle %}
+        <form method="post" action="{% url 'admin_web:gateway_payment_settle' gateway_payment.pk %}" class="detail-actions inline-actions" onsubmit="return confirm('Mark this payment settled? {{ gateway_payment.amount }} paid; the branch credit moves from pending to available and can be withdrawn. Only do this once the provider has settled the money.');">
+            {% csrf_token %}<label for="settle-note">Note</label><input id="settle-note" name="note" maxlength="500" placeholder="e.g. DANA settlement file 2026-11-16"><button class="btn" type="submit">Mark settled</button>
         </form>
     {% endif %}
     {% if can_refund %}

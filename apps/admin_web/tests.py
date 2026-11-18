@@ -667,3 +667,91 @@ class PaymentGatewayGuardAdminWebTests(TestCase):
 		self.assertNotContains(detail, reverse("admin_web:payment_edit", args=[payment.pk]))
 		listing = self.client.get(reverse("admin_web:payment_list"))
 		self.assertContains(listing, "<th>Channel</th>", html=False)
+
+
+class GatewaySettlementAdminWebTests(TestCase):
+	"""Manual 'Mark settled' (one payment, or every unsettled one of a branch)."""
+
+	def setUp(self):
+		from django.db import transaction
+
+		from apps.payment_gateway.models import GatewayPayment
+		from apps.payment_gateway.tests import GatewayFixtureMixin
+		from apps.wallets import services as wallet_services
+
+		fixture = type("Fixture", (GatewayFixtureMixin,), {})()
+		GatewayFixtureMixin.setUp(fixture)
+		self.fx = fixture
+		self.paid = []
+		for number in (1, 2):
+			checkout = fixture.make_payment(
+				"PAY-SETTLE-{}".format(number), "key-settle-{}".format(number), status=GatewayPayment.Status.PAID
+			)
+			with transaction.atomic():
+				wallet_services.post_payment_credit(checkout)
+			self.paid.append(checkout)
+		self.pending = fixture.make_payment("PAY-SETTLE-PENDING", "key-settle-pending")
+		self.admin = User.objects.create_superuser(
+			email="settle-admin@example.com", password="StrongPassword123!", first_name="Settle", last_name="Admin"
+		)
+		self.client.force_login(self.admin)
+
+	def wallet(self):
+		from apps.wallets.models import BranchWallet
+
+		return BranchWallet.objects.get(branch=self.fx.branch)
+
+	def test_settle_one_payment_moves_pending_to_available(self):
+		from decimal import Decimal
+
+		checkout = self.paid[0]
+		detail_url = reverse("admin_web:gateway_payment_detail", args=[checkout.pk])
+		self.assertContains(self.client.get(detail_url), "Mark settled")
+		response = self.client.post(
+			reverse("admin_web:gateway_payment_settle", args=[checkout.pk]), {"note": "DANA file 2026-11-16"}
+		)
+		self.assertRedirects(response, detail_url, fetch_redirect_response=False)
+		checkout.refresh_from_db()
+		self.assertIsNotNone(checkout.settled_at)
+		self.assertIn("settle-admin@example.com: DANA file 2026-11-16", checkout.review_note)
+		wallet = self.wallet()
+		self.assertEqual(wallet.available_balance, Decimal("125000"))
+		self.assertEqual(wallet.pending_balance, Decimal("125000"))
+		self.assertNotContains(self.client.get(detail_url), "Mark settled</button>")
+
+	def test_settle_is_refused_for_unpaid_or_already_settled(self):
+		from decimal import Decimal
+
+		self.client.post(reverse("admin_web:gateway_payment_settle", args=[self.pending.pk]))
+		self.pending.refresh_from_db()
+		self.assertIsNone(self.pending.settled_at)
+
+		url = reverse("admin_web:gateway_payment_settle", args=[self.paid[0].pk])
+		self.client.post(url)
+		self.client.post(url)  # second press does nothing
+		self.assertEqual(self.wallet().available_balance, Decimal("125000"))
+
+	def test_settle_requires_post(self):
+		self.client.get(reverse("admin_web:gateway_payment_settle", args=[self.paid[0].pk]))
+		self.paid[0].refresh_from_db()
+		self.assertIsNone(self.paid[0].settled_at)
+
+	def test_settle_all_of_a_branch(self):
+		from decimal import Decimal
+
+		wallet_url = reverse("admin_web:wallet_detail", args=[self.fx.branch.pk])
+		self.assertContains(self.client.get(wallet_url), "2 paid online payment(s) not settled yet")
+		response = self.client.post(reverse("admin_web:wallet_settle", args=[self.fx.branch.pk]))
+		self.assertRedirects(response, wallet_url, fetch_redirect_response=False)
+		wallet = self.wallet()
+		self.assertEqual((wallet.available_balance, wallet.pending_balance), (Decimal("250000"), Decimal("0")))
+		self.pending.refresh_from_db()
+		self.assertIsNone(self.pending.settled_at)
+		self.assertNotContains(self.client.get(wallet_url), "Mark all settled")
+
+	def test_settle_needs_platform_admin(self):
+		self.client.force_login(self.fx.staff_user)
+		self.client.post(reverse("admin_web:wallet_settle", args=[self.fx.branch.pk]))
+		self.client.post(reverse("admin_web:gateway_payment_settle", args=[self.paid[0].pk]))
+		self.paid[0].refresh_from_db()
+		self.assertIsNone(self.paid[0].settled_at)
