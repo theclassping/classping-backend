@@ -300,14 +300,12 @@ def dana_bank(bank_code):
 def bank_inquiry_payload(request, config, bank_code, amount_sent):
     return {
         "partnerReferenceNo": request.reference_no,
-        "customerNumber": config.payout_phone,
         "beneficiaryAccountNumber": request.account_number,
+        "beneficiaryBankCode": bank_code,
         "amount": money(amount_sent),
         "additionalInfo": {
             "fundType": c.FUND_TYPE_BANK,
-            "chargeTarget": c.CHARGE_TARGET,
             "beneficiaryBankCode": bank_code,
-            "beneficiaryAccountName": request.account_name[: c.ACCOUNT_NAME_MAX],
         },
     }
 
@@ -333,15 +331,12 @@ def raise_for_bank_inquiry(body):
 def transfer_payload(request, config, bank_code, amount_sent):
     return {
         "partnerReferenceNo": request.reference_no,
-        "customerNumber": config.payout_phone,
         "beneficiaryAccountNumber": request.account_number,
         "beneficiaryBankCode": bank_code,
         "amount": money(amount_sent),
         "additionalInfo": {
             "fundType": c.FUND_TYPE_BANK,
-            "chargeTarget": c.CHARGE_TARGET,
             "needNotify": True,
-            "beneficiaryAccountName": request.account_name[: c.ACCOUNT_NAME_MAX],
         },
     }
 

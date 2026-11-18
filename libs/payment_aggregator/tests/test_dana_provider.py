@@ -516,21 +516,29 @@ class TransferToBankTests(unittest.TestCase):
         inquiry, transfer = (json.loads(call["data"]) for call in session.calls)
         self.assertTrue(session.calls[0]["url"].endswith("/v1.0/emoney/bank-account-inquiry.htm"))
         self.assertTrue(session.calls[1]["url"].endswith("/v1.0/emoney/transfer-bank.htm"))
-        self.assertEqual(inquiry["customerNumber"], "6281234567890")
-        self.assertEqual(inquiry["additionalInfo"]["beneficiaryBankCode"], "014")
         self.assertEqual(
-            transfer,
+            inquiry,
             {
                 "partnerReferenceNo": "WD-1",
-                "customerNumber": "6281234567890",
                 "beneficiaryAccountNumber": "1234567890",
                 "beneficiaryBankCode": "014",
                 "amount": {"value": "97500.00", "currency": "IDR"},
                 "additionalInfo": {
                     "fundType": "MERCHANT_WITHDRAW_FOR_CORPORATE",
-                    "chargeTarget": "MERCHANT",
-                    "needNotify": True,
-                    "beneficiaryAccountName": "Yayasan Sekolah",
+                    "beneficiaryBankCode": "014",
+                },
+            },
+        )
+        self.assertEqual(
+            transfer,
+            {
+                "partnerReferenceNo": "WD-1",
+                "beneficiaryAccountNumber": "1234567890",
+                "beneficiaryBankCode": "014",
+                "amount": {"value": "97500.00", "currency": "IDR"},
+                "additionalInfo": {
+                    "fundType": "MERCHANT_WITHDRAW_FOR_CORPORATE",
+                    "needNotify": False,
                 },
             },
         )
