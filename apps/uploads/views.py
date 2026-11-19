@@ -11,11 +11,13 @@ from apps.users.permissions import RoleBasedAccessPermission
 from rest_framework.views import APIView
 from django.conf import settings
 
+from apps.branch_subscriptions.offers import storage_offers
 from apps.uploads.paths import UploadTargetNotFound, resolve_upload_location
 from apps.uploads.services.media import (
     MediaInputError,
     MediaService,
     StorageFullError,
+    StorageLockedError,
     UploadStoreUnavailable,
     remove_partial_file,
 )
@@ -114,7 +116,14 @@ class PresignUrlView(APIView):
                     'used_bytes': error.used_bytes,
                     'capacity_bytes': error.capacity_bytes,
                     'requested_bytes': error.incoming_bytes,
+                    # What the branch can buy right away (add-on or bigger plan).
+                    **storage_offers(),
                 },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        except StorageLockedError as error:
+            return Response(
+                {'error': str(error), 'code': error.code, 'branch_id': error.branch_id, 'feature': 'storage_bytes'},
                 status=status.HTTP_403_FORBIDDEN,
             )
         except MediaInputError as error:

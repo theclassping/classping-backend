@@ -1,4 +1,5 @@
 from ..views_common import *
+from apps.branch_subscriptions.usage import SUBSCRIPTION_LIMIT_ERRORS, ensure_import_fits
 
 @login_required(login_url="admin_web:login")
 def school_list(request):
@@ -198,9 +199,21 @@ def class_form(request, school_pk, pk=None):
         student_formset = ClassStudentFormSet(initial=[{"student": x.student_id, "is_current": x.is_current} for x in class_obj.class_students.all()], prefix="students", form_kwargs={"branch": class_obj.branch_id})
     if request.method == "POST" and form.is_valid() and teacher_formset.is_valid() and student_formset.is_valid():
         selected_students = []
+        limit_error = None
+        new_rows = [
+            {"branch_id": form.cleaned_data["branch"].pk, "status": row.get("status") or "active"}
+            for row in student_formset.cleaned_data if row and row.get("create_student")
+        ]
+        try:
+            with transaction.atomic():
+                ensure_import_fits(new_rows)
+        except SUBSCRIPTION_LIMIT_ERRORS as error:
+            limit_error = error
         for row in student_formset.cleaned_data:
             if not row: continue
             if row.get("create_student"):
+                if limit_error is not None:
+                    continue
                 selected_students.append(Student.objects.create(
                     first_name=row["first_name"], last_name=row["last_name"],
                     date_of_birth=row["date_of_birth"], gender=row["gender"],
@@ -215,7 +228,9 @@ def class_form(request, school_pk, pk=None):
             assignment for assignment in existing_assignments
             if assignment.student_id not in selected_ids
         ]
-        if any(assignment.invoices.exists() for assignment in removals):
+        if limit_error is not None:
+            form.add_error(None, limit_error.message)
+        elif any(assignment.invoices.exists() for assignment in removals):
             form.add_error(None, "Students with invoices cannot be removed from this class.")
         else:
             with transaction.atomic():

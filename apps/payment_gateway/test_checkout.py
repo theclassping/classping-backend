@@ -1,3 +1,12 @@
+from plan_subscriptions import entitlements as _entitlements
+from plan_subscriptions.models import Subscription as _Subscription
+
+
+def expire_subscription(branch):
+    _Subscription.objects.filter(subscriber=branch).update(status="expired")
+    _entitlements.invalidate(branch)
+
+
 import threading
 from datetime import date, datetime, timedelta
 from decimal import Decimal
@@ -116,8 +125,7 @@ class PayabilityTests(CheckoutFixtureMixin, TestCase):
         self.assertEqual(payability.reason, services.NotPayableReason.INVOICE_LOCKED)
         self.assertEqual(payability.locked_by, checkout)
 
-        self.branch.is_payment_gateway_enabled = False
-        self.branch.save(update_fields=["is_payment_gateway_enabled"])
+        expire_subscription(self.branch)  # online payment comes from the plan; expired = off
         self.assertEqual(self.reason(self.invoice_2), services.NotPayableReason.GATEWAY_DISABLED)
 
     def test_quote_totals_and_channels(self):
@@ -193,8 +201,7 @@ class InvoiceAndChannelApiTests(CheckoutFixtureMixin, TestCase):
         self.assertIn("WIB", response.data["detail"])
 
     def test_channels_gateway_disabled(self):
-        self.branch.is_payment_gateway_enabled = False
-        self.branch.save(update_fields=["is_payment_gateway_enabled"])
+        expire_subscription(self.branch)  # online payment comes from the plan; expired = off
         self.assertCode(self.parent.get(f"/api/gateway/channels/?invoice_ids={self.invoice.pk}"), 400, "GATEWAY_DISABLED")
 
 

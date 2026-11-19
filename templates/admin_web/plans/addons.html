@@ -1,0 +1,30 @@
+{% extends "admin_web/base.html" %}
+
+{% block title %}Add-ons - ClassPing Admin{% endblock %}
+{% block page_title %}<h1>Plans</h1>{% endblock %}
+
+{% block content %}
+{% include "admin_web/plans/_tabs.html" %}
+<div class="card">
+    <p class="text-muted">Branches buy add-ons themselves and pay online; they start as soon as the payment arrives. Several purchases add up.</p>
+    <div class="form-actions"><a class="btn" href="{% url 'admin_web:addon_create' %}">New add-on</a></div>
+    <table class="data-table">
+        <thead><tr><th>Add-on</th><th>Price</th><th>Billing</th><th>Gives</th><th>Max qty</th><th>Plans</th><th>Branches using</th><th>Active</th><th></th></tr></thead>
+        <tbody>
+        {% for row in rows %}
+            <tr>
+                <td><strong>{{ row.addon.name }}</strong><br><small class="text-muted">{{ row.addon.code }}</small></td>
+                <td>{{ row.price }}</td>
+                <td>{{ row.addon.get_billing_display }}</td>
+                <td>{{ row.gives }}</td>
+                <td>{{ row.addon.max_quantity|default:"—" }}</td>
+                <td>{{ row.plans }}</td>
+                <td>{{ row.active }}</td>
+                <td>{{ row.addon.is_active|yesno:"Yes,No" }}</td>
+                <td><a class="btn btn-small" href="{% url 'admin_web:addon_edit' row.addon.pk %}">Edit</a></td>
+            </tr>
+        {% empty %}<tr><td colspan="9" class="text-muted">No add-ons yet.</td></tr>{% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

@@ -1,0 +1,64 @@
+{% extends "admin_web/base.html" %}
+
+{% block title %}Subscriptions - ClassPing Admin{% endblock %}
+{% block page_title %}<h1>Subscriptions</h1>{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h2>Subscriptions</h2>
+        <p class="text-muted">One subscription per branch. Status is worked out from today's date, so it is always current.</p>
+    </div>
+    <div class="form-actions"><a class="btn btn-secondary" href="{% url 'admin_web:plan_list' %}">Plans</a></div>
+</div>
+{% if without_subscription %}
+<p class="alert alert-error">{{ without_subscription }} branch(es) have no subscription yet.</p>
+{% endif %}
+<form method="get" class="filter-bar">
+    <div class="form-group">
+        <label for="sub-search">Search</label>
+        <input id="sub-search" type="search" name="q" value="{{ search }}" placeholder="School or branch">
+    </div>
+    <div class="form-group">
+        <label for="sub-status">Status</label>
+        <select id="sub-status" name="status">
+            <option value="">All statuses</option>
+            {% for value, label in statuses %}<option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+    </div>
+    <div class="form-group">
+        <label for="sub-plan">Plan</label>
+        <select id="sub-plan" name="plan">
+            <option value="">All plans</option>
+            {% for plan in plans %}<option value="{{ plan.code }}" {% if plan_filter == plan.code %}selected{% endif %}>{{ plan.name }}</option>{% endfor %}
+        </select>
+    </div>
+    <button class="btn" type="submit">Filter</button>
+</form>
+<div class="card">
+    {% if page_obj.object_list %}
+    <div class="table-wrapper">
+        <table class="data-table">
+            <thead><tr><th>Branch</th><th>Plan</th><th>Status</th><th>Trial / paid until</th><th>Students</th><th>Storage</th><th>Open invoice</th><th></th></tr></thead>
+            <tbody>
+            {% for sub in page_obj %}
+                <tr>
+                    <td><strong>{{ sub.subscriber.name }}</strong><br><small class="text-muted">{{ sub.subscriber.school.name }}</small></td>
+                    <td>{{ sub.plan.name }}</td>
+                    <td><span class="status {% if sub.effective == 'active' or sub.effective == 'trialing' %}status-active{% else %}status-inactive{% endif %}">{{ sub.effective|title|cut:"_" }}</span>{% if sub.cancel_at_period_end %}<br><small class="text-muted">cancels at period end</small>{% endif %}</td>
+                    <td>{{ sub.until|date:"d M Y"|default:"—" }}</td>
+                    <td>{{ sub.students.0 }} / {{ sub.students.1|default_if_none:"∞" }}</td>
+                    <td>{{ sub.storage_used|filesizeformat }} / {% if sub.storage_limit is None %}∞{% else %}{{ sub.storage_limit|filesizeformat }}{% endif %}</td>
+                    <td>{% if sub.open_invoice %}{{ sub.open_invoice.number }}<br><small class="text-muted">Rp {{ sub.open_invoice.total|floatformat:0 }} · due {{ sub.open_invoice.due_at|date:"d M Y" }}</small>{% else %}—{% endif %}</td>
+                    <td><a class="btn btn-small" href="{% url 'admin_web:subscription_detail' sub.pk %}">Open</a></td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state"><h3>No subscriptions found</h3><p>A branch gets a subscription (trial) when it is created.</p></div>
+    {% endif %}
+</div>
+{% include "admin_web/includes/pagination.html" %}
+{% endblock %}

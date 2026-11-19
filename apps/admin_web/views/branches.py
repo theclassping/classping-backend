@@ -2,7 +2,6 @@ from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
 
-from apps.uploads.models import StorageAddOn
 from apps.uploads.usage import branch_storage_report, branches_by_usage
 
 from ..views_common import *
@@ -47,10 +46,7 @@ def storage_overview(request):
     rows = branches_by_usage(branches)
     for row in rows:
         row["school_name"] = names.get(row["branch_id"], "")
-    pending_addons = StorageAddOn.objects.filter(status=StorageAddOn.Status.PENDING).select_related(
-        "branch__school", "requested_by",
-    ).order_by("created_at")
-    return render(request, "admin_web/branches/storage.html", {"rows": rows, "pending_addons": pending_addons})
+    return render(request, "admin_web/branches/storage.html", {"rows": rows})
 
 def branch_detail(request, school_pk, pk):
     school = get_object_or_404(School, pk=school_pk)
@@ -72,7 +68,6 @@ def branch_detail(request, school_pk, pk):
             "branch": branch,
             "location_path": location_path,
             "storage": branch_storage_report(branch),
-            "storage_addons": branch.storage_addons.select_related("requested_by", "reviewed_by")[:20],
         },
     )
 

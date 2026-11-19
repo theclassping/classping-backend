@@ -1,0 +1,35 @@
+{% extends "admin_web/base.html" %}
+
+{% block title %}{% if feature %}{{ feature.name }}{% else %}New feature{% endif %} - ClassPing Admin{% endblock %}
+{% block page_title %}<h1>Plans</h1>{% endblock %}
+
+{% block content %}
+{% include "admin_web/plans/_tabs.html" %}
+<div class="card">
+    <h3>{% if feature %}Edit {{ feature.name }}{% else %}New feature{% endif %}</h3>
+    {% for error in errors %}<p class="alert alert-error">{{ error }}</p>{% endfor %}
+    <form method="post">
+        {% csrf_token %}
+        <div class="form-group"><label>Code</label>
+            {% if feature %}<input value="{{ feature.code }}" disabled>
+            {% else %}<input name="code" value="{{ data.code|default:'' }}" placeholder="e.g. max_teachers" required>{% endif %}
+            <small class="text-muted">Used by the app to check the limit. Fixed once created; the app must be updated to use a new code.</small>
+        </div>
+        <div class="form-group"><label>Kind</label>
+            {% if feature %}<input value="{{ feature.get_kind_display }}" disabled>
+            {% else %}<select name="kind">{% for value, label in kinds %}<option value="{{ value }}" {% if data.kind == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>{% endif %}
+        </div>
+        <div class="form-group"><label>Name</label><input name="name" value="{% if data %}{{ data.name }}{% else %}{{ feature.name|default:'' }}{% endif %}" required></div>
+        <div class="form-group"><label>Unit</label><input name="unit" value="{% if data %}{{ data.unit }}{% else %}{{ feature.unit|default:'' }}{% endif %}" placeholder="students, bytes (shown as GB)"></div>
+        <div class="form-group"><label>After the subscription expires</label>
+            <select name="on_expiry">{% for value, label in on_expiry_choices %}<option value="{{ value }}" {% if data %}{% if data.on_expiry == value %}selected{% endif %}{% elif feature.on_expiry == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+        </div>
+        <div class="form-group"><label>Sort order</label><input name="sort_order" inputmode="numeric" value="{% if data %}{{ data.sort_order }}{% else %}{{ feature.sort_order|default:0 }}{% endif %}"></div>
+        <div class="form-group"><label><input type="checkbox" name="is_active" {% if data %}{% if data.is_active %}checked{% endif %}{% elif not feature or feature.is_active %}checked{% endif %}> Active</label></div>
+        <div class="form-actions">
+            <button class="btn" type="submit">Save feature</button>
+            <a class="btn btn-secondary" href="{% url 'admin_web:feature_list' %}">Cancel</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

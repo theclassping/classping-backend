@@ -100,19 +100,3 @@ class PresignUrlResponseSerializer(serializers.Serializer):
     presigned_url = serializers.CharField()
     expires_in = serializers.IntegerField()
     content_type = serializers.CharField()
-
-
-class StorageAddOnSerializer(serializers.Serializer):
-    id = serializers.IntegerField()
-    branch_id = serializers.IntegerField()
-    size_bytes = serializers.IntegerField()
-    status = serializers.CharField()
-    note = serializers.CharField()
-    review_note = serializers.CharField()
-    requested_by = serializers.SerializerMethodField()
-    created_at = serializers.DateTimeField()
-    reviewed_at = serializers.DateTimeField(allow_null=True)
-
-    def get_requested_by(self, obj):
-        user = obj.requested_by
-        return None if user is None else {"id": user.pk, "email": user.email}

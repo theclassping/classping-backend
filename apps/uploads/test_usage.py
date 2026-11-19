@@ -12,6 +12,13 @@ Status = MediaObject.Status
 GIB = 1024 ** 3
 
 
+def use_plan_storage(size):
+    """Capacity now comes from the branch plan: give the trial plan (Starter) ``size`` bytes."""
+    from plan_subscriptions.models import PlanFeature
+
+    PlanFeature.objects.filter(plan__code="starter", feature__code="storage_bytes").update(value=size)
+
+
 class UsageStatusTests(SimpleTestCase):
     def test_thresholds(self):
         self.assertEqual(usage_status(79, 100), "ok")
@@ -26,6 +33,7 @@ class UsageStatusTests(SimpleTestCase):
 class StorageUsageApiTests(BranchFixture, TestCase):
     def setUp(self):
         self.make_fixture()
+        use_plan_storage(1000)
         self.media("a1", self.branch_a, 300, "activities", self.class_a)
         self.media("a2", self.branch_a, 200, "payments", self.class_a, status=Status.PENDING)
         self.media("a3", self.branch_a, 100, "students")
@@ -168,6 +176,7 @@ class StorageCapacityEnforcementTests(BranchFixture, TestCase):
         from apps.uploads.storage import StorageFactory
 
         self.make_fixture()
+        use_plan_storage(1000)
         StorageFactory.reset()
         self.addCleanup(StorageFactory.reset)
         patch.object(MediaService, "_redis", return_value=None).start()
@@ -243,6 +252,7 @@ class LocalDiskFullTests(SimpleTestCase):
 class AdminWebUploadCapacityTests(BranchFixture, TestCase):
     def setUp(self):
         self.make_fixture()
+        use_plan_storage(1000)
         MediaObject.objects.create(file_key="used", branch=self.branch_a, category="students", size_bytes=700)
 
     def form_errors(self, size):

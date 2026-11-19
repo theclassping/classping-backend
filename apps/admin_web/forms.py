@@ -25,7 +25,7 @@ from apps.users.managers import generate_temporary_password
 from apps.wallets.models import PayoutAccount
 from apps.admin_web.media import NO_BRANCH_MESSAGE, process_uploaded_image
 from apps.uploads.paths import instance_media_location
-from apps.uploads.services.media import StorageFullError
+from apps.uploads.services.media import StorageFullError, StorageLockedError
 from apps.uploads.usage import ensure_capacity
 
 
@@ -68,7 +68,7 @@ class SearchableImageUploadMixin:
         try:
             with transaction.atomic():
                 ensure_capacity(location.branch_id, uploaded_file.size)
-        except StorageFullError as error:
+        except (StorageFullError, StorageLockedError) as error:
             self.add_error("image_file", str(error))
 
     def save(self, commit=True):

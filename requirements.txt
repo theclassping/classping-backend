@@ -56,3 +56,6 @@ wcwidth==0.9.4
 
 # Local library (libs/payment_aggregator); reinstall after changing it.
 ./libs/payment_aggregator
+
+# Local library (libs/plan_subscriptions); reinstall after changing it.
+./libs/plan_subscriptions

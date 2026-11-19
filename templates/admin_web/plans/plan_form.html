@@ -1,0 +1,63 @@
+{% extends "admin_web/base.html" %}
+
+{% block title %}{% if plan %}{{ plan.name }}{% else %}New plan{% endif %} - ClassPing Admin{% endblock %}
+{% block page_title %}<h1>Plans</h1>{% endblock %}
+
+{% block content %}
+{% include "admin_web/plans/_tabs.html" %}
+<div class="card">
+    <h3>{% if plan %}Edit {{ plan.name }}{% else %}New plan{% endif %}</h3>
+    {% if plan %}<p class="text-muted">{{ branches }} branch(es) are on this plan now.</p>{% endif %}
+    {% for error in errors %}<p class="alert alert-error">{{ error }}</p>{% endfor %}
+    <form method="post">
+        {% csrf_token %}
+        <div class="form-group"><label>Code</label>
+            {% if plan %}<input value="{{ plan.code }}" disabled><small class="text-muted">Fixed once created.</small>
+            {% else %}<input name="code" value="{{ data.code|default:'' }}" placeholder="e.g. starter" required>{% endif %}
+        </div>
+        <div class="form-group"><label>Name</label><input name="name" value="{% if data %}{{ data.name }}{% else %}{{ plan.name|default:'' }}{% endif %}" required></div>
+        <div class="form-group"><label>Description</label><input name="description" value="{% if data %}{{ data.description }}{% else %}{{ plan.description|default:'' }}{% endif %}" placeholder="Hingga 100 siswa · 50 GB"></div>
+        <div class="form-group"><label>Price per month (Rp, excluding PPN)</label>
+            <input name="price" inputmode="numeric" value="{% if data %}{{ data.price }}{% elif price %}{{ price.amount|floatformat:0 }}{% endif %}" required>
+            {% if plan %}<small class="text-muted">A new price applies to new subscribers and to branches that change tier.{% if stay_on_old %} {{ stay_on_old }} branch(es) are still on an older price.{% endif %}</small>
+            <label><input type="checkbox" name="apply_to_existing" {% if data.apply_to_existing %}checked{% endif %}> Apply to existing branches from their next renewal</label>{% endif %}
+        </div>
+
+        <h3>Features</h3>
+        <p class="text-muted">Limit changes apply to every branch on this plan immediately. Branches over a new limit keep their data; new additions are blocked.</p>
+        <table class="data-table">
+            <thead><tr><th>Feature</th><th>Included</th><th>Value</th></tr></thead>
+            <tbody>
+            {% for row in feature_rows %}
+                <tr>
+                    <td>{{ row.feature.name }}<br><small class="text-muted">{{ row.feature.code }}</small></td>
+                    <td>
+                        <select name="f_{{ row.feature.pk }}_mode">
+                            <option value="" {% if not row.mode %}selected{% endif %}>Not included</option>
+                            {% if row.feature.kind == 'boolean' %}
+                                <option value="on" {% if row.mode == 'on' %}selected{% endif %}>Yes</option>
+                                <option value="off" {% if row.mode == 'off' %}selected{% endif %}>No</option>
+                            {% else %}
+                                <option value="limit" {% if row.mode == 'limit' %}selected{% endif %}>Up to</option>
+                                <option value="unlimited" {% if row.mode == 'unlimited' %}selected{% endif %}>Unlimited</option>
+                            {% endif %}
+                        </select>
+                    </td>
+                    <td>{% if row.feature.kind != 'boolean' %}<input name="f_{{ row.feature.pk }}" value="{{ row.value }}" inputmode="decimal" style="max-width:8rem"> {{ row.unit }}{% endif %}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+
+        <h3>Settings</h3>
+        <div class="form-group"><label>Trial days</label><input name="trial_days" inputmode="numeric" value="{% if data %}{{ data.trial_days }}{% else %}{{ plan.trial_days|default_if_none:'' }}{% endif %}"><small class="text-muted">Empty = the default from settings (SUBSCRIPTION_TRIAL_DAYS, 180 days). Trials always start on Starter.</small></div>
+        <div class="form-group"><label>Sort order</label><input name="sort_order" inputmode="numeric" value="{% if data %}{{ data.sort_order }}{% else %}{{ plan.sort_order|default:0 }}{% endif %}"></div>
+        <div class="form-group"><label><input type="checkbox" name="is_public" {% if data %}{% if data.is_public %}checked{% endif %}{% elif not plan or plan.is_public %}checked{% endif %}> Shown to branches</label></div>
+        <div class="form-group"><label><input type="checkbox" name="is_active" {% if data %}{% if data.is_active %}checked{% endif %}{% elif not plan or plan.is_active %}checked{% endif %}> Active (can be bought)</label></div>
+        <div class="form-actions">
+            <button class="btn" type="submit" {% if plan and branches %}onclick="return confirm('Save? Limit changes apply to {{ branches }} branch(es) immediately.');"{% endif %}>Save plan</button>
+            <a class="btn btn-secondary" href="{% url 'admin_web:plan_list' %}">Cancel</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

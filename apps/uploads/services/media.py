@@ -68,6 +68,19 @@ class StorageFullError(MediaInputError):
         )
 
 
+class StorageLockedError(MediaInputError):
+    """Raised while the branch subscription has expired: images stay visible, nothing new is stored."""
+
+    code = "FEATURE_LOCKED"
+
+    def __init__(self, branch_id: int, state: str):
+        self.branch_id = branch_id
+        self.state = state
+        super().__init__(
+            "The subscription has expired. Existing images stay visible; renew it to upload new ones."
+        )
+
+
 class UploadStoreUnavailable(RuntimeError):
     """Raised when REDIS_URL is set but Redis cannot be reached.
 
