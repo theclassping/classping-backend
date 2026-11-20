@@ -160,7 +160,7 @@ class CreateOrderTests(unittest.TestCase):
         provider, session = make_dana_provider(FakeResponse(body=body), channel_fees=FEES)
         result = provider.create_billing(billing_request("NETWORK_PAY_PG_CARD"))
         option = session.last_json()["payOptionDetails"][0]
-        self.assertEqual(option["payMethod"], "CREDIT_CARD")
+        self.assertEqual(option["payMethod"], "NETWORK_PAY")
         self.assertEqual(option["payOption"], "NETWORK_PAY_PG_CARD")
         self.assertEqual(option["additionalInfo"], {"phoneNumber": "6281234567890"})
         self.assertEqual(result.payment_link, "https://m.sandbox.dana.id/pay?x=1")
@@ -569,7 +569,7 @@ class TransferToBankTests(unittest.TestCase):
                 "amount": {"value": "97500.00", "currency": "IDR"},
                 "additionalInfo": {
                     "fundType": "MERCHANT_WITHDRAW_FOR_CORPORATE",
-                    "needNotify": False,
+                    "needNotify": True,
                 },
             },
         )

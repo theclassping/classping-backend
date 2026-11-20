@@ -44,3 +44,5 @@ celerybeat-schedule*
 # Python package build output (libs/*)
 build/
 *.egg-info/
+
+samples/*

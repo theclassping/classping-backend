@@ -73,9 +73,8 @@ CHANNELS = {
         "method": PaymentMethod.VIRTUAL_ACCOUNT,
         "fee_type": FeeType.FLAT,
     },
-    # Card: payMethod CREDIT_CARD (DEBIT_CARD also accepted) with payOption
-    # NETWORK_PAY_PG_CARD (DANA integration team, 2026-11-16); the card input
-    # page is DANA's webRedirectUrl.
+    # Card: DANA expects payMethod NETWORK_PAY with payOption
+    # NETWORK_PAY_PG_CARD; the card input page is DANA's webRedirectUrl.
     "NETWORK_PAY_PG_CARD": {
         "name": "Kartu Kredit/Debit",
         "pay_method": "NETWORK_PAY",
