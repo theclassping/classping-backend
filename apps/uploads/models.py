@@ -65,11 +65,10 @@ class MediaObject(models.Model):
 
 class StorageAddOn(models.Model):
     """
-    Extra storage for a branch, on top of its base capacity.
-
-    Branch staff request it; a superadmin approves it once the branch has
-    paid (outside the system). Approved add-ons are permanent and are summed
-    into the branch's capacity (see apps.uploads.usage.capacity_of).
+    Retired: storage add-on requests approved by hand. Storage is now bought as
+    a subscription add-on (apps.branch_subscriptions). Approved rows were
+    carried into a storage_bytes override by branch_subscriptions 0002; the
+    table is dropped in a later release.
     """
 
     class Status(models.TextChoices):

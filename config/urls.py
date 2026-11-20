@@ -98,6 +98,7 @@ urlpatterns = [
     path("api/webhooks/<str:source>/<str:event>/", webhook, name="webhook"),
     path("api/", include("apps.activities.urls")),
     path("api/media/", include("apps.uploads.urls")),
+    path("api/subscription/", include("plan_subscriptions.urls")),
     path("api/parent/", include("apps.parent_portal.urls")),
 
     # ClassPing Admin Web

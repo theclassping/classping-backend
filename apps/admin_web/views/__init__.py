@@ -31,10 +31,13 @@ from .staff import staff_detail, staff_list
 from .staff_mutations import staff_activate, staff_create, staff_deactivate, staff_edit
 from .branches import branch_detail, branch_create, branch_edit, branch_deactivate, branch_set_active, storage_overview
 from .payout_accounts import payout_account_delete, payout_account_edit
-from .storage_addons import storage_addon_review
 from .wallets import (
     wallet_detail, wallet_list, withdrawal_detail, withdrawal_list, withdrawal_resend, withdrawal_resolve,
     withdrawal_sync,
 )
 
 __all__ = [name for name in globals() if not name.startswith("_")]
+from .subscriptions import (
+    addon_form, addon_list, feature_form, feature_list, plan_form, plan_list, subscription_detail,
+    subscription_list,
+)

@@ -18,6 +18,7 @@ from apps.core.seeds.report_sections import seed_report_sections
 from apps.core.seeds.indicators import seed_indicators
 from apps.core.seeds.billing import seed_billing
 from apps.core.seeds.demo_student_data import seed_demo_student_data
+from apps.core.seeds.subscriptions import seed_subscriptions
 
 
 class Command(BaseCommand):
@@ -27,7 +28,7 @@ class Command(BaseCommand):
         parser.add_argument(
             "seed_group",
             nargs="?",
-            choices=["billing", "demo_student_data"],
+            choices=["billing", "demo_student_data", "subscriptions"],
             help="Seed only the selected data group.",
         )
 
@@ -38,6 +39,11 @@ class Command(BaseCommand):
             self.stdout.write(
                 self.style.SUCCESS("Billing data seeded successfully.")
             )
+            return
+
+        if options["seed_group"] == "subscriptions":
+            self.stdout.write("Seeding demo subscriptions...")
+            self.stdout.write(self.style.SUCCESS(str(seed_subscriptions())))
             return
 
         if options["seed_group"] == "demo_student_data":
@@ -96,6 +102,9 @@ class Command(BaseCommand):
 
         self.stdout.write("Seeding billing data...")
         seed_billing()
+
+        self.stdout.write("Seeding demo subscriptions...")
+        seed_subscriptions()
 
         self.stdout.write(
             self.style.SUCCESS(

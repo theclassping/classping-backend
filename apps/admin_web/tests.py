@@ -581,9 +581,11 @@ class PaymentGatewayAdminWebTests(TestCase):
 
 	def test_branch_pages_show_payment_gateway_state(self):
 		form = self.client.get(reverse("admin_web:branch_edit", args=[self.school.pk, self.branch.pk]))
-		self.assertContains(form, 'name="is_payment_gateway_enabled"')
+		# Online payment now comes from the branch subscription plan, not a checkbox.
+		self.assertNotContains(form, 'name="is_payment_gateway_enabled"')
+		self.assertContains(form, "subscription plan")
 		detail = self.client.get(reverse("admin_web:branch_detail", args=[self.school.pk, self.branch.pk]))
-		self.assertContains(detail, "Payment Gateway")
+		self.assertContains(detail, "Open subscription")
 
 	def test_manual_payment_form_offers_only_manual_methods(self):
 		from apps.admin_web.forms import PaymentForm

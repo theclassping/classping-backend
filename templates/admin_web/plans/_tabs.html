@@ -1,0 +1,11 @@
+<div class="page-header">
+    <div>
+        <h2>Plans</h2>
+        <p class="text-muted">What branches can buy. Limits apply to every branch on a plan at once; a new price applies to new subscribers.</p>
+    </div>
+    <div class="form-actions">
+        <a class="btn {% if tab == 'plans' %}btn-primary{% else %}btn-secondary{% endif %}" href="{% url 'admin_web:plan_list' %}">Plans</a>
+        <a class="btn {% if tab == 'features' %}btn-primary{% else %}btn-secondary{% endif %}" href="{% url 'admin_web:feature_list' %}">Features</a>
+        <a class="btn {% if tab == 'addons' %}btn-primary{% else %}btn-secondary{% endif %}" href="{% url 'admin_web:addon_list' %}">Add-ons</a>
+    </div>
+</div>

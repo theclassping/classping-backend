@@ -2,11 +2,8 @@ from apps.core.access import ScopedQuerysetMixin
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
-from rest_framework.generics import get_object_or_404
 from rest_framework.response import Response
 from django.db.models import Q
-from apps.uploads.models import StorageAddOn
-from apps.uploads.serializers import StorageAddOnSerializer
 from apps.uploads.services import quota
 from apps.uploads.usage import branch_storage_report, branches_by_usage
 from apps.users.permissions import RoleBasedAccessPermission
@@ -112,32 +109,3 @@ class BranchViewSet(ScopedQuerysetMixin, viewsets.ModelViewSet):
             raise ValidationError({"error": str(error)})
         body = {"category": category, "class_id": class_id, "dry_run": dry_run, **summary}
         return Response(body, status=status.HTTP_200_OK if dry_run else status.HTTP_202_ACCEPTED)
-
-    @action(detail=True, methods=["get", "post"], url_path="storage-addons", permission_classes=[permissions.IsAuthenticated])
-    def storage_addons(self, request, pk=None):
-        """
-        GET: the branch's add-on requests, newest first.
-        POST {"size_gb": 10, "note": "..."}: request more storage. A superadmin
-        approves it after payment; approved add-ons are permanent.
-        """
-        branch = self._storage_branch()
-        if request.method == "GET":
-            return Response(StorageAddOnSerializer(branch.storage_addons.all(), many=True).data)
-        try:
-            addon = quota.request_addon(branch, request.data.get("size_gb"), request.data.get("note", ""), request.user)
-        except quota.StorageActionError as error:
-            raise ValidationError({"error": str(error)})
-        return Response(StorageAddOnSerializer(addon).data, status=status.HTTP_201_CREATED)
-
-    @action(
-        detail=True, methods=["post"], url_path=r"storage-addons/(?P<addon_id>\d+)/cancel",
-        permission_classes=[permissions.IsAuthenticated],
-    )
-    def storage_addon_cancel(self, request, pk=None, addon_id=None):
-        branch = self._storage_branch()
-        addon = get_object_or_404(StorageAddOn, pk=addon_id, branch=branch)
-        try:
-            addon = quota.cancel_addon(addon)
-        except quota.StorageActionError as error:
-            raise ValidationError({"error": str(error)})
-        return Response(StorageAddOnSerializer(addon).data)

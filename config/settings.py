@@ -95,6 +95,10 @@ INSTALLED_APPS = [
 
     # Admin web application
     "apps.admin_web",
+
+    # Subscriptions: reusable package + Classping wiring
+    "plan_subscriptions",
+    "apps.branch_subscriptions.apps.BranchSubscriptionsConfig",
 ]
 
 MIDDLEWARE = [
@@ -430,4 +434,35 @@ MAILJET_TEMPLATES = {
     "withdrawal_status": 8507188,
     # Nightly branch balance mismatch alert to OPS_ALERT_EMAIL.
     "balance_alert": 8507233,
+    # Branch subscriptions (apps.branch_subscriptions.notify). Missing = skipped, logged.
+    "subscription_trial_started": 8541995,
+    "subscription_trial_ending": 8542032,
+    "subscription_invoice_issued": 8542034,
+    "subscription_invoice_reminder": 8542037,
+    "subscription_payment_overdue": 8542044,
+    "subscription_expired": 8542045,
+    "subscription_payment_received": 8542046,
+}
+
+# Subscriptions (libs/plan_subscriptions). The customer is the branch.
+PLAN_SUBSCRIPTIONS_SUBSCRIBER_MODEL = "schools.Branch"
+PLAN_SUBSCRIPTIONS = {
+    "SUBSCRIBER_RESOLVER": "apps.branch_subscriptions.access.branch_from_request",
+    "SUBSCRIBER_LABEL": "apps.branch_subscriptions.access.branch_label",
+    "USAGE_PROVIDER": "apps.branch_subscriptions.usage.usage_of",
+    "API_PERMISSION_CLASSES": ["apps.branch_subscriptions.access.IsBranchStaff"],
+    "BILLING_BACKEND": "apps.branch_subscriptions.billing.AggregatorBilling",
+    "NOTIFIER": "apps.branch_subscriptions.notify.MailjetNotifier",
+    "CURRENCY": "IDR",
+    "AMOUNT_DECIMALS": 0,
+    "TAX_RATE": os.environ.get("SUBSCRIPTION_TAX_RATE", "0.11"),
+    "TAX_LABEL": "PPN 11%",
+    "DEFAULT_TRIAL_DAYS": int(os.environ.get("SUBSCRIPTION_TRIAL_DAYS", "180")),
+    "TRIAL_PLAN": "starter",
+    "GRACE_DAYS": 7,
+    "INVOICE_LEAD_DAYS": 7,
+    "PURCHASE_INVOICE_DAYS": 7,
+    "TRIAL_REMINDER_DAYS": [30, 7, 1],
+    "RENEWAL_REMINDER_DAYS": [1],
+    "INVOICE_NUMBER_PREFIX": "SINV",
 }

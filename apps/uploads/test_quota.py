@@ -7,12 +7,11 @@ from django.urls import reverse
 from rest_framework.test import APIClient
 
 from apps.activities.models import Activity, ActivityImage
-from apps.uploads.models import MediaObject, StorageAddOn
+from apps.uploads.models import MediaObject
 from apps.uploads.paths import build_media_key
 from apps.uploads.services.media import MediaService
 from apps.uploads.storage import StorageFactory
 from apps.uploads.test_paths import BranchFixture
-from apps.uploads.usage import capacity_of
 from apps.users.models import User
 
 Status = MediaObject.Status
@@ -110,82 +109,3 @@ class StorageResetTests(QuotaTestCase):
         )
         self.assertEqual(other.status_code, 404)
         self.assertEqual(self.reset(user=self.admin, category="students", dry_run=True).status_code, 200)
-
-
-@override_settings(STORAGE_TYPE="local", DEFAULT_BRANCH_STORAGE_BYTES=GIB, ENFORCE_BRANCH_STORAGE_CAPACITY=True)
-class StorageAddOnTests(QuotaTestCase):
-    def setUp(self):
-        super().setUp()
-        StorageFactory.reset()
-        self.addCleanup(StorageFactory.reset)
-        self.addCleanup(MediaService._pending_uploads.clear)
-        MediaObject.objects.create(file_key="full", branch=self.branch_a, category="students", size_bytes=GIB)
-        self.url = f"/api/branches/{self.branch_a.pk}/storage-addons/"
-        self.superadmin = User.objects.create_superuser(email="root@example.com", password="StrongPassword123!")
-
-    def request_addon(self, size_gb=2, user=None):
-        return self.client_for(user or self.officer_user).post(self.url, {"size_gb": size_gb, "note": "Paid"}, format="json")
-
-    def presign(self):
-        return self.client_for(self.officer_user).post("/api/media/presign/", {
-            "filename": "a.jpg", "content_type": "image/jpeg", "size": 1000, "purpose": "student",
-        }, format="json")
-
-    def review(self, addon, decision, user=None):
-        self.client.force_login(user or self.superadmin)
-        return self.client.post(
-            reverse("admin_web:storage_addon_review", args=[self.school.pk, self.branch_a.pk, addon.pk]),
-            {"decision": decision, "review_note": "TRX-1"},
-        )
-
-    def test_request_is_pending_until_approved_then_capacity_grows(self):
-        response = self.request_addon()
-        self.assertEqual(response.status_code, 201, response.data)
-        self.assertEqual((response.data["status"], response.data["size_bytes"]), ("pending", 2 * GIB))
-        self.assertEqual(self.presign().status_code, 403)
-
-        addon = StorageAddOn.objects.get()
-        self.assertEqual(self.review(addon, "approve").status_code, 302)
-        addon.refresh_from_db()
-        self.assertEqual((addon.status, addon.reviewed_by, addon.review_note), ("approved", self.superadmin, "TRX-1"))
-        self.assertEqual(capacity_of(self.branch_a), 3 * GIB)
-        self.assertEqual(self.presign().status_code, 200)
-
-        report = self.client_for(self.officer_user).get(f"/api/branches/{self.branch_a.pk}/storage-usage/").data
-        self.assertEqual((report["base_capacity_bytes"], report["addon_bytes"]), (GIB, 2 * GIB))
-        listed = self.client_for(self.admin).get("/api/branches/storage-usage/").data
-        self.assertEqual(next(r for r in listed if r["branch_id"] == self.branch_a.pk)["capacity_bytes"], 3 * GIB)
-
-    def test_rejected_and_cancelled_add_no_capacity(self):
-        self.request_addon()
-        self.review(StorageAddOn.objects.get(), "reject")
-        self.request_addon()
-        pending = StorageAddOn.objects.get(status="pending")
-        response = self.client_for(self.officer_user).post(f"{self.url}{pending.pk}/cancel/")
-        self.assertEqual(response.data["status"], "cancelled")
-        self.assertEqual(capacity_of(self.branch_a), GIB)
-        self.assertEqual(len(self.client_for(self.officer_user).get(self.url).data), 2)
-
-    def test_one_pending_request_at_a_time_and_size_is_validated(self):
-        for bad in (0, -1, 1001, "2", 1.5, None):
-            self.assertEqual(self.request_addon(size_gb=bad).status_code, 400, bad)
-        self.assertEqual(self.request_addon().status_code, 201)
-        self.assertEqual(self.request_addon().status_code, 400)
-
-    def test_only_superadmin_approves_and_only_once(self):
-        self.request_addon()
-        addon = StorageAddOn.objects.get()
-        self.assertEqual(self.review(addon, "approve", user=self.admin).status_code, 403)
-        self.review(addon, "approve")
-        self.review(addon, "reject")
-        addon.refresh_from_db()
-        self.assertEqual(addon.status, "approved")
-
-    def test_teachers_cannot_request(self):
-        self.assertEqual(self.request_addon(user=self.teacher_user).status_code, 403)
-
-    def test_pending_requests_are_listed_for_superadmin(self):
-        self.request_addon()
-        self.client.force_login(self.superadmin)
-        response = self.client.get(reverse("admin_web:storage_overview"))
-        self.assertEqual(len(response.context["pending_addons"]), 1)

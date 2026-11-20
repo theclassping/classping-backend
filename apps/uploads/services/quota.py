@@ -1,6 +1,7 @@
 """
 What a branch can do when its storage is full: reset (clear) stored images
-by category and class, or request an add-on that a superadmin approves.
+by category and class. More storage is bought as a subscription add-on
+(apps.branch_subscriptions), paid online, with no manual approval.
 """
 import logging
 from typing import Optional
@@ -8,14 +9,11 @@ from typing import Optional
 from django.apps import apps
 from django.db import transaction
 from django.db.models import Count, Q, Sum
-from django.utils import timezone
 
-from apps.uploads.models import MediaObject, StorageAddOn
+from apps.uploads.models import MediaObject
 
 logger = logging.getLogger(__name__)
 
-GIB = 1024 ** 3
-MAX_ADDON_GB = 1000
 
 # Payment proofs are financial records and are never reset.
 RESETTABLE_CATEGORIES = ("activities", "assessments", "students", "guardians", "general")
@@ -108,49 +106,3 @@ def delete_reset_files(keys) -> int:
         except Exception:
             logger.exception("Unable to delete reset media %s", key)
     return deleted
-
-
-# --- Add-ons ---------------------------------------------------------------
-
-def request_addon(branch, size_gb: int, note: str, user) -> StorageAddOn:
-    if not isinstance(size_gb, int) or isinstance(size_gb, bool) or not 1 <= size_gb <= MAX_ADDON_GB:
-        raise StorageActionError(f"size_gb must be a whole number from 1 to {MAX_ADDON_GB}.")
-    with transaction.atomic():
-        # Locked so two requests at once cannot both pass the pending check.
-        type(branch).objects.select_for_update().only("pk").get(pk=branch.pk)
-        if branch.storage_addons.filter(status=StorageAddOn.Status.PENDING).exists():
-            raise StorageActionError("This branch already has a pending add-on request.")
-        return StorageAddOn.objects.create(
-            branch=branch, size_bytes=size_gb * GIB, note=note or "", requested_by=user,
-        )
-
-
-def cancel_addon(addon: StorageAddOn) -> StorageAddOn:
-    with transaction.atomic():
-        addon = StorageAddOn.objects.select_for_update().get(pk=addon.pk)
-        if addon.status != StorageAddOn.Status.PENDING:
-            raise StorageActionError("Only a pending request can be cancelled.")
-        addon.status = StorageAddOn.Status.CANCELLED
-        addon.reviewed_at = timezone.now()
-        addon.save(update_fields=["status", "reviewed_at"])
-    return addon
-
-
-def review_addon(addon: StorageAddOn, approve: bool, user, note: str = "") -> StorageAddOn:
-    """Superadmin decision. Approval raises the branch's capacity immediately."""
-    from apps.schools.models import Branch
-
-    with transaction.atomic():
-        # Branch first, in the same order as ensure_capacity, so an approval
-        # and an upload check never deadlock.
-        Branch.objects.select_for_update().only("pk").get(pk=addon.branch_id)
-        addon = StorageAddOn.objects.select_for_update().get(pk=addon.pk)
-        if addon.status != StorageAddOn.Status.PENDING:
-            raise StorageActionError("This request has already been handled.")
-        addon.status = StorageAddOn.Status.APPROVED if approve else StorageAddOn.Status.REJECTED
-        addon.reviewed_by = user
-        addon.reviewed_at = timezone.now()
-        addon.review_note = note or ""
-        addon.save(update_fields=["status", "reviewed_by", "reviewed_at", "review_note"])
-    logger.info("Storage add-on %s %s by user=%s", addon.pk, addon.status, getattr(user, "pk", None))
-    return addon
