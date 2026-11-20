@@ -2,24 +2,45 @@
 Branch storage usage, read from MediaObject.
 
 Used bytes are pending + attached rows: a presigned upload counts from the
-moment it is signed. Capacity is monitored only; nothing here blocks uploads.
+moment it is signed, until its upload URL has lapsed (an abandoned presign
+stops counting then, even before cleanup_orphaned_uploads removes it).
+
+Capacity comes from the branch subscription (feature storage_bytes: the plan
+limit + storage add-ons, or a custom override). ensure_capacity rejects a new
+upload that would go over it, and any upload while the subscription has
+expired (read-only), unless settings.ENFORCE_BRANCH_STORAGE_CAPACITY is off.
 """
+from datetime import timedelta
+
 from django.conf import settings
-from django.db.models import BigIntegerField, Count, OuterRef, Subquery, Sum, Value
+from django.db.models import BigIntegerField, Count, OuterRef, Q, Subquery, Sum, Value
 from django.db.models.functions import Coalesce
+from django.utils import timezone
 
 from apps.uploads.models import MediaObject
+from plan_subscriptions import entitlements
+from plan_subscriptions.exceptions import FeatureLocked, LimitReached
 
 COUNTED_STATUSES = (MediaObject.Status.PENDING, MediaObject.Status.ATTACHED)
 WARNING_PERCENT = 80
+STORAGE_FEATURE = "storage_bytes"
+# A pending upload stops counting this long after its URL lapsed.
+PENDING_GRACE = timedelta(minutes=10)
 
 STATUS_OK = "ok"
 STATUS_WARNING = "warning"
 STATUS_OVER = "over"
 
 
+def pending_cutoff():
+    return timezone.now() - timedelta(seconds=settings.UPLOAD_METADATA_TTL) - PENDING_GRACE
+
+
 def counted_media():
-    return MediaObject.objects.filter(status__in=COUNTED_STATUSES)
+    return MediaObject.objects.filter(
+        Q(status=MediaObject.Status.ATTACHED)
+        | Q(status=MediaObject.Status.PENDING, created_at__gte=pending_cutoff())
+    )
 
 
 def with_storage_used(branches):
@@ -37,13 +58,45 @@ def with_storage_used(branches):
     )
 
 
-def capacity_of(branch) -> int:
-    if branch.storage_capacity_bytes is not None:
-        return branch.storage_capacity_bytes
-    return settings.DEFAULT_BRANCH_STORAGE_BYTES
+def used_bytes(branch_id) -> int:
+    return counted_media().filter(branch_id=branch_id).aggregate(total=Sum("size_bytes"))["total"] or 0
 
 
-def usage_status(used: int, capacity: int) -> str:
+def capacity_of(branch):
+    """The branch's storage limit from its subscription; None = unlimited, 0 = none."""
+    return entitlements.raw_limit(branch, STORAGE_FEATURE)
+
+
+def storage_state(branch) -> str:
+    """"active", "read_only" (subscription expired: no new uploads) or "off"."""
+    return entitlements.state(branch, STORAGE_FEATURE)
+
+
+def addon_bytes_of(branch) -> int:
+    """Storage bought as add-ons (active purchases), for display."""
+    from plan_subscriptions.models import AddOnFeature, SubscriptionAddOn
+
+    total = 0
+    purchases = SubscriptionAddOn.objects.filter(
+        subscription__subscriber_id=branch.pk,
+        status__in=(SubscriptionAddOn.Status.ACTIVE, SubscriptionAddOn.Status.ENDING),
+    ).select_related("addon")
+    for purchase in purchases:
+        for row in AddOnFeature.objects.filter(addon=purchase.addon, feature__code=STORAGE_FEATURE):
+            if row.mode == AddOnFeature.Mode.INCREMENT and row.value:
+                total += row.value * purchase.quantity
+    return total
+
+
+def has_storage_override(branch) -> bool:
+    from plan_subscriptions.models import FeatureOverride
+
+    return FeatureOverride.objects.filter(subscriber_id=branch.pk, feature__code=STORAGE_FEATURE).exists()
+
+
+def usage_status(used: int, capacity) -> str:
+    if capacity is None:
+        return STATUS_OK
     if used > capacity:
         return STATUS_OVER
     if capacity and used * 100 >= capacity * WARNING_PERCENT:
@@ -53,13 +106,18 @@ def usage_status(used: int, capacity: int) -> str:
 
 def usage_summary(branch, used: int) -> dict:
     capacity = capacity_of(branch)
+    addons = addon_bytes_of(branch)
     return {
         "branch_id": branch.pk,
         "branch_name": branch.name,
         "school_id": branch.school_id,
         "used_bytes": used,
         "capacity_bytes": capacity,
-        "capacity_is_default": branch.storage_capacity_bytes is None,
+        "base_capacity_bytes": None if capacity is None else max(0, capacity - addons),
+        "addon_bytes": addons,
+        # True while the plan (and add-ons) decide; False with a custom per-branch limit.
+        "capacity_is_default": not has_storage_override(branch),
+        "storage_state": storage_state(branch),
         "percent": round(used * 100 / capacity, 2) if capacity else None,
         "status": usage_status(used, capacity),
     }
@@ -121,3 +179,27 @@ def branches_by_usage(branches) -> list:
     summaries = [usage_summary(branch, branch.storage_used_bytes) for branch in with_storage_used(branches)]
     summaries.sort(key=lambda row: (-(row["percent"] or 0), -row["used_bytes"], row["branch_id"]))
     return summaries
+
+
+def ensure_capacity(branch_id: int, incoming_bytes: int) -> None:
+    """
+    Raise StorageFullError if incoming_bytes would take the branch past its
+    capacity, or StorageLockedError while its subscription has expired.
+
+    Call it inside transaction.atomic() and record the upload in the same
+    transaction: the branch row stays locked until commit, so two uploads
+    racing for the last free bytes are checked one after the other.
+    """
+    if not settings.ENFORCE_BRANCH_STORAGE_CAPACITY:
+        return
+    from apps.schools.models import Branch
+    from apps.uploads.services.media import StorageFullError, StorageLockedError
+
+    branch = Branch.objects.select_for_update().only("pk").get(pk=branch_id)
+    used = used_bytes(branch_id)
+    try:
+        entitlements.check_limit(branch, STORAGE_FEATURE, used=used, adding=incoming_bytes)
+    except FeatureLocked as error:
+        raise StorageLockedError(branch_id, error.state)
+    except LimitReached as error:
+        raise StorageFullError(branch_id, used, error.limit, incoming_bytes)

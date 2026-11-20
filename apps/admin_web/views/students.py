@@ -5,6 +5,14 @@ from django.http import HttpResponse
 from django.views.decorators.http import require_http_methods
 from ..views_common import *
 from ..import_export import make_xlsx, read_rows
+from apps.branch_subscriptions.usage import SUBSCRIPTION_LIMIT_ERRORS, ensure_import_fits
+
+
+def _seats_left(error):
+    detail = getattr(error, "detail", {}) or {}
+    if "limit" in detail and "used" in detail:
+        return f"Seats left: {max(0, detail['limit'] - detail['used'])}."
+    return ""
 
 IMPORT_COLUMNS = [
     "first_name", "middle_name", "last_name", "nickname", "date_of_birth",
@@ -76,13 +84,18 @@ def student_import(request):
                 for row in valid:
                     row["date_of_birth"] = _parse_date(row["date_of_birth"], "date_of_birth")
                     row["enroll_date"] = _parse_date(row["enroll_date"], "enroll_date")
-                with transaction.atomic():
-                    for row in valid:
-                        student = Student.objects.create(**{field: row.get(field) for field in (
-                            "first_name", "middle_name", "last_name", "nickname", "date_of_birth",
-                            "gender", "address", "enroll_date", "status", "branch_id")})
-                        if row["class_id"]:
-                            ClassStudent.objects.create(student=student, class_obj_id=row["class_id"], is_current=True)
+                try:
+                    with transaction.atomic():
+                        # The whole file must fit the branch's student limit: all or nothing.
+                        ensure_import_fits(valid)
+                        for row in valid:
+                            student = Student.objects.create(**{field: row.get(field) for field in (
+                                "first_name", "middle_name", "last_name", "nickname", "date_of_birth",
+                                "gender", "address", "enroll_date", "status", "branch_id")})
+                            if row["class_id"]:
+                                ClassStudent.objects.create(student=student, class_obj_id=row["class_id"], is_current=True)
+                except SUBSCRIPTION_LIMIT_ERRORS as error:
+                    raise ValueError(f"Nothing was imported. {error.message} {_seats_left(error)}".strip())
                 messages.success(request, f"Imported {len(valid)} students.")
                 return redirect("admin_web:student_list")
             result = {"total": len(rows), "valid": valid, "errors": errors}
@@ -169,27 +182,32 @@ def student_form(request, pk=None):
         prefix="guardians",
     )
     if request.method == "POST" and form.is_valid() and guardian_formset.is_valid():
-        with transaction.atomic():
-            student = form.save()
-            guardian_formset.instance = student
-            guardian_formset.save()
+        try:
+            with transaction.atomic():
+                saved = form.save()
+                guardian_formset.instance = saved
+                guardian_formset.save()
 
-            current_class = form.cleaned_data.get("current_class")
-            ClassStudent.objects.filter(student=student, is_current=True).update(
-                is_current=False
-            )
-            if current_class:
-                assignment, _ = ClassStudent.objects.get_or_create(
-                    student=student,
-                    class_obj=current_class,
-                    defaults={"is_current": True},
+                current_class = form.cleaned_data.get("current_class")
+                ClassStudent.objects.filter(student=saved, is_current=True).update(
+                    is_current=False
                 )
-                if not assignment.is_current:
-                    assignment.is_current = True
-                    assignment.save(update_fields=["is_current"])
-            ClassStudent.ensure_current_for_student(student)
-        messages.success(request, "Student saved.")
-        return redirect("admin_web:student_detail", pk=student.pk)
+                if current_class:
+                    assignment, _ = ClassStudent.objects.get_or_create(
+                        student=saved,
+                        class_obj=current_class,
+                        defaults={"is_current": True},
+                    )
+                    if not assignment.is_current:
+                        assignment.is_current = True
+                        assignment.save(update_fields=["is_current"])
+                ClassStudent.ensure_current_for_student(saved)
+        except SUBSCRIPTION_LIMIT_ERRORS as error:
+            # Student limit reached, or the branch subscription has expired.
+            form.add_error(None, error.message)
+        else:
+            messages.success(request, "Student saved.")
+            return redirect("admin_web:student_detail", pk=saved.pk)
     return render(
         request,
         "admin_web/students/form.html",

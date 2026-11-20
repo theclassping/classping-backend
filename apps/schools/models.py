@@ -45,7 +45,8 @@ class Branch(models.Model):
     email = models.EmailField(blank=True)
     is_active = models.BooleanField(default=True)
     # Media storage this branch is expected to stay within. Null uses
-    # settings.DEFAULT_BRANCH_STORAGE_BYTES. Monitored, not enforced.
+    # settings.DEFAULT_BRANCH_STORAGE_BYTES. New uploads that would exceed it
+    # are rejected (see apps.uploads.usage.ensure_capacity).
     storage_capacity_bytes = models.PositiveBigIntegerField(null=True, blank=True)
     # Paid opt-in feature; toggled only from admin web.
     is_payment_gateway_enabled = models.BooleanField(default=False)

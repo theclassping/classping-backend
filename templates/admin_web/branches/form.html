@@ -362,17 +362,8 @@
             </label>
         </div>
 
-        <div class="form-group checkbox-group">
 
-            <label>
-                <input
-                    type="checkbox"
-                    name="is_payment_gateway_enabled"
-                    {% if is_payment_gateway_enabled %}checked{% endif %}
-                >
-                Enable payment gateway (paid feature; parents can pay invoices online)
-            </label>
-        </div>
+        <p class="text-muted">Online payment and storage limits come from the branch's subscription plan (admin web → Subscriptions). A storage capacity entered above becomes a custom storage limit for this branch.</p>
 
     </div>
 

@@ -1,0 +1,27 @@
+{% extends "admin_web/base.html" %}
+
+{% block title %}Features - ClassPing Admin{% endblock %}
+{% block page_title %}<h1>Plans</h1>{% endblock %}
+
+{% block content %}
+{% include "admin_web/plans/_tabs.html" %}
+<div class="card">
+    <p class="text-muted">A feature is something a plan or add-on can give. A new feature appears on every plan and add-on form. The code is checked by the app, so it can't change once created.</p>
+    <div class="form-actions"><a class="btn" href="{% url 'admin_web:feature_create' %}">New feature</a></div>
+    <table class="data-table">
+        <thead><tr><th>Feature</th><th>Kind</th><th>Unit</th><th>After expiry</th><th>Active</th><th></th></tr></thead>
+        <tbody>
+        {% for feature in features %}
+            <tr>
+                <td><strong>{{ feature.name }}</strong><br><small class="text-muted">{{ feature.code }}</small></td>
+                <td>{{ feature.get_kind_display }}</td>
+                <td>{% if feature.unit == 'bytes' %}GB{% else %}{{ feature.unit|default:"—" }}{% endif %}</td>
+                <td>{{ feature.get_on_expiry_display }}</td>
+                <td>{{ feature.is_active|yesno:"Yes,No" }}</td>
+                <td><a class="btn btn-small" href="{% url 'admin_web:feature_edit' feature.pk %}">Edit</a></td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

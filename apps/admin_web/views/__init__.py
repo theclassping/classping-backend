@@ -39,3 +39,7 @@ from .wallets import (
 )
 
 __all__ = [name for name in globals() if not name.startswith("_")]
+from .subscriptions import (
+    addon_form, addon_list, feature_form, feature_list, plan_form, plan_list, subscription_detail,
+    subscription_list,
+)

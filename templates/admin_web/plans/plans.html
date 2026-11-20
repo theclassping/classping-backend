@@ -1,0 +1,28 @@
+{% extends "admin_web/base.html" %}
+
+{% block title %}Plans - ClassPing Admin{% endblock %}
+{% block page_title %}<h1>Plans</h1>{% endblock %}
+
+{% block content %}
+{% include "admin_web/plans/_tabs.html" %}
+<div class="card">
+    <div class="form-actions"><a class="btn" href="{% url 'admin_web:plan_create' %}">New plan</a></div>
+    <div class="table-wrapper">
+        <table class="data-table">
+            <thead><tr><th>Plan</th><th>Price / month</th>{% for feature in features %}<th>{{ feature.name }}</th>{% endfor %}<th>Branches</th><th>Shown</th><th></th></tr></thead>
+            <tbody>
+            {% for row in rows %}
+                <tr>
+                    <td><strong>{{ row.plan.name }}</strong><br><small class="text-muted">{{ row.plan.code }}</small></td>
+                    <td>{{ row.price }}</td>
+                    {% for value in row.values %}<td>{{ value }}</td>{% endfor %}
+                    <td>{{ row.branches }}</td>
+                    <td>{% if not row.plan.is_active %}<span class="status status-inactive">Inactive</span>{% elif row.plan.is_public %}<span class="status status-active">Public</span>{% else %}Hidden{% endif %}</td>
+                    <td><a class="btn btn-small" href="{% url 'admin_web:plan_edit' row.plan.pk %}">Edit</a></td>
+                </tr>
+            {% empty %}<tr><td colspan="6" class="text-muted">No plans yet.</td></tr>{% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

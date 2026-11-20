@@ -95,6 +95,10 @@ INSTALLED_APPS = [
 
     # Admin web application
     "apps.admin_web",
+
+    # Subscriptions: reusable package + Classping wiring
+    "plan_subscriptions",
+    "apps.branch_subscriptions.apps.BranchSubscriptionsConfig",
 ]
 
 MIDDLEWARE = [
@@ -368,6 +372,9 @@ UPLOAD_METADATA_TTL = int(os.environ.get("UPLOAD_METADATA_TTL", "3600"))
 MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_BYTES", str(10 * 1024 * 1024)))
 # Storage capacity for branches without their own storage_capacity_bytes.
 DEFAULT_BRANCH_STORAGE_BYTES = int(os.environ.get("DEFAULT_BRANCH_STORAGE_BYTES", str(5 * 1024 ** 3)))
+# Reject new uploads that would take a branch past its capacity. Set to
+# "false" to only monitor usage (e.g. while existing branches are over).
+ENFORCE_BRANCH_STORAGE_CAPACITY = os.environ.get("ENFORCE_BRANCH_STORAGE_CAPACITY", "true").lower() == "true"
 
 RUNNING_TESTS = len(sys.argv) > 1 and sys.argv[1] == "test"
 
@@ -427,4 +434,35 @@ MAILJET_TEMPLATES = {
     "withdrawal_status": 8507188,
     # Nightly branch balance mismatch alert to OPS_ALERT_EMAIL.
     "balance_alert": 8507233,
+    # Branch subscriptions (apps.branch_subscriptions.notify). Missing = skipped, logged.
+    "subscription_trial_started": 8541995,
+    "subscription_trial_ending": 8542032,
+    "subscription_invoice_issued": 8542034,
+    "subscription_invoice_reminder": 8542037,
+    "subscription_payment_overdue": 8542044,
+    "subscription_expired": 8542045,
+    "subscription_payment_received": 8542046,
+}
+
+# Subscriptions (libs/plan_subscriptions). The customer is the branch.
+PLAN_SUBSCRIPTIONS_SUBSCRIBER_MODEL = "schools.Branch"
+PLAN_SUBSCRIPTIONS = {
+    "SUBSCRIBER_RESOLVER": "apps.branch_subscriptions.access.branch_from_request",
+    "SUBSCRIBER_LABEL": "apps.branch_subscriptions.access.branch_label",
+    "USAGE_PROVIDER": "apps.branch_subscriptions.usage.usage_of",
+    "API_PERMISSION_CLASSES": ["apps.branch_subscriptions.access.IsBranchStaff"],
+    "BILLING_BACKEND": "apps.branch_subscriptions.billing.AggregatorBilling",
+    "NOTIFIER": "apps.branch_subscriptions.notify.MailjetNotifier",
+    "CURRENCY": "IDR",
+    "AMOUNT_DECIMALS": 0,
+    "TAX_RATE": os.environ.get("SUBSCRIPTION_TAX_RATE", "0.11"),
+    "TAX_LABEL": "PPN 11%",
+    "DEFAULT_TRIAL_DAYS": int(os.environ.get("SUBSCRIPTION_TRIAL_DAYS", "180")),
+    "TRIAL_PLAN": "starter",
+    "GRACE_DAYS": 7,
+    "INVOICE_LEAD_DAYS": 7,
+    "PURCHASE_INVOICE_DAYS": 7,
+    "TRIAL_REMINDER_DAYS": [30, 7, 1],
+    "RENEWAL_REMINDER_DAYS": [1],
+    "INVOICE_NUMBER_PREFIX": "SINV",
 }

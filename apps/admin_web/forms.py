@@ -1,5 +1,6 @@
 from django import forms
 from django.core.exceptions import ValidationError
+from django.db import transaction
 from django.db.models import Q
 from django.forms import BaseInlineFormSet, inlineformset_factory, formset_factory
 
@@ -24,6 +25,8 @@ from apps.users.managers import generate_temporary_password
 from apps.wallets.models import PayoutAccount
 from apps.admin_web.media import NO_BRANCH_MESSAGE, process_uploaded_image
 from apps.uploads.paths import instance_media_location
+from apps.uploads.services.media import StorageFullError, StorageLockedError
+from apps.uploads.usage import ensure_capacity
 
 
 class HierarchicalClassChoiceField(forms.ModelChoiceField):
@@ -54,8 +57,19 @@ class SearchableImageUploadMixin:
     def _post_clean(self):
         # After the instance holds the submitted fields (e.g. a student's branch).
         super()._post_clean()
-        if self.cleaned_data.get("image_file") and instance_media_location(self.instance) is None:
+        uploaded_file = self.cleaned_data.get("image_file")
+        if not uploaded_file:
+            return
+        location = instance_media_location(self.instance)
+        if location is None:
             self.add_error("image_file", NO_BRANCH_MESSAGE)
+            return
+        # Checked against the size as sent; process_uploaded_image may shrink it.
+        try:
+            with transaction.atomic():
+                ensure_capacity(location.branch_id, uploaded_file.size)
+        except (StorageFullError, StorageLockedError) as error:
+            self.add_error("image_file", str(error))
 
     def save(self, commit=True):
         instance = super().save(commit=False)

@@ -23,13 +23,14 @@
     <div class="detail-row"><div class="detail-label">Email</div><div>{{ branch.email|default:"-" }}</div></div>
     <div class="detail-row"><div class="detail-label">Location</div><div>{{ location_path }}</div></div>
     <div class="detail-row"><div class="detail-label">Status</div><div>{% if branch.is_active %}Active{% else %}Inactive{% endif %}</div></div>
-    <div class="detail-row"><div class="detail-label">Payment Gateway</div><div>{% if branch.is_payment_gateway_enabled %}Enabled{% else %}Disabled{% endif %}</div></div>
+    <div class="detail-row"><div class="detail-label">Subscription</div><div>{% if branch.plan_subscription %}{{ branch.plan_subscription.plan.name }} · {{ branch.plan_subscription.get_status_display }} · <a href="{% url 'admin_web:subscription_detail' branch.plan_subscription.pk %}">Open subscription</a>{% else %}None{% endif %}</div></div>
     <div class="detail-row"><div class="detail-label">Created / Updated</div><div>{{ branch.created_at|date:"d M Y H:i" }} / {{ branch.updated_at|date:"d M Y H:i" }}</div></div>
     <div class="detail-section"><h3>Storage</h3>
         <p>
             <span class="status status-{{ storage.status }}">{{ storage.status|title }}</span>
             {{ storage.used_bytes|filesizeformat }} of {{ storage.capacity_bytes|filesizeformat }}{% if storage.percent is not None %} ({{ storage.percent }}%){% endif %}
             {% if storage.capacity_is_default %}<span class="text-muted">· default capacity</span>{% endif %}
+            {% if storage.addon_bytes %}<span class="text-muted">· includes {{ storage.addon_bytes|filesizeformat }} of add-ons</span>{% endif %}
             {% if storage.pending_bytes %}<span class="text-muted">· {{ storage.pending_bytes|filesizeformat }} awaiting upload</span>{% endif %}
         </p>
         {% if storage.by_category %}
@@ -51,6 +52,9 @@
         {% elif not storage.by_category %}
         <p class="text-muted">No stored media yet.</p>
         {% endif %}
+    </div>
+    <div class="detail-section"><h3>Storage add-ons</h3>
+        <p class="text-muted">Branches buy storage add-ons themselves and pay online. See the branch subscription.</p>
     </div>
     <div class="detail-section"><h3>Academic years</h3>
         {% for year in branch.academic_years.all %}<p>{{ year.name }} · {{ year.start_date|date:"d M Y" }} to {{ year.end_date|date:"d M Y" }}{% if year.is_current %} · Current{% endif %}</p>

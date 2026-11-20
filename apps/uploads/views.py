@@ -1,6 +1,7 @@
 """
 API views for media upload operations.
 """
+import errno
 import logging
 import os
 from rest_framework import status
@@ -10,8 +11,16 @@ from apps.users.permissions import RoleBasedAccessPermission
 from rest_framework.views import APIView
 from django.conf import settings
 
+from apps.branch_subscriptions.offers import storage_offers
 from apps.uploads.paths import UploadTargetNotFound, resolve_upload_location
-from apps.uploads.services.media import MediaInputError, MediaService, UploadStoreUnavailable
+from apps.uploads.services.media import (
+    MediaInputError,
+    MediaService,
+    StorageFullError,
+    StorageLockedError,
+    UploadStoreUnavailable,
+    remove_partial_file,
+)
 from apps.uploads.serializers import (
     PresignUrlSerializer,
     PresignUrlResponseSerializer,
@@ -54,6 +63,9 @@ class PresignUrlView(APIView):
 
     The client must PUT the file to presigned_url with exactly this
     Content-Type header and byte size, or the upload is rejected.
+
+    If the file would take the branch past its storage capacity, the response
+    is 403 with {"code": "storage_full", "used_bytes", "capacity_bytes", ...}.
     
     Response:
     {
@@ -95,6 +107,27 @@ class PresignUrlView(APIView):
             
             response_serializer = PresignUrlResponseSerializer(result)
             return Response(response_serializer.data, status=status.HTTP_200_OK)
+        except StorageFullError as error:
+            return Response(
+                {
+                    'error': str(error),
+                    'code': error.code,
+                    'branch_id': error.branch_id,
+                    'used_bytes': error.used_bytes,
+                    'capacity_bytes': error.capacity_bytes,
+                    'requested_bytes': error.incoming_bytes,
+                    # What the branch can buy right away (add-on or bigger plan).
+                    **storage_offers(),
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        except StorageLockedError as error:
+            return Response(
+                {'error': str(error), 'code': error.code, 'branch_id': error.branch_id, 'feature': 'storage_bytes'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        except MediaInputError as error:
+            return Response({'error': str(error)}, status=status.HTTP_400_BAD_REQUEST)
         except UploadStoreUnavailable:
             return Response(
                 {'error': 'Upload service is temporarily unavailable. Please try again shortly.'},
@@ -157,8 +190,18 @@ class UploadView(APIView):
 
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
 
-            with open(file_path, 'wb') as f:
-                f.write(request.body)
+            try:
+                with open(file_path, 'wb') as f:
+                    f.write(request.body)
+            except OSError as exc:
+                remove_partial_file(file_path)
+                if exc.errno in (errno.ENOSPC, errno.EDQUOT):
+                    logger.error("Media disk is full; rejected upload %s", safe_file_key)
+                    return Response(
+                        {'error': 'Server storage is full. Please try again later.', 'code': 'server_storage_full'},
+                        status=status.HTTP_507_INSUFFICIENT_STORAGE,
+                    )
+                raise
 
             return Response(status=status.HTTP_204_NO_CONTENT)
 
