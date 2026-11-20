@@ -37,6 +37,7 @@ from payment_aggregator.base import (
     BillingRequest,
     BillingStatus,
     FeeBreakdown,
+    RefundRequest,
     SettlementStatus,
 )
 from apps.payment_gateway.constants import (
@@ -173,9 +174,12 @@ def mark_gateway_payment_paid(gateway_payment_id, paid_at=None):
 def cancel_gateway_payment(user, gateway_payment_id, reason=""):
     """B5 / C1b: PENDING -> CANCELLED and release the invoices.
 
-    Classping rule only: the provider is not called and invoices are not
-    changed. Allowed for the student's guardians, the branch's officer /
-    principal, and Classping admins.
+    Classping decides: the checkout is cancelled here first, whatever the
+    provider says. Then, for providers with a cancel API (DANA), the provider
+    order is cancelled too so its VA / link can no longer be paid; if that
+    fails, a payment that still arrives is a late payment (settled as usual).
+    Allowed for the student's guardians, the branch's officer / principal,
+    and Classping admins.
     """
     gateway_payment = scope_queryset(GatewayPayment.objects.all(), user).filter(pk=gateway_payment_id).first()
     if gateway_payment is None:
@@ -193,6 +197,153 @@ def cancel_gateway_payment(user, gateway_payment_id, reason=""):
             cancelled_at=timezone.now(),
             cancel_reason=(reason or "").strip(),
         )
+    # After the commit: an HTTP call never runs while the row is locked.
+    cancel_at_provider(gateway_payment, reason)
+    return gateway_payment
+
+
+def cancel_at_provider(gateway_payment, reason=""):
+    """Best effort: cancel the provider order of a cancelled checkout. Never
+    raises; the outcome goes to the log and, when it matters, review_note."""
+    aggregator = PaymentAggregator.using(gateway_payment.provider)
+    try:
+        if not aggregator.can_cancel_billing():
+            return
+        aggregator.cancel_billing(
+            gateway_payment.payment_no,
+            provider_trx_id=gateway_payment.provider_trx_id or "",
+            reason=(reason or "").strip(),
+        )
+    except provider_errors.BillingNotCancellable as error:
+        # Usually paid in the meantime: its payment callback settles it.
+        flag_gateway_payment_for_review(
+            gateway_payment.pk,
+            "Provider refused to cancel the order ({}); a payment may still arrive.".format(
+                error.provider_message or error
+            ),
+        )
+    except provider_errors.BillingNotFound:
+        pass  # never created at the provider: nothing to cancel
+    except Exception as error:  # best effort: the cancel here already stands
+        logger.warning("Provider cancel failed for %s: %s", gateway_payment.payment_no, error)
+    else:
+        logger.info("Provider order cancelled for %s", gateway_payment.payment_no)
+
+
+# --- Online refund ----------------------------------------------------------
+
+
+def _can_refund(user, gateway_payment):
+    """Classping admins and the branch's finance staff (never parents)."""
+    role = str(getattr(user, "role", "")).upper()
+    if user.is_superuser or role == User.Role.ADMIN:
+        return True
+    staff = get_finance_staff(user)
+    return staff is not None and staff.branch_id == gateway_payment.branch_id
+
+
+def refund_gateway_payment(user, gateway_payment_id, reason=""):
+    """Refund a paid checkout flagged needs_refund to the payer through the
+    provider (providers with a refund API, e.g. DANA).
+
+    The FULL paid amount (invoice total + channel fee) goes back to the payer
+    and is debited from the branch's available balance; rejected when that
+    balance is short. Same pattern as withdrawals: debit and commit first,
+    then call the provider outside the lock.
+      - success: REFUNDED, needs_refund cleared;
+      - provider refused: FAILED and the debit is reversed (RefundRejected);
+      - outcome unknown: stays PROCESSING; calling again resends the same
+        refund_no, which the provider never refunds twice.
+    A FAILED refund is not retried online (the ledger holds one refund per
+    checkout): the school refunds the payer manually.
+    """
+    from apps.wallets.services import post_refund_debit
+
+    gateway_payment = scope_queryset(GatewayPayment.objects.all(), user).filter(pk=gateway_payment_id).first()
+    if gateway_payment is None:
+        raise NotFound()
+    if not _can_refund(user, gateway_payment):
+        raise errors.RefundForbidden()
+    aggregator = PaymentAggregator.using(gateway_payment.provider)
+    if not aggregator.can_refund():
+        raise errors.RefundNotSupported()
+
+    with transaction.atomic():
+        gateway_payment = _lock(gateway_payment.pk)
+        if gateway_payment.refund_status != GatewayPayment.RefundStatus.PROCESSING:
+            if (
+                gateway_payment.status != GatewayPayment.Status.PAID
+                or not gateway_payment.needs_refund
+                or gateway_payment.refund_status
+            ):
+                raise errors.RefundNotAllowed()
+            post_refund_debit(gateway_payment, gateway_payment.amount)  # InsufficientBalance
+            gateway_payment.refund_status = GatewayPayment.RefundStatus.PROCESSING
+            gateway_payment.refund_no = "RF-" + gateway_payment.payment_no
+            gateway_payment.refund_amount = gateway_payment.amount
+            gateway_payment.refund_reason = (reason or "").strip()
+            gateway_payment.refunded_by = user
+            gateway_payment.refund_requested_at = timezone.now()
+            gateway_payment.save(update_fields=[
+                "refund_status", "refund_no", "refund_amount", "refund_reason",
+                "refunded_by", "refund_requested_at", "updated_at",
+            ])
+
+    request = RefundRequest(
+        reference_no=gateway_payment.payment_no,
+        refund_no=gateway_payment.refund_no,
+        amount=gateway_payment.refund_amount,
+        provider_trx_id=gateway_payment.provider_trx_id or "",
+        reason=gateway_payment.refund_reason,
+    )
+    try:
+        result = aggregator.refund_billing(request)
+    except provider_errors.ProviderUnavailable as error:
+        logger.warning("Refund %s outcome unknown: %s", gateway_payment.refund_no, error)
+        return GatewayPayment.objects.get(pk=gateway_payment.pk)  # still PROCESSING
+    except provider_errors.PaymentAggregatorError as error:
+        _fail_refund(gateway_payment.pk, error)
+        raise errors.RefundRejected(
+            "The payment provider refused the refund ({}); the branch balance was restored.".format(
+                error.provider_message or error
+            )
+        )
+    return _complete_refund(gateway_payment.pk, result)
+
+
+def _complete_refund(gateway_payment_id, result):
+    with transaction.atomic():
+        gateway_payment = _lock(gateway_payment_id)
+        if gateway_payment.refund_status != GatewayPayment.RefundStatus.PROCESSING:
+            return gateway_payment
+        gateway_payment.refund_status = GatewayPayment.RefundStatus.REFUNDED
+        gateway_payment.refund_provider_id = result.provider_refund_id
+        gateway_payment.refunded_at = result.refunded_at or timezone.now()
+        gateway_payment.refund_response = result.raw
+        gateway_payment.needs_refund = False
+        gateway_payment.save(update_fields=[
+            "refund_status", "refund_provider_id", "refunded_at", "refund_response", "needs_refund", "updated_at",
+        ])
+    return gateway_payment
+
+
+def _fail_refund(gateway_payment_id, error):
+    from apps.wallets.services import post_refund_reversal
+
+    with transaction.atomic():
+        gateway_payment = _lock(gateway_payment_id)
+        if gateway_payment.refund_status != GatewayPayment.RefundStatus.PROCESSING:
+            return gateway_payment
+        post_refund_reversal(gateway_payment, gateway_payment.refund_amount)
+        gateway_payment.refund_status = GatewayPayment.RefundStatus.FAILED
+        gateway_payment.refund_response = getattr(error, "raw", None)
+        gateway_payment.review_note = append_note(
+            gateway_payment.review_note,
+            "Online refund refused by the provider ({}); refund the payer manually.".format(
+                getattr(error, "provider_message", "") or error
+            ),
+        )
+        gateway_payment.save(update_fields=["refund_status", "refund_response", "review_note", "updated_at"])
     return gateway_payment
 
 
@@ -240,8 +391,8 @@ def apply_billing_result(gateway_payment, billing):
 
 def handle_payment_callback(raw_body, headers, provider=None, request_path=""):
     """Webhook /api/webhooks/payment/ (any provider, identified by its
-    signature) or /api/webhooks/<provider>/payment/. Rintisan calls back only
-    when a billing is paid; expiry is decided by Classping's expiry job.
+    signature) or /api/webhooks/<provider>/payment/. Expiry is decided by
+    Classping's expiry job, not by provider callbacks.
     Replies in the format the provider requires (DANA: responseCode)."""
     try:
         provider, billing = parse_callback(
@@ -251,7 +402,7 @@ def handle_payment_callback(raw_body, headers, provider=None, request_path=""):
         logger.warning("Rejected payment callback: %s", error)
         raise InvalidWebhook() from error
     status = _apply_payment_callback(provider, billing)
-    return callback_reply(provider, "payment", {"status": status})
+    return callback_reply(provider, "payment", {"status": status}, result=billing)
 
 
 def _apply_payment_callback(provider, billing):

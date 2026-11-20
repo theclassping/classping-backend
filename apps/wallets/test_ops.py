@@ -83,10 +83,10 @@ class StuckWithdrawalTests(WalletFixtureMixin, TestCase):
     def test_mark_failed_returns_the_balance(self):
         self.assertEqual(self.wallet().available_balance, Decimal("50000"))
         with mock.patch(MAILER):
-            self.client.post(self.url + "mark-failed/", {"note": "Not found in the Rintisan dashboard"})
+            self.client.post(self.url + "mark-failed/", {"note": "Not found in the DANA dashboard"})
         withdrawal = self.reload()
         self.assertEqual(withdrawal.status, Withdrawal.Status.FAILED)
-        self.assertEqual(withdrawal.failure_reason, "Not found in the Rintisan dashboard")
+        self.assertEqual(withdrawal.failure_reason, "Not found in the DANA dashboard")
         self.assertFalse(withdrawal.needs_review)
         self.assertIn("wl-ops@example.com", withdrawal.review_note)
         self.assertEqual(self.wallet().available_balance, Decimal("150000"))

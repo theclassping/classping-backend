@@ -45,6 +45,7 @@ from apps.wallets.constants import (
     WITHDRAWAL_OTP_LENGTH,
     WITHDRAWAL_OTP_MAX_ATTEMPTS,
     WITHDRAWAL_OTP_TTL_MINUTES,
+    WITHDRAWAL_POLL_UNSENT_AFTER_MINUTES,
 )
 
 from . import exceptions as errors
@@ -119,6 +120,28 @@ def mark_payment_settled(gateway_payment, settled_at=None):
         wallet.available_balance += net
         wallet.save(update_fields=["pending_balance", "available_balance", "updated_at"])
     return True
+
+
+def post_refund_debit(gateway_payment, amount):
+    """Debit a refund from the branch's AVAILABLE balance (call inside the
+    transaction that starts the refund). Rejected when the balance is short:
+    the balance never goes negative."""
+    wallet = lock_wallet(gateway_payment.branch_id)
+    _ensure_available_balance(wallet, amount)
+    _post_entry(
+        wallet, LedgerEntry.EntryType.REFUND, -amount, gateway_payment=gateway_payment, note=gateway_payment.payment_no
+    )
+
+
+def post_refund_reversal(gateway_payment, amount):
+    """The provider refused the refund: give the debited amount back."""
+    _post_entry(
+        lock_wallet(gateway_payment.branch_id),
+        LedgerEntry.EntryType.REFUND_REVERSAL,
+        amount,
+        gateway_payment=gateway_payment,
+        note=gateway_payment.payment_no,
+    )
 
 
 def _post_withdrawal_entries(wallet, withdrawal, entries):
@@ -407,8 +430,8 @@ def create_withdrawal(user, reference, code, fee_acknowledged):
     return _send_to_provider(withdrawal)
 
 
-def _send_to_provider(withdrawal):
-    request = TransferRequest(
+def _transfer_request(withdrawal):
+    return TransferRequest(
         reference_no=withdrawal.withdrawal_no,
         # The provider deducts its fee from this amount.
         amount=withdrawal.amount,
@@ -416,6 +439,21 @@ def _send_to_provider(withdrawal):
         account_number=withdrawal.account_number,
         account_name=withdrawal.account_holder_name,
     )
+
+
+def _transfer_id(withdrawal):
+    """The provider's transfer id: the stored one, or (providers whose status
+    check is keyed by our own data, e.g. DOKU) the one derived from the
+    withdrawal, so a transfer whose response was lost can still be checked.
+    Empty when unknown."""
+    if withdrawal.provider_disbursement_id:
+        return withdrawal.provider_disbursement_id
+    return PaymentAggregator.using(withdrawal.provider).transfer_id_for(_transfer_request(withdrawal)) or ""
+
+
+def _send_to_provider(withdrawal):
+    request = _transfer_request(withdrawal)
+
     def rejected(error):
         # Refused before it was processed: fail it and return the balance.
         return TransferResult(
@@ -545,7 +583,7 @@ def handle_disbursement_callback(raw_body, headers, provider=None, request_path=
         logger.warning("Rejected disbursement callback: %s", error)
         raise InvalidWebhook() from error
     status = _apply_disbursement_callback(provider, result)
-    return callback_reply(provider, "disbursement", {"status": status})
+    return callback_reply(provider, "disbursement", {"status": status}, result=result)
 
 
 def _apply_disbursement_callback(provider, result):
@@ -568,33 +606,73 @@ def _apply_disbursement_callback(provider, result):
     Withdrawal.objects.filter(pk=withdrawal.pk).update(
         callback_payload=result.raw, callback_received_at=timezone.now()
     )
+    if PaymentAggregator.using(provider).confirm_transfer_callbacks():
+        # Unsigned callback (e.g. Kirim DOKU, shared agentKey only): never
+        # apply it as is; it only prompts a status check with the provider.
+        return _confirm_disbursement_callback(withdrawal, result)
     apply_transfer_result(withdrawal.pk, result)
     return "ok"
 
 
+def _confirm_disbursement_callback(withdrawal, callback_result):
+    transfer_id = _transfer_id(withdrawal)
+    try:
+        if not transfer_id:
+            raise provider_errors.TransferNotFound("No transfer id to check")
+        confirmed = PaymentAggregator.using(withdrawal.provider).get_transfer_status(transfer_id)
+    except provider_errors.PaymentAggregatorError as error:
+        logger.error(
+            "Disbursement callback for withdrawal %s could not be confirmed: %s",
+            withdrawal.withdrawal_no, error,
+        )
+        if callback_result.status != TransferStatus.PROCESSING:
+            flag_withdrawal_for_review(
+                withdrawal.pk,
+                "Callback reported {} but the provider status check failed; not applied.".format(
+                    callback_result.status
+                ),
+            )
+        return "unconfirmed"
+    apply_transfer_result(withdrawal.pk, confirmed)
+    return "ok"
+
+
 def sync_withdrawal(withdrawal_id):
-    """Ask the provider for the status (admin "Sync status" and the poll)."""
+    """Ask the provider for the status (admin "Sync status" and the poll).
+
+    A withdrawal without a stored id is checked with the derived one when
+    the provider has it (DOKU); "not found" there leaves it untouched (it
+    may never have reached the provider: resend / resolve by hand)."""
     withdrawal = Withdrawal.objects.get(pk=withdrawal_id)
-    if not withdrawal.provider_disbursement_id:
+    transfer_id = _transfer_id(withdrawal)
+    if not transfer_id:
         return withdrawal
-    return apply_transfer_result(
-        withdrawal.pk,
-        PaymentAggregator.using(withdrawal.provider).get_transfer_status(withdrawal.provider_disbursement_id),
-    )
+    try:
+        result = PaymentAggregator.using(withdrawal.provider).get_transfer_status(transfer_id)
+    except provider_errors.TransferNotFound:
+        if withdrawal.provider_disbursement_id:
+            raise
+        return withdrawal
+    return apply_transfer_result(withdrawal.pk, result)
 
 
 def poll_processing_withdrawals():
-    """Periodic backup to the callback for processing withdrawals."""
+    """Periodic backup to the callback for processing withdrawals: those
+    with a provider id, and older ones without (their id may be derivable,
+    see sync_withdrawal; the age keeps the poll off in-flight requests)."""
     synced = 0
-    processing = Withdrawal.objects.filter(status=Withdrawal.Status.PROCESSING).exclude(
-        provider_disbursement_id=""
-    ).values_list("pk", flat=True)
-    for withdrawal_id in processing:
+    cutoff = timezone.now() - datetime.timedelta(minutes=WITHDRAWAL_POLL_UNSENT_AFTER_MINUTES)
+    processing = Withdrawal.objects.filter(status=Withdrawal.Status.PROCESSING).filter(
+        ~Q(provider_disbursement_id="") | Q(created_at__lt=cutoff)
+    )
+    for withdrawal in processing:
         try:
-            sync_withdrawal(withdrawal_id)
+            if not _transfer_id(withdrawal):
+                continue
+            sync_withdrawal(withdrawal.pk)
             synced += 1
         except provider_errors.PaymentAggregatorError:
-            logger.exception("Status check failed for withdrawal %s", withdrawal_id)
+            logger.exception("Status check failed for withdrawal %s", withdrawal.pk)
     return synced
 
 

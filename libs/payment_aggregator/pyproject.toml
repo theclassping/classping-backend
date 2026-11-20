@@ -1,11 +1,11 @@
 [build-system]
-requires = ["setuptools>=61"]
+requires = ["setuptools>=64"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "payment-aggregator"
-version = "0.1.0"
-description = "Provider-neutral payment aggregator: pay-in billing, payouts and fees, with a Rintisan provider."
+version = "0.1.1"
+description = "Provider-neutral payment aggregator: pay-in billing, cancel, refund, payouts and fees, with DANA and DOKU providers."
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [

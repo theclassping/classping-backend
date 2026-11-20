@@ -119,3 +119,14 @@ class GatewayPaymentViewSet(ScopedQuerysetMixin, viewsets.ReadOnlyModelViewSet):
         services.cancel_gateway_payment(request.user, pk, payload.validated_data["reason"])
         gateway_payment = self.get_queryset().get(pk=pk)
         return Response(GatewayPaymentDetailSerializer(gateway_payment).data)
+
+    @extend_schema(request=CancelRequestSerializer, responses=GatewayPaymentDetailSerializer)
+    @action(detail=True, methods=["post"])
+    def refund(self, request, pk=None):
+        """POST gateway/payments/{id}/refund/ {"reason": "..."}: refund the full
+        paid amount online (Classping admins, branch finance staff)."""
+        payload = CancelRequestSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        services.refund_gateway_payment(request.user, pk, payload.validated_data["reason"])
+        gateway_payment = self.get_queryset().get(pk=pk)
+        return Response(GatewayPaymentDetailSerializer(gateway_payment).data)

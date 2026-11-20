@@ -3,7 +3,7 @@ Classping's payment providers: one module per provider.
 
 Add a provider:
   1. Implement it in the library (libs/payment_aggregator/.../providers/<name>/).
-  2. Copy rintisan.py to <name>.py here and fill in NAME, CHANNEL_FEES,
+  2. Copy dana.py to <name>.py here and fill in NAME, CHANNEL_FEES,
      DISBURSEMENT_FEE and build().
   3. Add its dotted path to PROVIDER_MODULES below.
   4. Add its env vars to .env / .env.production.example.
@@ -21,8 +21,8 @@ Every provider module exposes:
 from importlib import import_module
 
 PROVIDER_MODULES = (
-    "apps.payment_aggregator.providers.rintisan",
     "apps.payment_aggregator.providers.dana",
+    "apps.payment_aggregator.providers.doku",
 )
 
 _registry = None

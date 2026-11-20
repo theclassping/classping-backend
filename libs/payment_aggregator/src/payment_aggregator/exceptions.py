@@ -20,6 +20,12 @@ class ProviderNotConfigured(PaymentAggregatorError):
     code = "PROVIDER_NOT_CONFIGURED"
 
 
+class OperationNotSupported(PaymentAggregatorError):
+    """The provider has no API for this operation (e.g. refund)."""
+
+    code = "OPERATION_NOT_SUPPORTED"
+
+
 class ProviderUnavailable(PaymentAggregatorError):
     """Network error, timeout, 5xx, or an unparseable response.
 
@@ -44,6 +50,19 @@ class ProviderRejected(PaymentAggregatorError):
 
 class BillingNotFound(ProviderRejected):
     code = "BILLING_NOT_FOUND"
+
+
+class BillingNotCancellable(ProviderRejected):
+    """The provider refused to cancel: already paid, expired, or another
+    status that does not allow it."""
+
+    code = "BILLING_NOT_CANCELLABLE"
+
+
+class RefundRejected(ProviderRejected):
+    """The provider refused the refund (status, amount, balance...)."""
+
+    code = "REFUND_REJECTED"
 
 
 class TransferNotFound(ProviderRejected):

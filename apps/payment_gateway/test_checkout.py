@@ -45,7 +45,7 @@ def billing_result(reference_no="PAY-x", trx="PPI-261107-1", **extra):
         provider_trx_id=trx,
         status=BillingStatus.PENDING,
         payment_code="9881234567890123",
-        billing_url="https://billing.rintisan.co.id/penagihan/abc",
+        billing_url="https://m.sandbox.dana.id/n/cashier/new/checkout?bizNo=abc",
         raw={"response_code": "200", "trx_id": trx},
     )
     values.update(extra)
@@ -78,7 +78,7 @@ class CheckoutFixtureMixin(GatewayFixtureMixin):
         self.parent = APIClient()
         self.parent.force_authenticate(user=self.parent_user)
 
-    def checkout(self, client=None, invoice_ids=None, channel="VABCA", key="key-1"):
+    def checkout(self, client=None, invoice_ids=None, channel="VIRTUAL_ACCOUNT_BCA", key="key-1"):
         return (client or self.parent).post(
             "/api/gateway/checkout/",
             {"invoice_ids": invoice_ids or [self.invoice.pk, self.invoice_2.pk], "channel": channel},
@@ -133,8 +133,8 @@ class PayabilityTests(CheckoutFixtureMixin, TestCase):
         self.assertEqual(quote.invoice_total, Decimal("125000"))
         channels = {channel.channel_code: channel for channel in quote.channels}
         self.assertNotIn("QRIS", channels)
-        self.assertEqual(channels["VABCA"].amount, Decimal("130000.00"))
-        self.assertEqual(channels["CC"].amount, Decimal("127552.00"))  # ceil(125000*100/98 = 127551.02)
+        self.assertEqual(channels["VIRTUAL_ACCOUNT_BCA"].amount, Decimal("127775.00"))
+        self.assertEqual(channels["NETWORK_PAY_PG_CARD"].amount, Decimal("129158.00"))  # ceil(125000*100/96.781 = 129157.58)
 
 
 # --- B0 / B1 ------------------------------------------------------------------
@@ -171,7 +171,7 @@ class InvoiceAndChannelApiTests(CheckoutFixtureMixin, TestCase):
         self.assertEqual(response.data["invoice_total"], "125000.00")
         self.assertEqual(response.data["invoice_ids"], sorted([self.invoice.pk, self.invoice_2.pk]))
         codes = [channel["code"] for channel in response.data["channels"]]
-        self.assertIn("VABCA", codes)
+        self.assertIn("VIRTUAL_ACCOUNT_BCA", codes)
         self.assertNotIn("QRIS", codes)
 
     def test_channels_show_payment_deadline(self):
@@ -221,8 +221,8 @@ class CheckoutApiTests(CheckoutFixtureMixin, TestCase):
         self.assertEqual(payment.status, GatewayPayment.Status.PENDING)
         self.assertEqual(payment.guardian, self.guardian)
         self.assertEqual(payment.student, self.student)
-        self.assertEqual(payment.provider, "rintisan")
-        self.assertEqual(payment.amount, Decimal("130000.00"))
+        self.assertEqual(payment.provider, "dana")
+        self.assertEqual(payment.amount, Decimal("127775.00"))
         self.assertEqual(payment.provider_trx_id, "PPI-261107-1")
         self.assertEqual(payment.items.filter(is_active=True).count(), 2)
         self.assertAlmostEqual(
@@ -231,7 +231,7 @@ class CheckoutApiTests(CheckoutFixtureMixin, TestCase):
 
         request = create_billing.call_args.args[0]
         self.assertEqual(request.reference_no, payment.payment_no)
-        self.assertEqual(request.amount, Decimal("130000.00"))
+        self.assertEqual(request.amount, Decimal("127775.00"))
         self.assertEqual(request.payer_phone, "6281234567890")
         self.assertEqual(request.payer_name, self.guardian.name)
         self.assertEqual(request.expires_at, payment.expires_at)
@@ -242,7 +242,7 @@ class CheckoutApiTests(CheckoutFixtureMixin, TestCase):
         )
         data = response.data
         self.assertEqual(data["payment_code"], "9881234567890123")
-        self.assertEqual(data["billing_url"], "https://billing.rintisan.co.id/penagihan/abc")
+        self.assertEqual(data["billing_url"], "https://m.sandbox.dana.id/n/cashier/new/checkout?bizNo=abc")
         self.assertEqual(data["channel_name"], "BCA Virtual Account")
         self.assertEqual(data["student_name"], "Budi Santoso")
         self.assertEqual(len(data["items"]), 2)
@@ -273,7 +273,7 @@ class CheckoutApiTests(CheckoutFixtureMixin, TestCase):
 
     def test_idempotency_key_required(self, apply_async):
         response = self.parent.post(
-            "/api/gateway/checkout/", {"invoice_ids": [self.invoice.pk], "channel": "VABCA"}, format="json"
+            "/api/gateway/checkout/", {"invoice_ids": [self.invoice.pk], "channel": "VIRTUAL_ACCOUNT_BCA"}, format="json"
         )
         self.assertCode(response, 400, "IDEMPOTENCY_KEY_REQUIRED")
 
@@ -421,7 +421,7 @@ class CheckoutRaceTests(NoMailjetMixin, CheckoutFixtureMixin, TransactionTestCas
         def attempt(user, key):
             try:
                 barrier.wait(5)
-                payment, _ = services.create_gateway_checkout(user, [self.invoice.pk], "VABCA", key)
+                payment, _ = services.create_gateway_checkout(user, [self.invoice.pk], "VIRTUAL_ACCOUNT_BCA", key)
                 outcomes.append(("ok", payment.pk))
             except InvoiceLocked:
                 outcomes.append(("locked", None))

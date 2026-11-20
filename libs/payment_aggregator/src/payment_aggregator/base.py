@@ -11,11 +11,14 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any, Dict, Mapping, Optional, Sequence, Tuple
 
+from payment_aggregator.exceptions import OperationNotSupported
+
 
 class PaymentMethod:
     VIRTUAL_ACCOUNT = "virtual_account"
     CREDIT_CARD = "credit_card"
     E_COMMERCE = "e_commerce"
+    E_WALLET = "e_wallet"
 
 
 class FeeType:
@@ -41,6 +44,12 @@ class TransferStatus:
     FAILED = "failed"
 
 
+class RefundStatus:
+    PROCESSING = "processing"  # accepted, result comes later (check again)
+    SUCCESS = "success"
+    FAILED = "failed"
+
+
 # --- Fee configuration ----------------------------------------------------
 
 
@@ -52,6 +61,9 @@ class Channel:
     fee_type: str
     fee: Optional[Decimal]  # None = rate not agreed yet -> channel disabled
     min_amount: Optional[Decimal] = None
+    # PERCENT channels only: flat IDR charged on top of the percentage, also
+    # deducted by the provider (DOKU cards: 2.8% + Rp2.000).
+    flat_fee: Optional[Decimal] = None
     max_amount: Optional[Decimal] = None
     is_active: bool = True
 
@@ -92,11 +104,11 @@ class BillingRequest:
     amount: Decimal
     invoice_date: datetime.date
     # Application payment window end (aware datetime); the provider decides how
-    # to express it (Rintisan: deadline_date + expiry time).
+    # to express it (DANA: validUpTo).
     expires_at: datetime.datetime
     payer_name: str
     payer_phone: str
-    # Providers may replace it (Rintisan: RintisanConfig.payer_email, when set).
+    # Providers may ignore or replace it.
     payer_email: str = ""
     identifier: str = ""
     payer_address: str = ""
@@ -115,6 +127,40 @@ class BillingResult:
     payment_link: str = ""
     billing_url: str = ""
     paid_at: Optional[datetime.datetime] = None
+    raw: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class CancelResult:
+    """A pending billing the provider has cancelled (it can no longer be paid)."""
+
+    reference_no: str
+    provider_trx_id: str = ""
+    cancelled_at: Optional[datetime.datetime] = None
+    raw: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class RefundRequest:
+    # The paid billing: our reference (BillingRequest.reference_no) and the
+    # provider's id when known.
+    reference_no: str
+    # Our own unique reference for this refund. Reusing it for a retry is
+    # how a refund whose response was lost is sent again without refunding twice.
+    refund_no: str
+    amount: Decimal
+    provider_trx_id: str = ""
+    reason: str = ""
+
+
+@dataclass(frozen=True)
+class RefundResult:
+    refund_no: str
+    provider_refund_id: str
+    status: str
+    amount: Optional[Decimal] = None
+    refunded_at: Optional[datetime.datetime] = None
+    provider_message: str = ""
     raw: Dict[str, Any] = field(default_factory=dict)
 
 
@@ -187,6 +233,24 @@ class BaseProvider(abc.ABC):
         path it was received on (providers that sign it need it)."""
         ...
 
+    # Cancel / refund (optional: a provider without them keeps these defaults,
+    # which raise OperationNotSupported; check supports_* first).
+    supports_cancel_billing = False
+    supports_refund = False
+
+    def cancel_billing(self, reference_no: str, provider_trx_id: str = "", reason: str = "") -> CancelResult:
+        """Cancel an unpaid billing so it can no longer be paid.
+
+        Raises BillingNotCancellable when the provider refuses (already paid,
+        expired), BillingNotFound, or ProviderUnavailable when the outcome is
+        unknown (safe to call again)."""
+        raise OperationNotSupported("{} has no cancel billing API".format(self.name or "This provider"))
+
+    def refund_billing(self, request: RefundRequest) -> RefundResult:
+        """Refund (part of) a paid billing to the payer. Calling again with the
+        same refund_no after ProviderUnavailable never refunds twice."""
+        raise OperationNotSupported("{} has no refund API".format(self.name or "This provider"))
+
     # Payout
     @abc.abstractmethod
     def transfer_balance(self, request: TransferRequest) -> TransferResult:
@@ -200,13 +264,25 @@ class BaseProvider(abc.ABC):
     def parse_transfer_callback(self, raw_body: bytes, headers: Mapping[str, str], request_path: str = "") -> TransferResult:
         ...
 
+    # True when transfer notifications carry no verifiable signature (only a
+    # shared token): the application must not apply one as is, only use it
+    # as a prompt to ask get_transfer_status.
+    confirm_transfer_callbacks = False
+
+    def transfer_id_for(self, request: TransferRequest) -> Optional[str]:
+        """provider_transfer_id derivable from the request alone (providers
+        whose status check is keyed by our own data), or None. Lets a
+        transfer whose response was lost still be checked."""
+        return None
+
     @abc.abstractmethod
     def get_balance(self) -> ProviderBalance:
         ...
 
     # Notification acknowledgement
-    def callback_reply(self, event: str) -> Optional[Tuple[Dict[str, Any], Dict[str, str]]]:
+    def callback_reply(self, event: str, result: Any = None) -> Optional[Tuple[Dict[str, Any], Dict[str, str]]]:
         """(body, headers) the provider requires in reply to a processed
         notification (``event``: "payment" or "disbursement"), or None when
-        any 2xx reply is fine."""
+        any 2xx reply is fine. ``result`` is the parsed BillingResult /
+        TransferResult, for providers that echo an id from the notification."""
         return None

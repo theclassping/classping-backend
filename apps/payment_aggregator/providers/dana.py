@@ -3,8 +3,9 @@ DANA (Gapura Custom Checkout + Disbursement to Bank): Classping's rates and
 account settings.
 
 Env: DANA_ENV, DANA_MERCHANT_ID, DANA_CLIENT_ID, DANA_CLIENT_SECRET,
-DANA_CHANNEL_ID, CLASSPING_DANA_PRIVATE_KEY, DANA_PUBLIC_KEY, DANA_RETURN_URL, and
-optionally DANA_NOTIFY_URL, DANA_MCC, DANA_BASE_URL.
+DANA_CHANNEL_ID, CLASSPING_DANA_PRIVATE_KEY, DANA_PUBLIC_KEY, DANA_RETURN_URL,
+DANA_PAYOUT_PHONE (withdrawals), and optionally DANA_NOTIFY_URL, DANA_MCC,
+DANA_BASE_URL.
 
 Custom Checkout, not Hosted Checkout: the parent pays the channel fee on top
 of the bill, so the channel must be known before the order is created.
@@ -15,6 +16,7 @@ from decimal import Decimal
 from django.conf import settings
 from payment_aggregator.providers.dana import DanaConfig, DanaProvider
 
+from apps.payment_aggregator.constants import DISBURSEMENT_FEE as GENERAL_DISBURSEMENT_FEE
 from apps.payment_aggregator.constants import with_vat
 
 NAME = "dana"
@@ -23,7 +25,7 @@ NAME = "dana"
 # DANA adds 11% VAT on top of its fee, so each rate is the listed fee + VAT.
 # DANA deducts the fee from the paid amount (settlement file: SETTLE_AMOUNT =
 # TXN_AMOUNT - commission - tax), so percent channels are grossed up and paid
-# by the parent, as with Rintisan.
+# by the parent.
 
 # Virtual account: Rp2.500 + VAT = Rp2.775 flat. Excludes the bank's own fee
 # (agreed between Classping and each bank); add it per bank once known.
@@ -32,22 +34,33 @@ MDR_VA = with_vat(Decimal("2500"))  # 2775
 # Cards (Visa, Mastercard, AMEX, JCB): 2.9% + VAT = 3.219%.
 MDR_CARD = with_vat(Decimal("2.9"))  # 3.219
 
+# E-wallets (OVO, GoPay, ShopeePay, LinkAja): DANA quotes 1.5% or 2% + VAT.
+# The tier is not confirmed, so the higher one is charged (2% + VAT = 2.22%):
+# the parent never pays less than DANA deducts.
+MDR_EWALLET = with_vat(Decimal("2"))  # 2.22
+
 # Rate per DANA payOption. A channel left out is not offered. QRIS is
 # intentionally not offered (BI forbids charging QRIS MDR to the payer).
-# E-wallets (1.5% or 2% + VAT) are left out until DANA says which tier is ours.
 CHANNEL_FEES = {
     "VIRTUAL_ACCOUNT_BCA": MDR_VA,
     "VIRTUAL_ACCOUNT_BNI": MDR_VA,
     "VIRTUAL_ACCOUNT_BRI": MDR_VA,
     "VIRTUAL_ACCOUNT_MANDIRI": MDR_VA,
     "VIRTUAL_ACCOUNT_PERMATA": MDR_VA,
+    "VIRTUAL_ACCOUNT_CIMB": MDR_VA,
     "NETWORK_PAY_PG_CARD": MDR_CARD,
+    "NETWORK_PAY_PG_OVO": MDR_EWALLET,
+    "NETWORK_PAY_PG_GOPAY": MDR_EWALLET,
+    "NETWORK_PAY_PG_SPAY": MDR_EWALLET,
+    "NETWORK_PAY_PG_LINKAJA": MDR_EWALLET,
 }
 
-# Fee per Transfer to Bank. Not in the fee calculator yet: None keeps
-# withdrawals through DANA disabled until DANA confirms the amount and whether
-# it is deducted from the transfer or charged separately.
-DISBURSEMENT_FEE = None
+# Fee per Transfer to Bank: Classping's general rate for every provider (see
+# constants.DISBURSEMENT_FEE). The bank account receives amount - fee; DANA's
+# own transfer charge is billed to the Merchant Disbursement Account (MDA).
+# Withdrawals need env DANA_PAYOUT_PHONE and a funded MDA (topped up by ops
+# via the VA in DANA's Merchant Portal: Gapura settlement does not fund it).
+DISBURSEMENT_FEE = GENERAL_DISBURSEMENT_FEE
 
 
 # --- Account ---------------------------------------------------------------

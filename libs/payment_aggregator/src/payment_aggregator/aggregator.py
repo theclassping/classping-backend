@@ -3,17 +3,17 @@ PaymentAggregator: the single entry point business code uses.
 
     from decimal import Decimal
     from payment_aggregator import PaymentAggregator
-    from payment_aggregator.providers.rintisan import RintisanConfig, RintisanProvider
+    from payment_aggregator.providers.dana import DanaConfig, DanaProvider
 
-    provider = RintisanProvider(
-        RintisanConfig.from_env(),
-        channel_fees={"VABCA": Decimal("5000"), "CC": Decimal("2")},
+    provider = DanaProvider(
+        DanaConfig.from_env(),
+        channel_fees={"VIRTUAL_ACCOUNT_BCA": Decimal("2775"), "NETWORK_PAY_PG_CARD": Decimal("3.219")},
         disbursement_fee=Decimal("2500"),
     )
     aggregator = PaymentAggregator(provider)
 
     aggregator.get_channels(invoice_total)
-    aggregator.calculate_transaction_fee("VABCA", invoice_total)
+    aggregator.calculate_transaction_fee("VIRTUAL_ACCOUNT_BCA", invoice_total)
     aggregator.create_billing(BillingRequest(...))
     aggregator.calculate_withdrawal(amount)
     aggregator.transfer_balance(TransferRequest(...))
@@ -74,9 +74,23 @@ class PaymentAggregator:
     def parse_billing_callback(self, raw_body, headers, request_path=""):
         return self.provider.parse_billing_callback(raw_body, headers, request_path=request_path)
 
-    def callback_reply(self, event):
+    def callback_reply(self, event, result=None):
         """(body, headers) the provider requires in reply to a notification, or None."""
-        return self.provider.callback_reply(event)
+        return self.provider.callback_reply(event, result=result)
+
+    # --- cancel / refund -------------------------------------------------
+
+    def can_cancel_billing(self):
+        return bool(self.provider.supports_cancel_billing)
+
+    def cancel_billing(self, reference_no, provider_trx_id="", reason=""):
+        return self.provider.cancel_billing(reference_no, provider_trx_id=provider_trx_id, reason=reason)
+
+    def can_refund(self):
+        return bool(self.provider.supports_refund)
+
+    def refund_billing(self, request):
+        return self.provider.refund_billing(request)
 
     # --- payout ----------------------------------------------------------
 
@@ -88,6 +102,13 @@ class PaymentAggregator:
 
     def parse_transfer_callback(self, raw_body, headers, request_path=""):
         return self.provider.parse_transfer_callback(raw_body, headers, request_path=request_path)
+
+    def confirm_transfer_callbacks(self):
+        """True: apply a transfer callback only after get_transfer_status confirms it."""
+        return bool(self.provider.confirm_transfer_callbacks)
+
+    def transfer_id_for(self, request):
+        return self.provider.transfer_id_for(request)
 
     def get_balance(self):
         return self.provider.get_balance()

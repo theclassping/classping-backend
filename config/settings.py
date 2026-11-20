@@ -293,7 +293,7 @@ LOGGING = {
 # apps/payment_aggregator/providers/). Existing records keep
 # using the provider stored on them, so switching is safe while payments are
 # in flight; keep the old provider's credentials until they are all closed.
-PAYMENT_PROVIDER = os.environ.get("PAYMENT_PROVIDER", "rintisan").strip().lower()
+PAYMENT_PROVIDER = os.environ.get("PAYMENT_PROVIDER", "dana").strip().lower()
 
 # Password changes invalidate access and refresh tokens from every login.
 SIMPLE_JWT = {

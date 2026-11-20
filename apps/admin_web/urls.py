@@ -74,6 +74,7 @@ urlpatterns = [
     path("gateway-payments/<int:pk>/", views.gateway_payment_detail, name="gateway_payment_detail"),
     path("gateway-payments/<int:pk>/sync/", views.gateway_payment_sync, name="gateway_payment_sync"),
     path("gateway-payments/<int:pk>/cancel/", views.gateway_payment_cancel, name="gateway_payment_cancel"),
+    path("gateway-payments/<int:pk>/refund/", views.gateway_payment_refund, name="gateway_payment_refund"),
     path("wallets/", views.wallet_list, name="wallet_list"),
     path("wallets/<int:branch_pk>/", views.wallet_detail, name="wallet_detail"),
     path("withdrawals/", views.withdrawal_list, name="withdrawal_list"),

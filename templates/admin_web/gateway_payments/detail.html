@@ -37,6 +37,9 @@
         <div class="detail-row"><div class="detail-label">Cancelled</div><div>{{ gateway_payment.cancelled_at|date:"Y-m-d H:i" }} by {{ gateway_payment.cancelled_by.email|default:"-" }}{% if gateway_payment.cancel_reason %} · {{ gateway_payment.cancel_reason }}{% endif %}</div></div>
     {% endif %}
     <div class="detail-row"><div class="detail-label">Provider</div><div>{{ gateway_payment.provider }} · {{ gateway_payment.provider_trx_id|default:"-" }}</div></div>
+    {% if gateway_payment.refund_status %}
+        <div class="detail-row"><div class="detail-label">Refund</div><div>{{ gateway_payment.get_refund_status_display }} · {{ gateway_payment.refund_amount }} · {{ gateway_payment.refund_no }}{% if gateway_payment.refund_provider_id %} ({{ gateway_payment.refund_provider_id }}){% endif %}{% if gateway_payment.refunded_at %} · {{ gateway_payment.refunded_at|date:"Y-m-d H:i" }}{% endif %}{% if gateway_payment.refund_reason %} · {{ gateway_payment.refund_reason }}{% endif %}</div></div>
+    {% endif %}
 
     <div class="detail-section">
         <h3>Invoices</h3>
@@ -73,8 +76,13 @@
     </div>
 
     {% if can_cancel %}
-        <form method="post" action="{% url 'admin_web:gateway_payment_cancel' gateway_payment.pk %}" class="detail-actions inline-actions" onsubmit="return confirm('Cancel this online payment? The invoices become open for manual payment. The bank account may still accept a payment until the provider deadline.');">
+        <form method="post" action="{% url 'admin_web:gateway_payment_cancel' gateway_payment.pk %}" class="detail-actions inline-actions" onsubmit="return confirm('Cancel this online payment? The invoices become open for manual payment. The provider order is cancelled too where the provider allows it (DANA); otherwise the VA / link may still accept a payment until the provider deadline.');">
             {% csrf_token %}<label for="cancel-reason">Reason</label><input id="cancel-reason" name="reason" maxlength="500"><button class="btn danger-button" type="submit">Cancel online payment</button>
+        </form>
+    {% endif %}
+    {% if can_refund %}
+        <form method="post" action="{% url 'admin_web:gateway_payment_refund' gateway_payment.pk %}" class="detail-actions inline-actions" onsubmit="return confirm('Refund {{ gateway_payment.amount }} (everything the parent paid) to the payer through {{ gateway_payment.provider }}? The same amount is debited from the branch available balance.');">
+            {% csrf_token %}<label for="refund-reason">Reason</label><input id="refund-reason" name="reason" maxlength="500"><button class="btn danger-button" type="submit">{% if gateway_payment.refund_status == "processing" %}Resend refund{% else %}Refund to payer{% endif %}</button>
         </form>
     {% endif %}
 </div>

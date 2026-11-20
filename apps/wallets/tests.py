@@ -57,6 +57,12 @@ class WalletFixtureMixin:
         self.other_officer = make_staff(self.other_branch, "wl-officer-b@example.com", Staff.StaffType.OFFICER)
         self.parent, _ = make_parent("wl-parent@example.com", "Parent")
         BranchWallet.objects.create(branch=self.branch, available_balance=Decimal("150000"))
+        # Active provider: DANA with Classping's rates (no HTTP unless a test queues responses).
+        from apps.payment_aggregator.aggregator import set_provider
+        from apps.payment_aggregator.testing import make_provider
+
+        set_provider(make_provider()[0])
+        self.addCleanup(set_provider, None)
 
     def client_for(self, user):
         client = APIClient()
@@ -313,6 +319,13 @@ class WithdrawalApiTests(WalletFixtureMixin, TestCase):
 class DisbursementResultTests(WalletFixtureMixin, TestCase):
     def setUp(self):
         super().setUp()
+        # These tests apply callbacks as is; the confirm-by-status path is
+        # tested explicitly below (DANA itself confirms every callback).
+        patcher = mock.patch(
+            "apps.wallets.services.PaymentAggregator.confirm_transfer_callbacks", return_value=False
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
         otp = WithdrawalOtp.objects.create(
             reference="ref-1", branch=self.branch, user=self.officer, amount=Decimal("100000"),
             code_hash="x", sent_to=self.branch.email, expires_at=timezone.now(), **NEW_ACCOUNT,
@@ -329,9 +342,14 @@ class DisbursementResultTests(WalletFixtureMixin, TestCase):
         )
 
     def post_callback(self, result):
+        # Reply with the app's own status (DANA would always send its ACK).
+        def reply(provider, event, default, result=None):
+            return default
+
         with mock.patch("apps.wallets.services.PaymentAggregator.parse_transfer_callback", return_value=result), \
+                mock.patch("apps.wallets.services.callback_reply", side_effect=reply), \
                 mock.patch(MAILER) as mailer:
-            response = APIClient().post("/api/webhooks/rintisan/disbursement/", b"{}", content_type="application/json")
+            response = APIClient().post("/api/webhooks/dana/disbursement/", b"{}", content_type="application/json")
         self.mailer = mailer
         return response
 
@@ -381,8 +399,68 @@ class DisbursementResultTests(WalletFixtureMixin, TestCase):
             "apps.wallets.services.PaymentAggregator.parse_transfer_callback",
             side_effect=provider_errors.InvalidCallback("bad"),
         ), self.assertLogs("apps.wallets.services", "WARNING"):
-            response = APIClient().post("/api/webhooks/rintisan/disbursement/", b"{}", content_type="application/json")
+            response = APIClient().post("/api/webhooks/dana/disbursement/", b"{}", content_type="application/json")
         self.assertEqual(response.status_code, 401)
+
+    def test_unsigned_callback_applied_only_after_status_check(self):
+        with mock.patch("apps.wallets.services.PaymentAggregator.confirm_transfer_callbacks", return_value=True), \
+                mock.patch(
+                    "apps.wallets.services.PaymentAggregator.get_transfer_status",
+                    return_value=self.result(TransferStatus.SUCCESS, "00"),
+                ) as status:
+            response = self.post_callback(self.result(TransferStatus.FAILED, "35"))
+        self.assertEqual(response.json(), {"status": "ok"})
+        status.assert_called_once_with("DISPTR-1")
+        # The provider's answer wins over the (forgeable) callback: no reversal.
+        self.assertEqual(Withdrawal.objects.get().status, Withdrawal.Status.SUCCESS)
+
+    def test_unsigned_callback_not_applied_when_unconfirmed(self):
+        with mock.patch("apps.wallets.services.PaymentAggregator.confirm_transfer_callbacks", return_value=True), \
+                mock.patch(
+                    "apps.wallets.services.PaymentAggregator.get_transfer_status",
+                    side_effect=provider_errors.ProviderUnavailable("down"),
+                ), self.assertLogs("apps.wallets.services", "ERROR"):
+            response = self.post_callback(self.result(TransferStatus.FAILED, "35"))
+        self.assertEqual(response.json(), {"status": "unconfirmed"})
+        withdrawal = Withdrawal.objects.get()
+        self.assertEqual(withdrawal.status, Withdrawal.Status.PROCESSING)
+        self.assertTrue(withdrawal.needs_review)
+        self.assertFalse(LedgerEntry.objects.filter(entry_type=LedgerEntry.EntryType.WITHDRAWAL_REVERSAL).exists())
+
+    def test_poll_checks_old_withdrawal_without_id_by_derived_id(self):
+        Withdrawal.objects.filter(pk=self.withdrawal.pk).update(provider_disbursement_id="")
+        derived = mock.patch("apps.wallets.services.PaymentAggregator.transfer_id_for", return_value="WDR|014|527")
+        # Still recent: the request may be in flight.
+        with derived, mock.patch("apps.wallets.services.PaymentAggregator.get_transfer_status") as status:
+            self.assertEqual(services.poll_processing_withdrawals(), 0)
+        status.assert_not_called()
+
+        Withdrawal.objects.filter(pk=self.withdrawal.pk).update(created_at=timezone.now() - datetime.timedelta(hours=1))
+        with derived, mock.patch(
+            "apps.wallets.services.PaymentAggregator.get_transfer_status",
+            side_effect=provider_errors.TransferNotFound("no"),
+        ):
+            self.assertEqual(services.poll_processing_withdrawals(), 1)
+        # Never reached the provider: left for resend / resolve.
+        self.assertEqual(Withdrawal.objects.get().status, Withdrawal.Status.PROCESSING)
+
+        with derived, mock.patch(
+            "apps.wallets.services.PaymentAggregator.get_transfer_status",
+            return_value=self.result(TransferStatus.SUCCESS, "00", provider_transfer_id="WDR|014|527"),
+        ) as status, mock.patch(MAILER):
+            self.assertEqual(services.poll_processing_withdrawals(), 1)
+        status.assert_called_once_with("WDR|014|527")
+        withdrawal = Withdrawal.objects.get()
+        self.assertEqual((withdrawal.status, withdrawal.provider_disbursement_id), ("success", "WDR|014|527"))
+
+    def test_poll_skips_withdrawal_without_id_when_not_derivable(self):
+        Withdrawal.objects.filter(pk=self.withdrawal.pk).update(
+            provider_disbursement_id="", created_at=timezone.now() - datetime.timedelta(hours=1)
+        )
+        with mock.patch("apps.wallets.services.PaymentAggregator.get_transfer_status") as status, \
+                mock.patch("apps.wallets.services.PaymentAggregator.transfer_id_for", return_value=None):
+            self.assertEqual(services.poll_processing_withdrawals(), 0)
+        status.assert_not_called()
 
     def test_poll_syncs_processing_withdrawals(self):
         with mock.patch(
@@ -398,6 +476,66 @@ class DisbursementResultTests(WalletFixtureMixin, TestCase):
 
 
 @override_settings(MAILJET_TEMPLATES=TEMPLATES)
+class DanaWithdrawalTests(WalletFixtureMixin, TestCase):
+    """A withdrawal through DANA Transfer to Bank, settled by its notification."""
+
+    def setUp(self):
+        super().setUp()
+        from decimal import Decimal as D
+
+        from payment_aggregator.testing import FakeResponse, make_dana_provider
+
+        from apps.payment_aggregator.aggregator import set_provider
+
+        self.provider, self.session = make_dana_provider(
+            FakeResponse(body={
+                "responseCode": "2004200", "responseMessage": "Successful",
+                "beneficiaryAccountName": "YAYASAN PENDIDIKAN",
+                "additionalInfo": {"feeAmount": {"value": "2500.00", "currency": "IDR"}},
+            }),
+            FakeResponse(body={"responseCode": "2024300", "responseMessage": "Request In Progress"}),
+            FakeResponse(body={
+                "responseCode": "2000000", "responseMessage": "Successful",
+                "originalPartnerReferenceNo": "set-below", "latestTransactionStatus": "00",
+                "amount": {"value": "97500.00", "currency": "IDR"},
+            }),
+            disbursement_fee=D("2500"),
+        )
+        set_provider(self.provider)
+        self.addCleanup(set_provider, None)
+        otp = WithdrawalOtp.objects.create(
+            reference="ref-dana", branch=self.branch, user=self.officer, amount=Decimal("100000"),
+            code_hash="x", sent_to=self.branch.email, expires_at=timezone.now(), **NEW_ACCOUNT,
+        )
+        with mock.patch(MAILER):
+            self.withdrawal = services._send_to_provider(
+                services._create_processing_withdrawal(self.officer, otp, timezone.now())
+            )
+
+    def test_transfer_then_notification_confirmed_by_status_check(self):
+        import json
+
+        from payment_aggregator.testing import dana_notify_headers
+
+        withdrawal = Withdrawal.objects.get()
+        self.assertEqual((withdrawal.provider, withdrawal.status), ("dana", Withdrawal.Status.PROCESSING))
+        self.assertEqual(withdrawal.provider_disbursement_id, withdrawal.withdrawal_no)
+        sent = json.loads(self.session.calls[1]["data"])
+        self.assertEqual((sent["beneficiaryBankCode"], sent["amount"]["value"]), ("014", "97500.00"))
+
+        path = "/api/webhooks/v1.0/debit/emoney/transfer-bank/notify.htm"
+        raw = json.dumps({"originalPartnerReferenceNo": withdrawal.withdrawal_no, "latestTransactionStatus": "06"}).encode()
+        headers = {"HTTP_" + k.upper().replace("-", "_"): v for k, v in dana_notify_headers(path, raw).items()}
+        with mock.patch(MAILER):
+            response = APIClient().post(path, raw, content_type="application/json", **headers)
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["responseCode"], "2004300")
+        # The status inquiry (00 = success) decides, not the notification body (06).
+        self.assertEqual(json.loads(self.session.calls[2]["data"])["originalPartnerReferenceNo"], withdrawal.withdrawal_no)
+        self.assertEqual(Withdrawal.objects.get().status, Withdrawal.Status.SUCCESS)
+        self.assertEqual(self.wallet().available_balance, Decimal("50000"))
+
+
 class WithdrawalRaceTests(NoMailjetMixin, WalletFixtureMixin, TransactionTestCase):
     """Two withdrawals at once never take the balance below zero."""
 
