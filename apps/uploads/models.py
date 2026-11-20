@@ -61,3 +61,40 @@ class MediaObject(models.Model):
 
     def __str__(self):
         return self.file_key
+
+
+class StorageAddOn(models.Model):
+    """
+    Retired: storage add-on requests approved by hand. Storage is now bought as
+    a subscription add-on (apps.branch_subscriptions). Approved rows were
+    carried into a storage_bytes override by branch_subscriptions 0002; the
+    table is dropped in a later release.
+    """
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        APPROVED = "approved", "Approved"
+        REJECTED = "rejected", "Rejected"
+        CANCELLED = "cancelled", "Cancelled"
+
+    branch = models.ForeignKey("schools.Branch", on_delete=models.CASCADE, related_name="storage_addons")
+    size_bytes = models.PositiveBigIntegerField()
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING)
+    note = models.TextField(blank=True)
+    review_note = models.TextField(blank=True)
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+",
+    )
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "storage_addons"
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["branch", "status"], name="storage_addon_branch_status")]
+
+    def __str__(self):
+        return f"{self.branch_id}: {self.size_bytes} bytes ({self.status})"

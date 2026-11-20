@@ -30,6 +30,7 @@ from apps.core.notes import append_note
 from apps.core.phone import InvalidPhoneNumber, normalize_phone
 from apps.core.webhooks import InvalidWebhook
 from apps.payment_aggregator import PaymentAggregator
+from plan_subscriptions import entitlements
 from apps.payment_aggregator.aggregator import callback_reply, parse_callback
 from payment_aggregator import exceptions as provider_errors
 from payment_aggregator.base import (
@@ -406,6 +407,13 @@ def handle_payment_callback(raw_body, headers, provider=None, request_path=""):
 
 def _apply_payment_callback(provider, billing):
     """'ok', or 'ignored' for an unknown checkout or another provider's one."""
+    from apps.branch_subscriptions import payments as subscription_payments
+
+    # Branch subscription payments ("SUB-...") share this webhook.
+    if subscription_payments.owns_reference(billing.reference_no) or (
+        billing.provider_trx_id and subscription_payments.find_by_reference(None, billing.provider_trx_id)
+    ):
+        return subscription_payments.apply_callback(provider, billing)
     gateway_payment = GatewayPayment.objects.filter(payment_no=billing.reference_no).first()
     if gateway_payment is None and billing.provider_trx_id:
         gateway_payment = GatewayPayment.objects.filter(provider_trx_id=billing.provider_trx_id).first()
@@ -663,7 +671,7 @@ def get_invoice_payability(invoice):
     checkout = expire_if_overdue(get_active_checkout_for_invoice(invoice.pk))
     if checkout is not None:
         return InvoicePayability(invoice, NotPayableReason.INVOICE_LOCKED, checkout)
-    if not invoice.class_student.class_obj.branch.is_payment_gateway_enabled:
+    if not entitlements.has(invoice.class_student.class_obj.branch, "payment_gateway"):
         return InvoicePayability(invoice, NotPayableReason.GATEWAY_DISABLED)
     return InvoicePayability(invoice)
 
@@ -692,7 +700,7 @@ def get_student_payability(user, student_id):
     return StudentPayability(
         student=student,
         branch_id=branch.pk if branch else None,
-        is_payment_gateway_enabled=bool(branch and branch.is_payment_gateway_enabled),
+        is_payment_gateway_enabled=bool(branch and entitlements.has(branch, "payment_gateway")),
         invoices=[get_invoice_payability(invoice) for invoice in invoices],
     )
 

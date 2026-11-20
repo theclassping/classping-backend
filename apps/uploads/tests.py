@@ -133,7 +133,8 @@ class MediaApiTests(TestCase):
         from apps.uploads.services.media import MediaService
         with override_settings(SITE_URL="http://testserver"), \
                 patch.object(MediaService, "_redis", return_value=None), \
-                patch("apps.uploads.tracking.record_presigned"):
+                patch("apps.uploads.tracking.record_presigned"), \
+                patch("apps.uploads.usage.ensure_capacity"):
             result = MediaService.generate_presign_url(
                 "evil.html", "image/png", size=10, user_id=self.user.pk,
                 location=MediaLocation(3, None, "general"),
@@ -619,17 +620,6 @@ class RedisClientTests(SimpleTestCase):
         client.pipeline.return_value.execute.side_effect = redis.ConnectionError("down")
         return client
 
-    def test_presign_fails_instead_of_using_process_memory(self):
-        from apps.uploads.services.media import UploadStoreUnavailable
-        self.MediaService._pending_uploads.clear()
-        with patch.object(self.MediaService, "_redis", return_value=self.down_client()), \
-                override_settings(SITE_URL="http://testserver"):
-            with self.assertRaises(UploadStoreUnavailable):
-                self.MediaService.generate_presign_url(
-                    "a.jpg", "image/jpeg", size=10, user_id=1, location=MediaLocation(3, None, "general"),
-                )
-        self.assertEqual(self.MediaService._pending_uploads, {})
-
     def test_attach_returns_503_when_redis_is_down(self):
         from apps.uploads.serializers import ServiceUnavailable, resolve_image_input
         serializer = mock.Mock(context={"request": mock.Mock(user=mock.Mock(pk=1))})
@@ -640,6 +630,28 @@ class RedisClientTests(SimpleTestCase):
 
 
 class PresignRedisOutageTests(TestCase):
+    # Presign checks the branch's quota in the DB first; that is not under test.
+    def setUp(self):
+        capacity = patch("apps.uploads.usage.ensure_capacity")
+        capacity.start()
+        self.addCleanup(capacity.stop)
+
+    def test_presign_fails_instead_of_using_process_memory(self):
+        import redis
+        from apps.uploads.services.media import MediaService, UploadStoreUnavailable
+        from apps.uploads.models import MediaObject
+        MediaService._pending_uploads.clear()
+        down = mock.Mock()
+        down.pipeline.return_value.execute.side_effect = redis.ConnectionError("down")
+        with patch.object(MediaService, "_redis", return_value=down), \
+                override_settings(SITE_URL="http://testserver"):
+            with self.assertRaises(UploadStoreUnavailable):
+                MediaService.generate_presign_url(
+                    "a.jpg", "image/jpeg", size=10, user_id=1, location=MediaLocation(3, None, "general"),
+                )
+        self.assertEqual(MediaService._pending_uploads, {})
+        self.assertFalse(MediaObject.objects.exists())
+
     def test_presign_endpoint_returns_503(self):
         import redis
         from apps.uploads.services.media import MediaService

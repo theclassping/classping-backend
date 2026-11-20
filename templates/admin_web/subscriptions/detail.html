@@ -1,0 +1,126 @@
+{% extends "admin_web/base.html" %}
+
+{% block title %}{{ label }} subscription - ClassPing Admin{% endblock %}
+{% block page_title %}<h1>Subscription</h1>{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h2>{{ label }}</h2>
+        <p class="text-muted">{{ sub.plan.name }} · <span class="status {% if status == 'active' or status == 'trialing' %}status-active{% else %}status-inactive{% endif %}">{{ status|title|cut:"_" }}</span>{% if sub.cancel_at_period_end %} · cancels at period end{% endif %}</p>
+    </div>
+    <div class="form-actions"><a href="{% url 'admin_web:subscription_list' %}" class="btn">Back to subscriptions</a></div>
+</div>
+
+<div class="card">
+    <div class="detail-row"><div class="detail-label">Plan / price</div><div>{{ sub.price.plan.name }} · Rp {{ sub.price.amount|floatformat:0 }}/{{ sub.price.interval }}{% if sub.pending_price %} → {{ sub.pending_price.plan.name }} from {{ sub.pending_from|date:"d M Y" }}{% endif %}</div></div>
+    <div class="detail-row"><div class="detail-label">Trial</div><div>{% if sub.trial_start %}{{ sub.trial_start|date:"d M Y" }} – {{ sub.trial_end|date:"d M Y" }}{% else %}—{% endif %}</div></div>
+    <div class="detail-row"><div class="detail-label">Current period</div><div>{% if sub.current_period_start %}{{ sub.current_period_start|date:"d M Y" }} – {{ sub.current_period_end|date:"d M Y" }}{% else %}—{% endif %}</div></div>
+    <div class="detail-row"><div class="detail-label">Access until</div><div>{{ until|date:"d M Y H:i"|default:"—" }}{% if sub.grace_ends_at %} · read-only from {{ sub.grace_ends_at|date:"d M Y H:i" }}{% endif %}</div></div>
+
+    <div class="detail-section">
+        <h3>Limits now</h3>
+        <table class="data-table">
+            <thead><tr><th>Feature</th><th>Used</th><th>Limit</th><th>State</th></tr></thead>
+            <tbody>{% for row in features %}<tr><td>{{ row.feature.name }}</td><td>{{ row.used|default:"—" }}</td><td>{{ row.value }}</td><td>{{ row.state|cut:"_" }}</td></tr>{% endfor %}</tbody>
+        </table>
+    </div>
+
+    <div class="detail-section">
+        <h3>Add-ons</h3>
+        {% for item in addons %}
+            <p>{{ item.addon.name }} × {{ item.quantity }} · Rp {{ item.unit_price|floatformat:0 }} · {{ item.get_status_display }}{% if item.started_at %} · since {{ item.started_at|date:"d M Y" }}{% endif %}{% if item.ends_at %} · ends {{ item.ends_at|date:"d M Y" }}{% endif %}</p>
+        {% empty %}<p class="text-muted">No add-ons.</p>{% endfor %}
+    </div>
+
+    <div class="detail-section">
+        <h3>Custom limits (overrides)</h3>
+        {% for override in overrides %}
+            <form method="post" class="form-actions">{% csrf_token %}
+                <input type="hidden" name="action" value="remove_override"><input type="hidden" name="override_id" value="{{ override.pk }}">
+                <span>{{ override.feature.name }}: <strong>{% if override.value is None %}Unlimited{% elif override.feature.unit == 'bytes' %}{{ override.value|filesizeformat }}{% else %}{{ override.value }}{% endif %}</strong>{% if override.reason %} · {{ override.reason }}{% endif %}</span>
+                <button class="btn btn-small" type="submit" onclick="return confirm('Remove this custom value? The plan value applies again.');">Remove</button>
+            </form>
+        {% empty %}<p class="text-muted">None. The plan and add-ons decide the limits.</p>{% endfor %}
+        <form method="post" class="filter-bar">{% csrf_token %}
+            <input type="hidden" name="action" value="set_override">
+            <div class="form-group"><label>Feature</label><select name="feature_id">{% for feature in all_features %}<option value="{{ feature.pk }}">{{ feature.name }}{% if feature.unit == 'bytes' %} (GB){% elif feature.kind == 'boolean' %} (on / off){% endif %}</option>{% endfor %}</select></div>
+            <div class="form-group"><label>Value</label><input name="value" placeholder="e.g. 400, 120 (GB) or on / off"></div>
+            <div class="form-group"><label><input type="checkbox" name="unlimited"> Unlimited</label></div>
+            <div class="form-group"><label>Reason</label><input name="reason" placeholder="e.g. Pilot school"></div>
+            <button class="btn" type="submit">Set custom value</button>
+        </form>
+    </div>
+
+    <div class="detail-section">
+        <h3>Invoices</h3>
+        <table class="data-table">
+            <thead><tr><th>Invoice</th><th>Kind</th><th>Period</th><th>Total</th><th>Status</th><th>Due / paid</th><th>Action</th></tr></thead>
+            <tbody>
+            {% for invoice in invoices %}
+                <tr>
+                    <td>{{ invoice.number }}{% if invoice.price %}<br><small class="text-muted">{{ invoice.price.plan.name }}</small>{% endif %}</td>
+                    <td>{{ invoice.get_kind_display }}{% if invoice.start == 'now' %} (start on payment){% endif %}</td>
+                    <td>{{ invoice.period_start|date:"d M Y" }}{% if invoice.period_end %} – {{ invoice.period_end|date:"d M Y" }}{% endif %}</td>
+                    <td>Rp {{ invoice.total|floatformat:0 }}</td>
+                    <td>{{ invoice.get_status_display }}</td>
+                    <td>{% if invoice.paid_at %}paid {{ invoice.paid_at|date:"d M Y H:i" }}<br><small class="text-muted">{{ invoice.paid_ref }}</small>{% else %}due {{ invoice.due_at|date:"d M Y" }}{% endif %}</td>
+                    <td>
+                        {% if invoice.status == 'open' %}
+                        <form method="post" class="form-actions">{% csrf_token %}
+                            <input type="hidden" name="action" value="mark_paid"><input type="hidden" name="invoice_id" value="{{ invoice.pk }}">
+                            <input name="reference" placeholder="Transfer reference" required>
+                            <button class="btn btn-small" type="submit" onclick="return confirm('Mark {{ invoice.number }} paid by bank transfer?');">Mark paid</button>
+                        </form>
+                        <form method="post">{% csrf_token %}
+                            <input type="hidden" name="action" value="void_invoice"><input type="hidden" name="invoice_id" value="{{ invoice.pk }}">
+                            <button class="btn btn-small" type="submit" onclick="return confirm('Void {{ invoice.number }}?');">Void</button>
+                        </form>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% empty %}<tr><td colspan="7" class="text-muted">No invoices yet.</td></tr>{% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="detail-section">
+        <h3>Online payments</h3>
+        {% for payment in payments %}
+            <p>{{ payment.payment_no }} · {{ payment.invoice.number }} · {{ payment.channel_name|default:payment.channel_code }} · Rp {{ payment.amount|floatformat:0 }} (fee Rp {{ payment.transaction_fee|floatformat:0 }}) · {{ payment.get_status_display }} · {{ payment.created_at|date:"d M Y H:i" }}{% if payment.staff %} · by {{ payment.staff.email }}{% endif %}</p>
+        {% empty %}<p class="text-muted">No online payments yet.</p>{% endfor %}
+    </div>
+
+    <div class="detail-section">
+        <h3>Admin actions</h3>
+        <form method="post" class="filter-bar">{% csrf_token %}
+            <input type="hidden" name="action" value="extend_trial">
+            <div class="form-group"><label>Extend trial by (days)</label><input type="number" name="days" min="1" value="30"></div>
+            <button class="btn" type="submit" {% if not sub.trial_end %}disabled{% endif %}>Extend trial</button>
+        </form>
+        <form method="post" class="filter-bar">{% csrf_token %}
+            <input type="hidden" name="action" value="set_plan">
+            <div class="form-group"><label>Change tier now (no charge)</label>
+                <select name="price_id">{% for price in prices %}<option value="{{ price.pk }}" {% if price.pk == sub.price_id %}selected{% endif %}>{{ price.plan.name }} · Rp {{ price.amount|floatformat:0 }}</option>{% endfor %}</select>
+            </div>
+            <button class="btn" type="submit" onclick="return confirm('Change the tier without charging the branch?');">Change tier</button>
+        </form>
+        {% if sub.cancel_at_period_end %}
+        <form method="post">{% csrf_token %}<input type="hidden" name="action" value="resume"><button class="btn" type="submit">Undo cancellation</button></form>
+        {% else %}
+        <form method="post" class="filter-bar">{% csrf_token %}
+            <input type="hidden" name="action" value="cancel">
+            <div class="form-group"><label><input type="checkbox" name="immediately"> End immediately (read-only now)</label></div>
+            <button class="btn" type="submit" onclick="return confirm('Cancel this subscription?');">Cancel subscription</button>
+        </form>
+        {% endif %}
+    </div>
+
+    <div class="detail-section">
+        <h3>History</h3>
+        {% for event in events %}
+            <p><small class="text-muted">{{ event.created_at|date:"d M Y H:i" }}</small> · {{ event.type }}{% if event.actor %} · {{ event.actor.email }}{% endif %}{% if event.data %} · <small class="text-muted">{{ event.data }}</small>{% endif %}</p>
+        {% empty %}<p class="text-muted">No history.</p>{% endfor %}
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,66 @@
+{% extends "admin_web/base.html" %}
+
+{% block title %}{% if addon %}{{ addon.name }}{% else %}New add-on{% endif %} - ClassPing Admin{% endblock %}
+{% block page_title %}<h1>Plans</h1>{% endblock %}
+
+{% block content %}
+{% include "admin_web/plans/_tabs.html" %}
+<div class="card">
+    <h3>{% if addon %}Edit {{ addon.name }}{% else %}New add-on{% endif %}</h3>
+    {% if addon %}<p class="text-muted">{{ holders }} branch purchase(s) active now. A size change applies to them immediately.</p>{% endif %}
+    {% for error in errors %}<p class="alert alert-error">{{ error }}</p>{% endfor %}
+    <form method="post">
+        {% csrf_token %}
+        <div class="form-group"><label>Code</label>
+            {% if addon %}<input value="{{ addon.code }}" disabled>
+            {% else %}<input name="code" value="{{ data.code|default:'' }}" placeholder="e.g. storage_10gb" required>{% endif %}
+        </div>
+        <div class="form-group"><label>Name</label><input name="name" value="{% if data %}{{ data.name }}{% else %}{{ addon.name|default:'' }}{% endif %}" required></div>
+        <div class="form-group"><label>Description</label><input name="description" value="{% if data %}{{ data.description }}{% else %}{{ addon.description|default:'' }}{% endif %}"></div>
+        <div class="form-group"><label>Billing</label>
+            <select name="billing">{% for value, label in billing_choices %}<option value="{{ value }}" {% if data %}{% if data.billing == value %}selected{% endif %}{% elif addon.billing == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+            <small class="text-muted">Recurring: charged every month with the plan (first month prorated). One-time: charged once.</small>
+        </div>
+        <div class="form-group"><label>Price per unit (Rp, excluding PPN)</label>
+            <input name="price" inputmode="numeric" value="{% if data %}{{ data.price }}{% elif addon %}{{ addon.price|floatformat:0 }}{% endif %}" required>
+            {% if addon %}<label><input type="checkbox" name="apply_to_existing" {% if data.apply_to_existing %}checked{% endif %}> Apply the new price to branches that already have it (from their next invoice)</label>{% endif %}
+        </div>
+        <div class="form-group"><label>Max quantity per branch</label><input name="max_quantity" inputmode="numeric" value="{% if data %}{{ data.max_quantity }}{% else %}{{ addon.max_quantity|default_if_none:'' }}{% endif %}"><small class="text-muted">Empty = no limit.</small></div>
+
+        <h3>What it gives (per unit)</h3>
+        <table class="data-table">
+            <thead><tr><th>Feature</th><th>How</th><th>Value</th></tr></thead>
+            <tbody>
+            {% for row in feature_rows %}
+                <tr>
+                    <td>{{ row.feature.name }}</td>
+                    <td>
+                        <select name="f_{{ row.feature.pk }}_mode">
+                            <option value="" {% if not row.mode %}selected{% endif %}>Nothing</option>
+                            {% if row.feature.kind == 'boolean' %}
+                                <option value="grant" {% if row.mode == 'grant' %}selected{% endif %}>Switch on</option>
+                            {% else %}
+                                <option value="increment" {% if row.mode == 'increment' %}selected{% endif %}>Add to the limit</option>
+                                <option value="grant" {% if row.mode == 'grant' %}selected{% endif %}>Raise the limit to</option>
+                            {% endif %}
+                        </select>
+                    </td>
+                    <td>{% if row.feature.kind != 'boolean' %}<input name="f_{{ row.feature.pk }}" value="{{ row.value }}" inputmode="decimal" style="max-width:8rem"> {{ row.unit }}{% endif %}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+
+        <h3>Available on</h3>
+        <p class="text-muted">None ticked = every plan.</p>
+        {% for plan in plans %}<label style="margin-right:1rem"><input type="checkbox" name="plans" value="{{ plan.pk }}" {% if plan.pk in selected_plans %}checked{% endif %}> {{ plan.name }}</label>{% endfor %}
+
+        <div class="form-group"><label>Sort order</label><input name="sort_order" inputmode="numeric" value="{% if data %}{{ data.sort_order }}{% else %}{{ addon.sort_order|default:0 }}{% endif %}"></div>
+        <div class="form-group"><label><input type="checkbox" name="is_active" {% if data %}{% if data.is_active %}checked{% endif %}{% elif not addon or addon.is_active %}checked{% endif %}> Active (can be bought)</label></div>
+        <div class="form-actions">
+            <button class="btn" type="submit">Save add-on</button>
+            <a class="btn btn-secondary" href="{% url 'admin_web:addon_list' %}">Cancel</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

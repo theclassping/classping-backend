@@ -40,6 +40,18 @@ app.conf.beat_schedule = {
         "task": "apps.wallets.tasks.poll_processing_withdrawals_task",
         "schedule": crontab(minute="*/5"),
     },
+    "subscriptions_advance_statuses": {
+        "task": "apps.branch_subscriptions.tasks.advance_statuses_task",
+        "schedule": crontab(minute=5),  # hourly; access itself is enforced on time (see plan_subscriptions.status)
+    },
+    "subscriptions_issue_invoices": {
+        "task": "apps.branch_subscriptions.tasks.issue_due_invoices_task",
+        "schedule": crontab(hour=1, minute=45),
+    },
+    "subscriptions_send_reminders": {
+        "task": "apps.branch_subscriptions.tasks.send_reminders_task",
+        "schedule": crontab(hour=8, minute=15),
+    },
     "check_branch_balances": {
         "task": "apps.wallets.tasks.check_branch_balances_task",
         "schedule": crontab(hour=23, minute=0),
