@@ -1,0 +1,39 @@
+{% extends "admin_web/base.html" %}
+
+{% block title %}{{ settlement_file.file_name }} - ClassPing Admin{% endblock %}
+{% block page_title %}<h1>Settlements</h1>{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div><h2>{{ settlement_file.file_name }}</h2><p class="text-muted">Imported {{ settlement_file.created_at|date:"Y-m-d H:i" }} by {{ settlement_file.imported_by.email|default:"-" }}</p></div>
+    <a href="{% url 'admin_web:settlement_list' %}" class="btn">Back to settlements</a>
+</div>
+
+<div class="card">
+    <div class="detail-row"><div class="detail-label">Lines</div><div>{{ settlement_file.line_count }}</div></div>
+    <div class="detail-row"><div class="detail-label">Settled</div><div>{{ settlement_file.settled_count }}</div></div>
+    <div class="detail-row"><div class="detail-label">Need review</div><div>{{ settlement_file.review_count }}</div></div>
+    <div class="detail-row"><div class="detail-label">Unmatched</div><div>{{ settlement_file.unmatched_count }}</div></div>
+    <div class="detail-row"><div class="detail-label">Provider settle amount</div><div>{{ settlement_file.settle_amount_total|default:"-" }}</div></div>
+</div>
+
+<form method="get" class="filter-bar">
+    <div class="form-group">
+        <label for="settlement-result">Result</label>
+        <select id="settlement-result" name="result">
+            <option value="">All lines</option>
+            <option value="review" {% if result == 'review' %}selected{% endif %}>Needs review (all)</option>
+            {% for value, label in results %}<option value="{{ value }}" {% if result == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+    </div>
+    <button class="btn" type="submit">Filter</button>
+</form>
+<div class="card">
+    {% if page_obj.object_list %}
+        {% include "admin_web/settlements/_lines.html" with rows=page_obj %}
+    {% else %}
+        <div class="empty-state"><h3>No lines</h3></div>
+    {% endif %}
+</div>
+{% include "admin_web/includes/pagination.html" %}
+{% endblock %}

@@ -443,16 +443,17 @@ def sync_gateway_payment(gateway_payment_id):
     return apply_billing_result(gateway_payment, billing)
 
 
-def mark_gateway_payment_settled(gateway_payment_id):
+def mark_gateway_payment_settled(gateway_payment_id, settled_at=None):
     """The provider disbursed the money to Classping's partner balance:
-    move the branch credit from pending to available."""
+    move the branch credit from pending to available. ``settled_at``: the
+    provider's settle date (settlement file), default now."""
     from apps.wallets.services import mark_payment_settled
 
     with transaction.atomic():
         gateway_payment = _lock(gateway_payment_id)
         if gateway_payment.status != GatewayPayment.Status.PAID or gateway_payment.settled_at:
             return gateway_payment
-        settled_at = timezone.now()
+        settled_at = settled_at or timezone.now()
         mark_payment_settled(gateway_payment, settled_at)
         gateway_payment.settled_at = settled_at
         gateway_payment.save(update_fields=["settled_at", "updated_at"])
@@ -493,7 +494,15 @@ def reconcile_settlements():
     unsettled = GatewayPayment.objects.filter(
         status=GatewayPayment.Status.PAID, settled_at__isnull=True, provider_trx_id__isnull=False
     ).values_list("pk", "provider", "provider_trx_id")
+    by_file = {}
     for gateway_payment_id, provider, provider_trx_id in unsettled:
+        if provider not in by_file:
+            try:
+                by_file[provider] = PaymentAggregator.using(provider).settlement_via_file()
+            except provider_errors.PaymentAggregatorError:
+                by_file[provider] = False
+        if by_file[provider]:
+            continue  # settled by importing the provider's settlement file
         try:
             billing = PaymentAggregator.using(provider).get_billing_status(provider_trx_id)
         except provider_errors.PaymentAggregatorError:

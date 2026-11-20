@@ -251,6 +251,13 @@ class SettlementRulesTests(PaymentFlowMixin, TestCase):
         self.assertEqual(rejected.proofs.count(), 1)  # history kept
 
     def test_settlement_moves_pending_to_available(self):
+        # Polling path: a provider whose status API reports settlement (DANA
+        # reports it only in its settlement file, see test_settlement).
+        patcher = mock.patch(
+            "apps.payment_gateway.services.PaymentAggregator.settlement_via_file", return_value=False, create=True
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
         services.mark_gateway_payment_paid(self.checkout_row.pk)
         unsettled = BillingResult("PAY-1", "PPI-1", status=BillingStatus.PAID)
         settled = BillingResult("PAY-1", "PPI-1", status=BillingStatus.PAID, settlement_status=SettlementStatus.SETTLED)

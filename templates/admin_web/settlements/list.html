@@ -1,0 +1,53 @@
+{% extends "admin_web/base.html" %}
+
+{% block title %}Settlements - ClassPing Admin{% endblock %}
+{% block page_title %}<h1>Settlements</h1>{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div><h2>Settlement files</h2><p class="text-muted">Import DANA's daily settlement file. Paid online payments in the file move from pending to available in the branch wallets; anything that does not match is flagged for review.</p></div>
+</div>
+
+<div class="card form-card">
+    <h3>Import a settlement file</h3>
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        {% for field in form %}
+            <div class="form-group">
+                {{ field.label_tag }}
+                {{ field }}
+                {% if field.help_text %}<small class="help-text">{{ field.help_text }}</small>{% endif %}
+                {% if field.errors %}<ul class="field-errors">{% for error in field.errors %}<li>{{ error }}</li>{% endfor %}</ul>{% endif %}
+            </div>
+        {% endfor %}
+        <div class="form-actions"><button type="submit" class="btn btn-primary">Preview</button></div>
+        <p class="text-muted">Nothing changes until you confirm on the preview page.</p>
+    </form>
+</div>
+
+<div class="card">
+    {% if page_obj.object_list %}
+        <table class="data-table">
+            <thead><tr><th>File</th><th>Imported</th><th>By</th><th>Lines</th><th>Settled</th><th>Review</th><th>Unmatched</th><th>Settle amount</th><th>Action</th></tr></thead>
+            <tbody>
+                {% for settlement_file in page_obj %}
+                    <tr>
+                        <td><strong>{{ settlement_file.file_name }}</strong></td>
+                        <td>{{ settlement_file.created_at|date:"Y-m-d H:i" }}</td>
+                        <td>{{ settlement_file.imported_by.email|default:"-" }}</td>
+                        <td>{{ settlement_file.line_count }}</td>
+                        <td>{{ settlement_file.settled_count }}</td>
+                        <td>{% if settlement_file.review_count %}<span class="status status-inactive">{{ settlement_file.review_count }}</span>{% else %}0{% endif %}</td>
+                        <td>{% if settlement_file.unmatched_count %}<span class="status status-inactive">{{ settlement_file.unmatched_count }}</span>{% else %}0{% endif %}</td>
+                        <td>{{ settlement_file.settle_amount_total|default:"-" }}</td>
+                        <td><a class="btn btn-small" href="{% url 'admin_web:settlement_detail' settlement_file.pk %}">Open</a></td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <div class="empty-state"><h3>No settlement files imported yet</h3><p>Imported files will appear here.</p></div>
+    {% endif %}
+</div>
+{% include "admin_web/includes/pagination.html" %}
+{% endblock %}

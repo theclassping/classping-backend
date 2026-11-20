@@ -16,6 +16,12 @@ class PaymentAggregatorError(Exception):
         self.raw = raw
 
 
+class InvalidSettlementFile(PaymentAggregatorError):
+    """The settlement file is not in the provider's format (message says where)."""
+
+    code = "INVALID_SETTLEMENT_FILE"
+
+
 class ProviderNotConfigured(PaymentAggregatorError):
     code = "PROVIDER_NOT_CONFIGURED"
 

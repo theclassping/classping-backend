@@ -38,6 +38,18 @@ class SettlementStatus:
     SETTLED = "settled"
 
 
+class SettlementLineType:
+    """Kind of a settlement file line, provider-neutral."""
+
+    PAYMENT = "payment"  # a paid billing the provider settles to us
+    REFUND = "refund"
+    CANCEL = "cancel"
+    # Provider credit, e.g. DANA ACQUIRING_ORDER / ADJUSTMENT when it could
+    # not refund the payer; needs a person to look at it.
+    ADJUSTMENT = "adjustment"
+    OTHER = "other"  # line types Classping does not use (capture, voucher...)
+
+
 class TransferStatus:
     PROCESSING = "processing"
     SUCCESS = "success"
@@ -190,6 +202,26 @@ class TransferResult:
 
 
 @dataclass(frozen=True)
+class SettlementLine:
+    """One line of a provider settlement file. Amounts are in rupiah."""
+
+    line_no: int  # 1-based, header excluded
+    type: str  # SettlementLineType
+    provider_type: str  # the provider's own value (e.g. ACQUIRING_ORDER)
+    provider_trx_id: str  # the billing's provider id (PAYMENT / ADJUSTMENT)
+    original_trx_id: str  # REFUND / CANCEL: provider id of the paid billing
+    reference_no: str  # our reference (payment_no) when the file has it
+    amount: Decimal
+    fee: Decimal  # charged by the provider (commission + its tax)
+    settle_amount: Optional[Decimal]  # net paid out, when the file has it
+    settled_at: Optional[datetime.datetime]
+    transaction_at: Optional[datetime.datetime]
+    pay_method: str = ""
+    batch_no: str = ""
+    raw: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class ProviderBalance:
     available: Decimal
     pending: Decimal
@@ -236,6 +268,14 @@ class BaseProvider(abc.ABC):
         """Verify and parse a payment notification. ``request_path`` is the URL
         path it was received on (providers that sign it need it)."""
         ...
+
+    # Settlement. False: get_billing_status reports settlement (polled).
+    # True: only the provider's settlement file does (parse_settlement_file).
+    settlement_via_file = False
+
+    def parse_settlement_file(self, content: str) -> Sequence["SettlementLine"]:
+        """Parse a settlement file; raises InvalidSettlementFile."""
+        raise OperationNotSupported("{} has no settlement file".format(self.name or "This provider"))
 
     # Cancel / refund (optional: a provider without them keeps these defaults,
     # which raise OperationNotSupported; check supports_* first).

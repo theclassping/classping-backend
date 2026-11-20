@@ -1,0 +1,28 @@
+{% extends "admin_web/base.html" %}
+
+{% block title %}Preview {{ preview.file_name }} - ClassPing Admin{% endblock %}
+{% block page_title %}<h1>Settlements</h1>{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div><h2>Preview: {{ preview.file_name }}</h2><p class="text-muted">Nothing has changed yet. Check the summary, then import.</p></div>
+</div>
+
+<div class="card">
+    <div class="detail-row"><div class="detail-label">Lines</div><div>{{ preview.lines|length }}</div></div>
+    <div class="detail-row"><div class="detail-label">Will be settled</div><div>{{ preview.settled_count }} online payment(s), {{ preview.settled_total }} moved from pending to available</div></div>
+    <div class="detail-row"><div class="detail-label">Need review</div><div>{{ preview.review_count }} (flagged on the online payment, not settled)</div></div>
+    <div class="detail-row"><div class="detail-label">Unmatched</div><div>{{ preview.unmatched_count }}</div></div>
+    <div class="detail-row"><div class="detail-label">Provider settle amount</div><div>{{ preview.settle_amount_total|default:"- (not in the file)" }} <small class="text-muted">compare with the bank mutation</small></div></div>
+
+    <div class="detail-section">
+        {% include "admin_web/settlements/_lines.html" with rows=rows %}
+    </div>
+
+    <form method="post" class="detail-actions inline-actions" onsubmit="return confirm('Import this settlement file? {{ preview.settled_count }} online payment(s) become withdrawable.');">
+        {% csrf_token %}
+        <button class="btn btn-primary" type="submit" name="action" value="import">Import</button>
+        <button class="btn" type="submit" name="action" value="cancel" formnovalidate onclick="this.form.onsubmit=null;">Cancel</button>
+    </form>
+</div>
+{% endblock %}

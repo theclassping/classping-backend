@@ -19,7 +19,7 @@ from payment_aggregator.exceptions import (
     ProviderRejected,
     ProviderUnavailable,
 )
-from payment_aggregator.providers.dana import constants, mapper, signing
+from payment_aggregator.providers.dana import constants, mapper, settlement, signing
 from payment_aggregator.providers.dana.client import DanaClient
 from payment_aggregator.providers.dana.config import DanaConfig
 
@@ -44,6 +44,10 @@ class DanaProvider(BaseProvider):
     # Transfer notifications only prompt a status inquiry (their body is not
     # documented); the status inquiry decides.
     confirm_transfer_callbacks = True
+
+    # Query Payment has no settlement field: only DANA's daily settlement
+    # file says a payment was settled.
+    settlement_via_file = True
 
     name = constants.PROVIDER_NAME
 
@@ -103,6 +107,9 @@ class DanaProvider(BaseProvider):
 
     def get_banks(self):
         return {code: name for code, (_bi_code, name) in BANKS.items()}
+
+    def parse_settlement_file(self, content):
+        return settlement.parse(content)
 
     # --- pay-in ----------------------------------------------------------
 

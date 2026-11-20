@@ -14,9 +14,14 @@ def gateway_payment_list(request):
     status_filter = request.GET.get("status", "")
     branch_id = request.GET.get("branch", "")
     flag = request.GET.get("flag", "")
+    settlement = request.GET.get("settlement", "")
     search = request.GET.get("q", "").strip()
     if status_filter in GatewayPayment.Status.values:
         payments = payments.filter(status=status_filter)
+    if settlement == "settled":
+        payments = payments.filter(settled_at__isnull=False)
+    elif settlement == "pending":  # paid, money not settled by the provider yet
+        payments = payments.filter(status=GatewayPayment.Status.PAID, settled_at__isnull=True)
     if branch_id:
         payments = payments.filter(branch_id=branch_id)
     if flag == "needs_refund":
@@ -39,6 +44,7 @@ def gateway_payment_list(request):
             "status_filter": status_filter,
             "branch_id": branch_id,
             "flag": flag,
+            "settlement": settlement,
             "search": search,
             "branches": Branch.objects.select_related("school").order_by("school__name", "name"),
         },

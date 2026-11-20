@@ -32,6 +32,7 @@ from .staff import staff_detail, staff_list
 from .staff_mutations import staff_activate, staff_create, staff_deactivate, staff_edit
 from .branches import branch_detail, branch_create, branch_edit, branch_deactivate, branch_set_active, storage_overview
 from .payout_accounts import payout_account_delete, payout_account_edit
+from .settlements import settlement_detail, settlement_list, settlement_preview
 from .wallets import (
     wallet_detail, wallet_list, wallet_settle, withdrawal_detail, withdrawal_list, withdrawal_resend, withdrawal_resolve,
     withdrawal_sync,

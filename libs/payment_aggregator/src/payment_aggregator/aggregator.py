@@ -82,6 +82,15 @@ class PaymentAggregator:
         """(body, headers) the provider requires in reply to a notification, or None."""
         return self.provider.callback_reply(event, result=result)
 
+    # --- settlement ------------------------------------------------------
+
+    def settlement_via_file(self):
+        """True: settlement is known only from the provider's settlement file."""
+        return bool(self.provider.settlement_via_file)
+
+    def parse_settlement_file(self, content):
+        return self.provider.parse_settlement_file(content)
+
     # --- cancel / refund -------------------------------------------------
 
     def can_cancel_billing(self):

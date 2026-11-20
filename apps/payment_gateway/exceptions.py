@@ -108,3 +108,15 @@ class GatewayPaymentNotPending(CodedAPIException):
     status_code = status.HTTP_409_CONFLICT
     error_code = "GATEWAY_PAYMENT_NOT_PENDING"
     default_detail = "Only a pending online payment can be cancelled."
+
+
+class SettlementFileInvalid(CodedAPIException):
+    status_code = status.HTTP_400_BAD_REQUEST
+    error_code = "SETTLEMENT_FILE_INVALID"
+    default_detail = "The settlement file could not be read."
+
+
+class SettlementFileAlreadyImported(CodedAPIException):
+    status_code = status.HTTP_409_CONFLICT
+    error_code = "SETTLEMENT_FILE_ALREADY_IMPORTED"
+    default_detail = "This settlement file has already been imported."
