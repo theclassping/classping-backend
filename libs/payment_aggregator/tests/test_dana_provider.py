@@ -2,6 +2,7 @@ import datetime
 import hashlib
 import json
 import unittest
+from unittest import mock
 from decimal import Decimal
 
 import requests
@@ -159,7 +160,7 @@ class CreateOrderTests(unittest.TestCase):
         provider, session = make_dana_provider(FakeResponse(body=body), channel_fees=FEES)
         result = provider.create_billing(billing_request("NETWORK_PAY_PG_CARD"))
         option = session.last_json()["payOptionDetails"][0]
-        self.assertEqual(option["payMethod"], "CREDIT_CARD")
+        self.assertEqual(option["payMethod"], "NETWORK_PAY")
         self.assertEqual(option["payOption"], "NETWORK_PAY_PG_CARD")
         self.assertEqual(option["additionalInfo"], {"phoneNumber": "6281234567890"})
         self.assertEqual(result.payment_link, "https://m.sandbox.dana.id/pay?x=1")
@@ -167,8 +168,9 @@ class CreateOrderTests(unittest.TestCase):
     def test_request_is_logged_without_signature_or_phone(self):
         body = dict(CREATE_OK, webRedirectUrl="https://m.sandbox.dana.id/pay?x=1", additionalInfo={})
         provider, session = make_dana_provider(FakeResponse(body=body), channel_fees=FEES)
-        with self.assertLogs("payment_aggregator.providers.dana.client", level="INFO") as logs:
-            provider.create_billing(billing_request("NETWORK_PAY_PG_CARD"))
+        with mock.patch("payment_aggregator.providers.dana.client._debug_logging_enabled", return_value=True):
+            with self.assertLogs("payment_aggregator.providers.dana.client", level="INFO") as logs:
+                provider.create_billing(billing_request("NETWORK_PAY_PG_CARD"))
         request_log = next(line for line in logs.output if " request: " in line)
         response_log = next(line for line in logs.output if " response: " in line)
         external_id = session.calls[-1]["headers"]["X-EXTERNAL-ID"]
@@ -177,12 +179,26 @@ class CreateOrderTests(unittest.TestCase):
         self.assertIn('"partnerReferenceNo":"PAY-20261112-000001"', request_log)
         self.assertNotIn("6281234567890", request_log)
         self.assertNotIn(session.calls[-1]["headers"]["X-SIGNATURE"], request_log)
+        self.assertNotIn("X-SIGNATURE", request_log)
+        # URL and the trace headers DANA support asks for.
+        self.assertIn("url=" + session.calls[-1]["url"], request_log)
+        self.assertIn("'X-PARTNER-ID': '{}'".format(session.calls[-1]["headers"]["X-PARTNER-ID"]), request_log)
+        self.assertIn("'CHANNEL-ID': ", request_log)
+
+    def test_request_and_response_are_not_logged_without_debug(self):
+        provider, _ = make_dana_provider(FakeResponse(body=CREATE_OK), channel_fees=FEES)
+        with mock.patch("payment_aggregator.providers.dana.client._debug_logging_enabled", return_value=False):
+            with mock.patch("payment_aggregator.providers.dana.client.logger") as logger:
+                provider.create_billing(billing_request())
+        logger.info.assert_not_called()
+        logger.warning.assert_not_called()
 
     def test_card_order_rejects_non_indonesian_phone_before_sending(self):
         provider, session = make_dana_provider(channel_fees=FEES)
         with self.assertRaises(InvalidPayerPhone):
             provider.create_billing(billing_request("NETWORK_PAY_PG_CARD", payer_phone="081234"))
         self.assertEqual(session.calls, [])
+
 
     def test_error_codes(self):
         cases = [
@@ -241,6 +257,36 @@ def query_body(status, **extra):
     }
     body.update(extra)
     return body
+
+
+class ConsultPayTests(unittest.TestCase):
+    def test_consult_pay_sends_amount_and_returns_payment_options(self):
+        options = [
+            {"payMethod": "NETWORK_PAY", "payOption": "NETWORK_PAY_PG_OVO"},
+            {"payMethod": "VIRTUAL_ACCOUNT", "payOption": "VIRTUAL_ACCOUNT_BCA"},
+        ]
+        provider, session = make_dana_provider(
+            FakeResponse(body={"responseCode": "2005700", "responseMessage": "Successful", "paymentInfos": options})
+        )
+
+        self.assertEqual(provider.consult_pay(Decimal("10000")), options)
+        self.assertTrue(session.calls[0]["url"].endswith("/v1.0/payment-gateway/consult-pay.htm"))
+        self.assertEqual(session.calls[0]["timeout"], 8)
+        self.assertEqual(
+            session.last_json(),
+            {
+                "merchantId": "216620000000000000000",
+                "amount": {"value": "10000.00", "currency": "IDR"},
+                "additionalInfo": {"envInfo": {"sourcePlatform": "IPG", "terminalType": "SYSTEM"}},
+            },
+        )
+
+    def test_consult_pay_rejects_failed_response(self):
+        provider, _ = make_dana_provider(
+            FakeResponse(body={"responseCode": "4000002", "responseMessage": "Invalid Mandatory Field"})
+        )
+        with self.assertRaises(ProviderRejected):
+            provider.consult_pay(Decimal("10000"))
 
 
 class QueryPaymentTests(unittest.TestCase):
@@ -501,21 +547,29 @@ class TransferToBankTests(unittest.TestCase):
         inquiry, transfer = (json.loads(call["data"]) for call in session.calls)
         self.assertTrue(session.calls[0]["url"].endswith("/v1.0/emoney/bank-account-inquiry.htm"))
         self.assertTrue(session.calls[1]["url"].endswith("/v1.0/emoney/transfer-bank.htm"))
-        self.assertEqual(inquiry["customerNumber"], "6281234567890")
-        self.assertEqual(inquiry["additionalInfo"]["beneficiaryBankCode"], "014")
         self.assertEqual(
-            transfer,
+            inquiry,
             {
                 "partnerReferenceNo": "WD-1",
-                "customerNumber": "6281234567890",
                 "beneficiaryAccountNumber": "1234567890",
                 "beneficiaryBankCode": "014",
                 "amount": {"value": "97500.00", "currency": "IDR"},
                 "additionalInfo": {
                     "fundType": "MERCHANT_WITHDRAW_FOR_CORPORATE",
-                    "chargeTarget": "MERCHANT",
+                    "beneficiaryBankCode": "014",
+                },
+            },
+        )
+        self.assertEqual(
+            transfer,
+            {
+                "partnerReferenceNo": "WD-1",
+                "beneficiaryAccountNumber": "1234567890",
+                "beneficiaryBankCode": "014",
+                "amount": {"value": "97500.00", "currency": "IDR"},
+                "additionalInfo": {
+                    "fundType": "MERCHANT_WITHDRAW_FOR_CORPORATE",
                     "needNotify": True,
-                    "beneficiaryAccountName": "Yayasan Sekolah",
                 },
             },
         )

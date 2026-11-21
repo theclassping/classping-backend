@@ -65,6 +65,10 @@ class PaymentAggregator:
 
     # --- pay-in ----------------------------------------------------------
 
+    def consult_pay(self, amount):
+        """Return provider payment options for an amount, if supported."""
+        return self.provider.consult_pay(amount)
+
     def create_billing(self, request):
         return self.provider.create_billing(request)
 
@@ -77,6 +81,15 @@ class PaymentAggregator:
     def callback_reply(self, event, result=None):
         """(body, headers) the provider requires in reply to a notification, or None."""
         return self.provider.callback_reply(event, result=result)
+
+    # --- settlement ------------------------------------------------------
+
+    def settlement_via_file(self):
+        """True: settlement is known only from the provider's settlement file."""
+        return bool(self.provider.settlement_via_file)
+
+    def parse_settlement_file(self, content):
+        return self.provider.parse_settlement_file(content)
 
     # --- cancel / refund -------------------------------------------------
 

@@ -214,3 +214,86 @@ class GatewayPaymentItem(models.Model):
 
     def __str__(self):
         return f"{self.gateway_payment_id} - {self.student_invoice_id}"
+
+
+class SettlementFile(models.Model):
+    """A provider settlement file imported by an admin (audit + reconciliation)."""
+
+    provider = models.CharField(max_length=30)
+    file_name = models.CharField(max_length=255)
+    # Same content is never imported twice.
+    sha256 = models.CharField(max_length=64, unique=True)
+    imported_by = models.ForeignKey(
+        "users.User",
+        on_delete=models.SET_NULL,
+        related_name="imported_settlement_files",
+        blank=True,
+        null=True,
+    )
+    line_count = models.PositiveIntegerField(default=0)
+    settled_count = models.PositiveIntegerField(default=0)
+    review_count = models.PositiveIntegerField(default=0)
+    unmatched_count = models.PositiveIntegerField(default=0)
+    # Sum of the provider's SETTLE_AMOUNT (what should reach the bank), when given.
+    settle_amount_total = models.DecimalField(max_digits=16, decimal_places=2, blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "gateway_settlement_files"
+        ordering = ["-created_at", "-pk"]
+
+    def __str__(self):
+        return self.file_name
+
+
+class SettlementLine(models.Model):
+    """One line of a settlement file and what the import did with it."""
+
+    class Result(models.TextChoices):
+        SETTLED = "settled", "Settled now"
+        ALREADY_SETTLED = "already_settled", "Already settled"
+        CHECKED = "checked", "Matches our records"
+        AMOUNT_MISMATCH = "amount_mismatch", "Amount mismatch (review)"
+        NOT_PAID = "not_paid", "Not paid in Classping (review)"
+        REVIEW = "review", "Needs review"
+        UNMATCHED = "unmatched", "No matching payment"
+        IGNORED = "ignored", "Not used by Classping"
+
+    # Results an admin has to look at.
+    REVIEW_RESULTS = (Result.AMOUNT_MISMATCH, Result.NOT_PAID, Result.REVIEW)
+
+    settlement_file = models.ForeignKey(SettlementFile, on_delete=models.CASCADE, related_name="lines")
+    line_no = models.PositiveIntegerField()
+    line_type = models.CharField(max_length=20)  # payment_aggregator SettlementLineType
+    provider_type = models.CharField(max_length=40, blank=True, default="")
+    provider_trx_id = models.CharField(max_length=100, blank=True, default="")
+    original_trx_id = models.CharField(max_length=100, blank=True, default="")
+    reference_no = models.CharField(max_length=100, blank=True, default="")
+    amount = models.DecimalField(max_digits=16, decimal_places=2)
+    fee = models.DecimalField(max_digits=16, decimal_places=2, default=0)
+    settle_amount = models.DecimalField(max_digits=16, decimal_places=2, blank=True, null=True)
+    settled_at = models.DateTimeField(blank=True, null=True)
+    transaction_at = models.DateTimeField(blank=True, null=True)
+    pay_method = models.CharField(max_length=40, blank=True, default="")
+    gateway_payment = models.ForeignKey(
+        GatewayPayment,
+        on_delete=models.SET_NULL,
+        related_name="settlement_lines",
+        blank=True,
+        null=True,
+    )
+    result = models.CharField(max_length=20, choices=Result.choices)
+    note = models.TextField(blank=True, default="")
+    raw = models.JSONField(blank=True, default=dict)
+
+    class Meta:
+        db_table = "gateway_settlement_lines"
+        ordering = ["settlement_file", "line_no"]
+        indexes = [models.Index(fields=["provider_trx_id"], name="gw_settle_line_trx")]
+
+    def __str__(self):
+        return "{} #{}".format(self.settlement_file_id, self.line_no)
+
+    @property
+    def result_label(self):
+        return self.get_result_display()

@@ -611,3 +611,28 @@ class PayoutAccountAdminWebTests(WalletFixtureMixin, TestCase):
         self.client.force_login(self.officer)
         self.client.post(f"{self.base}payout-accounts/{self.account.pk}/delete/")
         self.assertTrue(PayoutAccount.objects.exists())
+
+
+
+@override_settings(MAILJET_TEMPLATES=TEMPLATES)
+class WithdrawalOtpDebugLogTests(WalletFixtureMixin, TestCase):
+    """The OTP code is logged only when DEBUG is on."""
+
+    def preview(self):
+        with mock.patch(MAILER) as mailer, mock.patch("apps.wallets.services.logger") as logger:
+            response = self.client_for(self.officer).post(
+                "/api/withdrawals/preview/", {"amount": "100000", **NEW_ACCOUNT}, format="json"
+            )
+        self.assertEqual(response.status_code, 200, response.data)
+        code = mailer.return_value.send_template.call_args.kwargs["variables"]["otp"]
+        return code, [call.args for call in logger.warning.call_args_list]
+
+    @override_settings(DEBUG=True)
+    def test_logged_in_debug(self):
+        code, warnings = self.preview()
+        self.assertTrue(any(code in args for args in warnings), warnings)
+
+    @override_settings(DEBUG=False)
+    def test_not_logged_without_debug(self):
+        code, warnings = self.preview()
+        self.assertFalse(any(code in args for args in warnings), warnings)

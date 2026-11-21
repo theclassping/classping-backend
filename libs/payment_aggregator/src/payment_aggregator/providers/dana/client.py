@@ -18,6 +18,26 @@ from payment_aggregator.utils import safe_preview, safe_response_preview
 logger = logging.getLogger(__name__)
 
 
+def _debug_logging_enabled():
+    """DANA payload and transport logs are for local debugging only."""
+    try:
+        from django.conf import settings
+
+        return settings.configured and settings.DEBUG
+    except ImportError:
+        return False
+
+
+# Never logged: the signature (and any auth token) would let a log reader
+# replay or forge requests.
+_UNLOGGED_HEADERS = frozenset({"X-SIGNATURE", "AUTHORIZATION", "AUTHORIZATION-CUSTOMER"})
+
+
+def loggable_headers(headers):
+    """Request headers safe to log (what DANA support asks for to trace a call)."""
+    return {name: value for name, value in headers.items() if name.upper() not in _UNLOGGED_HEADERS}
+
+
 def external_id():
     """X-EXTERNAL-ID: unique per day, 36 chars max. Numeric (32 random digits,
     as in DANA's samples): DANA recommends it and some channels reject
@@ -47,24 +67,29 @@ class DanaClient:
         }
         return self.config.base_url + path, headers, body
 
-    def post(self, path, payload):
+    def post(self, path, payload, timeout=None):
         url, headers, body = self.signed_request(path, payload)
         # X-EXTERNAL-ID / X-TIMESTAMP let DANA support trace the request;
         # the signature is never logged and the payer phone is masked.
         external_id = headers["X-EXTERNAL-ID"]
-        logger.info(
-            "DANA POST %s request: external_id=%s timestamp=%s body=%r",
-            path,
-            external_id,
-            headers["X-TIMESTAMP"],
-            safe_preview(body, limit=4000),
-        )
+        debug_logging = _debug_logging_enabled()
+        if debug_logging:
+            logger.info(
+                "DANA POST %s request: external_id=%s timestamp=%s url=%s headers=%s body=%r",
+                path,
+                external_id,
+                headers["X-TIMESTAMP"],
+                url,
+                loggable_headers(headers),
+                safe_preview(body, limit=4000),
+            )
         try:
             response = self.session.request(
-                "POST", url, timeout=self.config.timeout, data=body.encode("utf-8"), headers=headers
+                "POST", url, timeout=timeout or self.config.timeout, data=body.encode("utf-8"), headers=headers
             )
         except requests.RequestException as exc:
-            logger.warning("DANA POST %s failed (external_id=%s): %s", path, external_id, exc)
+            if debug_logging:
+                logger.warning("DANA POST %s failed (external_id=%s): %s", path, external_id, exc)
             raise ProviderUnavailable("DANA request failed") from exc
 
         try:
@@ -72,13 +97,14 @@ class DanaClient:
         except ValueError:
             data = None
 
-        logger.info(
-            "DANA POST %s response: external_id=%s HTTP %s body=%r",
-            path,
-            external_id,
-            response.status_code,
-            safe_response_preview(response),
-        )
+        if debug_logging:
+            logger.info(
+                "DANA POST %s response: external_id=%s HTTP %s body=%r",
+                path,
+                external_id,
+                response.status_code,
+                safe_response_preview(response),
+            )
 
         if not isinstance(data, dict) or not data.get("responseCode"):
             raise ProviderUnavailable(

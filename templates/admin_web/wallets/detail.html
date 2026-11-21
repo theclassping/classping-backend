@@ -9,6 +9,18 @@
     <a href="{% url 'admin_web:wallet_list' %}" class="btn">Back to wallets</a>
 </div>
 
+{% if unsettled_count %}
+<div class="card form-card">
+    <h3>Settle online payments</h3>
+    <p class="text-muted">{{ unsettled_count }} paid online payment(s) not settled yet ({{ unsettled_total }}). Mark them settled once the provider has settled the money; they move from pending to available.</p>
+    <form method="post" action="{% url 'admin_web:wallet_settle' branch.pk %}" onsubmit="return confirm('Mark all {{ unsettled_count }} paid online payment(s) of this branch settled?');">
+        {% csrf_token %}
+        <div class="form-group"><label for="settle-note">Note</label><input id="settle-note" name="note" maxlength="500" placeholder="e.g. DANA settlement file 2026-11-16"></div>
+        <div class="form-actions"><button type="submit" class="btn btn-primary">Mark all settled</button></div>
+    </form>
+</div>
+{% endif %}
+
 <div class="card form-card">
     <h3>Correct the balance</h3>
     <form method="post">

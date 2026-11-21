@@ -4,6 +4,10 @@ from ..forms import BalanceAdjustmentForm, WithdrawalResolveForm
 from ..views_common import *
 from apps.core.exceptions import CodedAPIException
 from payment_aggregator.exceptions import PaymentAggregatorError
+from django.db.models import Count, Sum
+
+from apps.payment_gateway import services as gateway_services
+from apps.payment_gateway.models import GatewayPayment
 from apps.wallets import services as wallet_services
 from apps.wallets.models import BranchWallet, LedgerEntry, Withdrawal
 
@@ -46,6 +50,9 @@ def wallet_detail(request, branch_pk):
     entry_type = request.GET.get("entry_type", "")
     if entry_type in LedgerEntry.EntryType.values:
         entries = entries.filter(entry_type=entry_type)
+    unsettled = GatewayPayment.objects.filter(
+        branch=branch, status=GatewayPayment.Status.PAID, settled_at__isnull=True
+    ).aggregate(count=Count("pk"), total=Sum("amount"))
     return render(
         request,
         "admin_web/wallets/detail.html",
@@ -56,8 +63,19 @@ def wallet_detail(request, branch_pk):
             "entry_types": LedgerEntry.EntryType.choices,
             "entry_type": entry_type,
             "form": form,
+            "unsettled_count": unsettled["count"],
+            "unsettled_total": unsettled["total"] or 0,
         },
     )
+
+
+@platform_admin_required
+def wallet_settle(request, branch_pk):
+    branch = get_object_or_404(Branch, pk=branch_pk)
+    if request.method == "POST":
+        settled = gateway_services.settle_branch_payments_manually(request.user, branch.pk, request.POST.get("note", ""))
+        messages.success(request, "Marked {} online payment(s) settled.".format(settled))
+    return redirect("admin_web:wallet_detail", branch_pk=branch.pk)
 
 
 @platform_admin_required

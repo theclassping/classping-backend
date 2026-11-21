@@ -78,6 +78,18 @@ class CheckoutFixtureMixin(GatewayFixtureMixin):
         self.parent = APIClient()
         self.parent.force_authenticate(user=self.parent_user)
 
+        # DANA Consult Pay (quote / channels / checkout): every payOption is
+        # available, so the offered channels are the priced ones.
+        from payment_aggregator.providers.dana import constants as dana_constants
+
+        consult = mock.patch(
+            "apps.payment_gateway.services.PaymentAggregator.consult_pay",
+            return_value=[{"payOption": code} for code in dana_constants.CHANNELS],
+            create=True,
+        )
+        self.consult_pay = consult.start()
+        self.addCleanup(consult.stop)
+
     def checkout(self, client=None, invoice_ids=None, channel="VIRTUAL_ACCOUNT_BCA", key="key-1"):
         return (client or self.parent).post(
             "/api/gateway/checkout/",

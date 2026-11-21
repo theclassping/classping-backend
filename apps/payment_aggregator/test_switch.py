@@ -1,6 +1,7 @@
 """PAYMENT_PROVIDER switching: new records use the active provider, existing
 records keep using the provider stored on them."""
 
+import os
 from decimal import Decimal
 from unittest import mock
 
@@ -163,7 +164,9 @@ class ProviderModuleTests(SimpleTestCase):
         from apps.payment_aggregator.providers import dana
 
         set_provider(None)
+        # The default notify URL, whatever the local .env sets.
         with mock.patch.dict("os.environ", {"DANA_RETURN_URL": "https://app.example.com/pay/finish"}):
+            os.environ.pop("DANA_NOTIFY_URL", None)
             self.assertEqual(PaymentAggregator.provider_name(), "dana")
             config = PaymentAggregator.provider.config
         self.assertEqual(config.mcc, "8211")
@@ -247,4 +250,58 @@ class DanaCurlCommandTests(SimpleTestCase):
         self.assertIn("/payment-gateway/v1.0/debit/payment-host-to-host.htm", text)
         self.assertIn("X-SIGNATURE: ", text)
         self.assertIn('"partnerReferenceNo":"TEST-', text)
+        self.assertEqual(session.calls, [])
+
+    def test_prints_signed_bank_inquiry_without_sending(self):
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        from apps.payment_aggregator.testing import make_provider
+
+        provider, session = make_provider(payout_phone="6281200000000")
+        out = StringIO()
+        with mock.patch(
+            "apps.payment_gateway.management.commands.dana_curl.build_provider", return_value=provider
+        ):
+            call_command(
+                "dana_curl", "--bank-inquiry", "2460888509", "--amount", "50000",
+                "--customer-number", "62811742234", stdout=out,
+            )
+        text = out.getvalue()
+        self.assertIn("/v1.0/emoney/bank-account-inquiry.htm", text)
+        self.assertIn("X-SIGNATURE: ", text)
+        self.assertNotIn('"customerNumber"', text)  # DANA's sample inquiry has none
+        self.assertIn('"beneficiaryAccountNumber":"2460888509"', text)
+        self.assertIn('"beneficiaryBankCode":"014"', text)
+        self.assertIn('"value":"50000.00"', text)
+        self.assertEqual(session.calls, [])
+
+    def test_prints_signed_transfer_and_status_without_sending(self):
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        from apps.payment_aggregator.testing import make_provider
+
+        provider, session = make_provider(payout_phone="6281200000000")
+        with mock.patch(
+            "apps.payment_gateway.management.commands.dana_curl.build_provider", return_value=provider
+        ):
+            out = StringIO()
+            call_command(
+                "dana_curl", "--transfer-bank", "2460888509", "--amount", "50000",
+                "--reference", "WDR-TEST-1", stdout=out,
+            )
+            transfer = out.getvalue()
+            out = StringIO()
+            call_command("dana_curl", "--transfer-status", "WDR-TEST-1", stdout=out)
+            status = out.getvalue()
+        self.assertIn("/v1.0/emoney/transfer-bank.htm", transfer)
+        self.assertIn('"partnerReferenceNo":"WDR-TEST-1"', transfer)
+        self.assertNotIn('"customerNumber"', transfer)  # DANA's sample transfer has none
+        self.assertIn('"beneficiaryBankCode":"014"', transfer)
+        self.assertIn('"needNotify":true', transfer)
+        self.assertIn("/v1.0/emoney/transfer-bank-status.htm", status)
+        self.assertIn("WDR-TEST-1", status)
         self.assertEqual(session.calls, [])

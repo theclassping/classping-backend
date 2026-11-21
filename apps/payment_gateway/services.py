@@ -451,20 +451,49 @@ def sync_gateway_payment(gateway_payment_id):
     return apply_billing_result(gateway_payment, billing)
 
 
-def mark_gateway_payment_settled(gateway_payment_id):
+def mark_gateway_payment_settled(gateway_payment_id, settled_at=None):
     """The provider disbursed the money to Classping's partner balance:
-    move the branch credit from pending to available."""
+    move the branch credit from pending to available. ``settled_at``: the
+    provider's settle date (settlement file), default now."""
     from apps.wallets.services import mark_payment_settled
 
     with transaction.atomic():
         gateway_payment = _lock(gateway_payment_id)
         if gateway_payment.status != GatewayPayment.Status.PAID or gateway_payment.settled_at:
             return gateway_payment
-        settled_at = timezone.now()
+        settled_at = settled_at or timezone.now()
         mark_payment_settled(gateway_payment, settled_at)
         gateway_payment.settled_at = settled_at
         gateway_payment.save(update_fields=["settled_at", "updated_at"])
     return gateway_payment
+
+
+def settle_gateway_payment_manually(user, gateway_payment_id, note=""):
+    """Admin web: mark a paid checkout settled by hand (providers whose
+    status API reports no settlement, e.g. DANA). Returns True when it was
+    settled now, False when it is not paid or already settled."""
+    with transaction.atomic():
+        gateway_payment = _lock(gateway_payment_id)
+        if gateway_payment.status != GatewayPayment.Status.PAID or gateway_payment.settled_at:
+            return False
+        mark_gateway_payment_settled(gateway_payment.pk)
+        gateway_payment.refresh_from_db()
+        audit = "Settlement marked manually by {}".format(getattr(user, "email", "") or user.pk)
+        note = (note or "").strip()
+        gateway_payment.review_note = append_note(
+            gateway_payment.review_note, "{}: {}".format(audit, note) if note else audit + "."
+        )
+        gateway_payment.save(update_fields=["review_note", "updated_at"])
+    logger.info("Gateway payment %s settled manually by user %s", gateway_payment_id, user.pk)
+    return True
+
+
+def settle_branch_payments_manually(user, branch_id, note=""):
+    """Admin web: settle every paid, unsettled checkout of a branch."""
+    unsettled = GatewayPayment.objects.filter(
+        branch_id=branch_id, status=GatewayPayment.Status.PAID, settled_at__isnull=True
+    ).values_list("pk", flat=True)
+    return sum(1 for pk in list(unsettled) if settle_gateway_payment_manually(user, pk, note))
 
 
 def reconcile_settlements():
@@ -473,7 +502,15 @@ def reconcile_settlements():
     unsettled = GatewayPayment.objects.filter(
         status=GatewayPayment.Status.PAID, settled_at__isnull=True, provider_trx_id__isnull=False
     ).values_list("pk", "provider", "provider_trx_id")
+    by_file = {}
     for gateway_payment_id, provider, provider_trx_id in unsettled:
+        if provider not in by_file:
+            try:
+                by_file[provider] = PaymentAggregator.using(provider).settlement_via_file()
+            except provider_errors.PaymentAggregatorError:
+                by_file[provider] = False
+        if by_file[provider]:
+            continue  # settled by importing the provider's settlement file
         try:
             billing = PaymentAggregator.using(provider).get_billing_status(provider_trx_id)
         except provider_errors.PaymentAggregatorError:
@@ -720,12 +757,37 @@ def get_checkout_quote(user, invoice_ids):
         _ensure_payable(get_invoice_payability(invoice))
 
     invoice_total = sum((invoice.total_amount for invoice in invoices), Decimal("0"))
+    channels = PaymentAggregator.get_channels(invoice_total)
+    if PaymentAggregator.provider_name() == "dana":
+        # DANA is the source of truth for which payOptions are currently
+        # available. Keep Classping's configured channels and fees as the
+        # pricing source, and intersect the two lists.
+        try:
+            payment_infos = PaymentAggregator.consult_pay(invoice_total)
+        except provider_errors.ProviderRejected as error:
+            response_code = (error.raw or {}).get("responseCode", "missing")
+            logger.warning(
+                "DANA Consult Pay returned an unsuccessful response (code=%s, message=%s)",
+                response_code,
+                error.provider_message or error.message,
+            )
+            raise errors.ProviderRejected(error.message, provider_code=response_code)
+        except provider_errors.PaymentAggregatorError as error:
+            logger.warning("DANA Consult Pay failed while quoting checkout channels: %s", error)
+            raise ProviderUnavailable()
+        available_options = {
+            str(info.get("payOption") or "")
+            for info in payment_infos
+            if isinstance(info, dict)
+        }
+        channels = [channel for channel in channels if channel.channel_code in available_options]
+
     return CheckoutQuote(
         student=invoices[0].class_student.student,
         branch_id=invoices[0].class_student.class_obj.branch_id,
         invoices=invoices,
         invoice_total=invoice_total,
-        channels=PaymentAggregator.get_channels(invoice_total),
+        channels=channels,
         expires_at=payment_expires_at(),
     )
 

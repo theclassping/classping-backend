@@ -1,0 +1,20 @@
+<table class="data-table">
+    <thead><tr><th>#</th><th>Type</th><th>Provider id</th><th>Reference</th><th>Online payment</th><th>Amount</th><th>Fee</th><th>Settle amount</th><th>Settle date</th><th>Result</th><th>Note</th></tr></thead>
+    <tbody>
+        {% for row in rows %}
+            <tr>
+                <td>{{ row.line_no }}</td>
+                <td>{{ row.provider_type }}{% if row.pay_method %} · {{ row.pay_method }}{% endif %}</td>
+                <td>{{ row.provider_trx_id|default:"-" }}{% if row.original_trx_id %}<br><small class="text-muted">of {{ row.original_trx_id }}</small>{% endif %}</td>
+                <td>{{ row.reference_no|default:"-" }}</td>
+                <td>{% if row.gateway_payment %}<a href="{% url 'admin_web:gateway_payment_detail' row.gateway_payment.pk %}">{{ row.gateway_payment.payment_no }}</a>{% else %}-{% endif %}</td>
+                <td>{{ row.amount }}</td>
+                <td>{{ row.fee }}</td>
+                <td>{{ row.settle_amount|default:"-" }}</td>
+                <td>{{ row.settled_at|date:"Y-m-d H:i"|default:"-" }}</td>
+                <td><span class="status {% if row.result == 'settled' or row.result == 'already_settled' or row.result == 'checked' %}status-active{% elif row.result != 'ignored' %}status-inactive{% endif %}">{{ row.result_label }}</span></td>
+                <td>{{ row.note }}</td>
+            </tr>
+        {% endfor %}
+    </tbody>
+</table>

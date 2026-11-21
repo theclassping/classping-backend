@@ -703,3 +703,21 @@ class WithdrawalResolveForm(forms.Form):
     """Close a stuck withdrawal after checking the provider dashboard."""
 
     note = forms.CharField(widget=forms.Textarea(attrs={"rows": 3}), max_length=2000)
+
+
+SETTLEMENT_FILE_MAX_BYTES = 5 * 1024 * 1024
+
+
+class SettlementUploadForm(forms.Form):
+    file = forms.FileField(
+        label="Settlement file (.csv)",
+        help_text="DANA daily settlement file, e.g. MERCHANT_SETTLEMENT_<MID>_..._YYYYMMDD.csv",
+    )
+
+    def clean_file(self):
+        upload = self.cleaned_data["file"]
+        if not upload.name.lower().endswith(".csv"):
+            raise ValidationError("Upload the .csv settlement file.")
+        if upload.size > SETTLEMENT_FILE_MAX_BYTES:
+            raise ValidationError("The file is larger than 5 MB.")
+        return upload

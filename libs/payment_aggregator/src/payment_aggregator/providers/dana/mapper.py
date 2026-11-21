@@ -108,6 +108,27 @@ def _raise_for_common(body, what):
 # --- pay-in ---------------------------------------------------------------
 
 
+def consult_pay_payload(amount, config):
+    return {
+        "merchantId": config.merchant_id,
+        "amount": money(amount),
+        "additionalInfo": {
+            "envInfo": {"sourcePlatform": "IPG", "terminalType": "SYSTEM"},
+        },
+    }
+
+
+def raise_for_consult_pay_response(body):
+    if _code(body) in c.RESPONSE_CONSULT_PAY_SUCCESS_CODES:
+        return
+    _raise_for_common(body, "consult pay")
+    raise ProviderRejected(
+        "DANA Consult Pay returned unsuccessful response code {} ({})".format(_code(body) or "missing", _message(body)),
+        provider_message=_message(body),
+        raw=body,
+    )
+
+
 def order_payload(request, config):
     channel = c.CHANNELS.get(request.channel_code)
     if channel is None:
@@ -300,14 +321,12 @@ def dana_bank(bank_code):
 def bank_inquiry_payload(request, config, bank_code, amount_sent):
     return {
         "partnerReferenceNo": request.reference_no,
-        "customerNumber": config.payout_phone,
         "beneficiaryAccountNumber": request.account_number,
+        "beneficiaryBankCode": bank_code,
         "amount": money(amount_sent),
         "additionalInfo": {
             "fundType": c.FUND_TYPE_BANK,
-            "chargeTarget": c.CHARGE_TARGET,
             "beneficiaryBankCode": bank_code,
-            "beneficiaryAccountName": request.account_name[: c.ACCOUNT_NAME_MAX],
         },
     }
 
@@ -333,15 +352,12 @@ def raise_for_bank_inquiry(body):
 def transfer_payload(request, config, bank_code, amount_sent):
     return {
         "partnerReferenceNo": request.reference_no,
-        "customerNumber": config.payout_phone,
         "beneficiaryAccountNumber": request.account_number,
         "beneficiaryBankCode": bank_code,
         "amount": money(amount_sent),
         "additionalInfo": {
             "fundType": c.FUND_TYPE_BANK,
-            "chargeTarget": c.CHARGE_TARGET,
             "needNotify": True,
-            "beneficiaryAccountName": request.account_name[: c.ACCOUNT_NAME_MAX],
         },
     }
 
