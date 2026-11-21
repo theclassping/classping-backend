@@ -1,6 +1,7 @@
 """PAYMENT_PROVIDER switching: new records use the active provider, existing
 records keep using the provider stored on them."""
 
+import os
 from decimal import Decimal
 from unittest import mock
 
@@ -163,7 +164,9 @@ class ProviderModuleTests(SimpleTestCase):
         from apps.payment_aggregator.providers import dana
 
         set_provider(None)
+        # The default notify URL, whatever the local .env sets.
         with mock.patch.dict("os.environ", {"DANA_RETURN_URL": "https://app.example.com/pay/finish"}):
+            os.environ.pop("DANA_NOTIFY_URL", None)
             self.assertEqual(PaymentAggregator.provider_name(), "dana")
             config = PaymentAggregator.provider.config
         self.assertEqual(config.mcc, "8211")
@@ -268,7 +271,7 @@ class DanaCurlCommandTests(SimpleTestCase):
         text = out.getvalue()
         self.assertIn("/v1.0/emoney/bank-account-inquiry.htm", text)
         self.assertIn("X-SIGNATURE: ", text)
-        self.assertIn('"customerNumber":"62811742234"', text)
+        self.assertNotIn('"customerNumber"', text)  # DANA's sample inquiry has none
         self.assertIn('"beneficiaryAccountNumber":"2460888509"', text)
         self.assertIn('"beneficiaryBankCode":"014"', text)
         self.assertIn('"value":"50000.00"', text)
@@ -296,7 +299,7 @@ class DanaCurlCommandTests(SimpleTestCase):
             status = out.getvalue()
         self.assertIn("/v1.0/emoney/transfer-bank.htm", transfer)
         self.assertIn('"partnerReferenceNo":"WDR-TEST-1"', transfer)
-        self.assertIn('"customerNumber":"6281200000000"', transfer)
+        self.assertNotIn('"customerNumber"', transfer)  # DANA's sample transfer has none
         self.assertIn('"beneficiaryBankCode":"014"', transfer)
         self.assertIn('"needNotify":true', transfer)
         self.assertIn("/v1.0/emoney/transfer-bank-status.htm", status)
